@@ -1,0 +1,12 @@
+#!/bin/bash
+if [ -z "$1" ]; then
+  open -a MD_RENDER
+else
+  # Use realpath if available, otherwise use the file as-is
+  if command -v realpath &> /dev/null; then
+    FILE="$(realpath "$1")"
+  else
+    FILE="$1"
+  fi
+  TAURI_LAUNCH_FILE="$FILE" open -a MD_RENDER
+fi
