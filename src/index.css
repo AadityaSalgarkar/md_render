@@ -98,7 +98,7 @@ body {
   border: none;
   outline: none;
   resize: none;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'FiraCode Nerd Font', 'Fira Code', monospace;
   font-size: 0.9375rem;
   line-height: 1.7;
   color: var(--text-primary);
@@ -323,7 +323,7 @@ body {
 
 /* Code - Inline */
 .markdown-body code {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'FiraCode Nerd Font', 'Fira Code', monospace;
   font-size: 0.875em;
   padding: 0.15em 0.4em;
   background: var(--code-bg);
@@ -343,6 +343,7 @@ body {
 }
 
 .markdown-body pre code {
+  font-family: 'FiraCode Nerd Font', 'Fira Code', monospace;
   padding: 0;
   background: none;
   border-radius: 0;
@@ -491,7 +492,7 @@ body {
   top: 0.5rem;
   right: 0.5rem;
   padding: 0.35rem 0.65rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'FiraCode Nerd Font', 'Fira Code', monospace;
   font-size: 0.75rem;
   background: var(--bg-primary);
   border: 1px solid var(--border);
