@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.9.1",
+    "@tauri-apps/plugin-deep-link": "^2.4.5",
     "framer-motion": "^11.11.0",
     "katex": "^0.16.25",
     "react": "^18.3.1",

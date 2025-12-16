@@ -30,16 +30,14 @@ fn find_launch_file_from_args() -> Option<String> {
     if arg.starts_with('-') {
       continue;
     }
-    // Check if it looks like a file path
+    // Check if it's a valid file path
     let path = std::path::Path::new(arg);
     if path.exists() && path.is_file() {
-      // Check for supported extensions
-      if let Some(ext) = path.extension() {
-        let ext_lower = ext.to_string_lossy().to_lowercase();
-        if ext_lower == "md" || ext_lower == "markdown" {
-          return Some(arg.clone());
-        }
-      }
+      return Some(arg.clone());
+    }
+    // Also try without checking existence (macOS might pass relative paths)
+    if arg.ends_with(".md") || arg.ends_with(".markdown") {
+      return Some(arg.clone());
     }
   }
   None

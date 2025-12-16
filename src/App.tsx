@@ -5,6 +5,8 @@ import { Preview } from './components/Preview'
 import { useTheme } from './hooks/useTheme'
 import { sampleMarkdown } from './lib/sampleMarkdown'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
+import { onOpenUrl } from '@tauri-apps/plugin-deep-link'
 
 const MIN_PANE_WIDTH = 280
 const DEFAULT_SPLIT = 0.45
@@ -14,18 +16,19 @@ export default function App() {
   const [content, setContent] = useState(sampleMarkdown)
   const [fileLoaded, setFileLoaded] = useState(false)
 
+  // Load file helper
+  const loadFile = useCallback(async (filePath: string) => {
+    try {
+      const text = await invoke<string>('read_file', { path: filePath })
+      setContent(text)
+      setFileLoaded(true)
+    } catch (err) {
+      console.error('Failed to load file:', err)
+    }
+  }, [])
+
   // Load file on startup and persist content to localStorage
   useEffect(() => {
-    const loadFile = async (filePath: string) => {
-      try {
-        const text = await invoke<string>('read_file', { path: filePath })
-        setContent(text)
-        setFileLoaded(true)
-      } catch (err) {
-        console.error('Failed to load file:', err)
-      }
-    }
-
     const initializeFile = async () => {
       // Check for launch file from Tauri
       try {
@@ -55,7 +58,38 @@ export default function App() {
     }
 
     initializeFile()
-  }, [])
+  }, [loadFile])
+
+  // Listen for file open events (from macOS Finder double-click)
+  useEffect(() => {
+    let unlistenOpenFile: (() => void) | undefined
+    let unlistenDeepLink: (() => void) | undefined
+
+    const setupListeners = async () => {
+      // Listen for custom open-file event from Rust backend
+      unlistenOpenFile = await listen<string>('open-file', (event) => {
+        loadFile(event.payload)
+      })
+
+      // Listen for deep-link events (macOS file associations)
+      unlistenDeepLink = await onOpenUrl((urls) => {
+        for (const url of urls) {
+          if (url.startsWith('file://')) {
+            const filePath = decodeURIComponent(url.replace('file://', ''))
+            loadFile(filePath)
+            break
+          }
+        }
+      })
+    }
+
+    setupListeners()
+
+    return () => {
+      unlistenOpenFile?.()
+      unlistenDeepLink?.()
+    }
+  }, [loadFile])
 
   // Persist content to localStorage when changed (but not on first load)
   useEffect(() => {
