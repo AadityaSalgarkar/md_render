@@ -1,17 +1,37 @@
 # MD_RENDER
 
-A native macOS markdown renderer built with Tauri, React, and TypeScript. Features a split-pane editor/preview layout, syntax highlighting, math rendering, and light/dark themes.
+A native macOS markdown renderer built with Tauri, React, and TypeScript. It
+pairs a split-pane editor/preview with a documentation-site reading layout —
+collapsible index, reading progress, and a set of six typographic themes.
 
 ## Features
 
-- Native macOS app using Tauri 2.x
-- Split-pane editor and preview with draggable divider
+- Native macOS app built with Tauri 2.x
+- Six typographic themes — three light (Warm Paper, Newsprint, Forest) and three
+  dark (Midnight Ink, Nocturne, Evergreen), each with its own fonts, colors, and
+  code-syntax palette — chosen from a swatch popover
+- Collapsible split-pane editor and preview with a draggable divider
+- Collapsible document index, auto-built from headings, with scroll-spy
+  highlighting and foldable sections
+- Reading-progress bar and hover anchor links on headings
 - Syntax highlighting for code blocks (highlight.js)
-- Math rendering with KaTeX
-- Light and dark themes with system preference detection
-- Bookerly font for prose, Fira Code for code
+- Math with KaTeX — inline `$…$`, `$$…$$`, and ` ```math ` blocks
+- GitHub Flavored Markdown: tables, task lists, strikethrough
+- Local images resolved relative to the open file, plus inline SVG and raw HTML
+- System color-scheme detection picks a light or dark theme on first run
 - 70% text width for comfortable reading
-- File associations for .md and .markdown files
+- File associations for `.md` and `.markdown` files
+
+## Themes
+
+Pick a theme from the palette button in the top-right controls; the choice is
+remembered between sessions.
+
+| Light | Dark |
+|-------|------|
+| Warm Paper — book typography on aged cream | Midnight Ink — warm ink on blue-black |
+| Newsprint — high-contrast editorial broadsheet | Nocturne — muted iris & foam on plum |
+| Forest — moss and bark on a sage page | Evergreen — moss and amber on pine-black |
 
 ## Installation
 
@@ -29,9 +49,12 @@ git clone <repo-url>
 cd md_render
 npm install
 
-# Build and install
+# Build
 npm run tauri:build
-cp -r src-tauri/target/release/bundle/macos/MD_RENDER.app /Applications/
+
+# Install (replace any existing copy)
+rm -rf /Applications/MD_RENDER.app
+cp -R src-tauri/target/release/bundle/macos/MD_RENDER.app /Applications/
 ```
 
 ## Wrapper Script
@@ -149,24 +172,30 @@ Or manually: Right-click any .md file > Get Info > Open with > MD_RENDER > Chang
 
 ## Tech Stack
 
-- **Frontend**: React 18, TypeScript, Vite
-- **Backend**: Tauri 2.x (Rust)
-- **Styling**: Tailwind CSS, CSS custom properties
-- **Markdown**: react-markdown, remark-gfm, rehype-highlight
-- **Math**: KaTeX (rehype-katex, remark-math)
-- **Fonts**: Bookerly (prose), Fira Code Nerd Font (code)
+- **Frontend**: React 18, TypeScript, Vite, Framer Motion
+- **Backend**: Tauri 2.x (Rust), with the asset protocol enabled for local images
+- **Styling**: Tailwind CSS; theme tokens are CSS custom properties defined in `src/lib/themes.ts`
+- **Markdown**: react-markdown with remark-gfm, remark-math, rehype-raw, rehype-slug, rehype-highlight, rehype-katex
+- **Math**: KaTeX
+- **Fonts**: Playfair Display, Source Serif 4, Spectral, Fraunces, EB Garamond (prose); IBM Plex Mono, JetBrains Mono (code) — each theme picks its own pairing
 
 ## Development
 
 ```bash
-# Start development server
+# Start development (Tauri window + Vite)
 npm run tauri:dev
 
 # Build for production
 npm run tauri:build
 
-# Run frontend only (browser)
+# Run the frontend only, in a browser
 npm run dev
+
+# Run the test suite (Vitest)
+npm test
+
+# Lint
+npm run lint
 ```
 
 ## Project Structure
@@ -174,14 +203,15 @@ npm run dev
 ```
 md_render/
 ├── src/                    # React frontend
-│   ├── components/         # React components
-│   ├── hooks/              # Custom hooks
-│   ├── lib/                # Utilities
-│   ├── App.tsx             # Main app component
-│   └── index.css           # Styles and themes
+│   ├── components/         # Editor, Preview, ThemePicker, TableOfContents, ReadingProgress
+│   ├── hooks/              # useTheme — applies the active theme's CSS variables
+│   ├── lib/                # themes registry, image-path resolution, sample content
+│   ├── test/               # Vitest suites
+│   ├── App.tsx             # Layout, panes, file loading, floating controls
+│   └── index.css           # Base styles and per-theme flourishes
 ├── src-tauri/              # Tauri backend (Rust)
-│   ├── src/lib.rs          # Rust commands
-│   ├── tauri.conf.json     # Tauri configuration
+│   ├── src/lib.rs          # read_file / get_launch_file commands
+│   ├── tauri.conf.json     # Tauri configuration (asset protocol enabled)
 │   ├── Info.plist          # macOS file associations
 │   └── Cargo.toml          # Rust dependencies
 ├── bin/

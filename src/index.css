@@ -2,46 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
-/* CSS Custom Properties - Design System */
+/* ===================================================================
+   Design tokens
+   The full set of theme variables lives in src/lib/themes.ts and is
+   written onto <html> at runtime. The :root block below mirrors the
+   "Warm Paper" theme so the first paint is never unstyled.
+   =================================================================== */
 :root {
-  /* Light Theme (Warm Paper) */
+  /* Surfaces */
   --bg-primary: #FAF7F2;
   --bg-secondary: #F5F1EA;
   --bg-editor: #FFFDF8;
   --bg-preview: #FAF7F2;
+  /* Text */
   --text-primary: #1A1A1A;
   --text-secondary: #5C5C5C;
   --text-muted: #8A8A8A;
+  /* Accents */
   --accent: #C9553D;
   --accent-hover: #B84A34;
   --accent-secondary: #2D5A4A;
+  /* Lines & code surface */
   --border: #E8E2D9;
   --border-strong: #D4CCC0;
   --code-bg: #F0EDE6;
   --selection: rgba(201, 85, 61, 0.15);
   --shadow-fold: 8px 0 24px -8px rgba(0, 0, 0, 0.12);
+  /* Typography */
+  --font-head: 'Playfair Display', Georgia, serif;
+  --font-body: 'Source Serif 4', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', 'Fira Code', monospace;
+  /* Syntax highlighting */
+  --code-keyword: #C9553D;
+  --code-string: #2D5A4A;
+  --code-number: #B07D48;
+  --code-comment: #8A8A8A;
+  --code-function: #5A7A9A;
+  --code-builtin: #8959A8;
 }
 
-.dark {
-  /* Dark Theme (Midnight Ink) */
-  --bg-primary: #121418;
-  --bg-secondary: #1A1D23;
-  --bg-editor: #0D0F12;
-  --bg-preview: #121418;
-  --text-primary: #E8E4DC;
-  --text-secondary: #9A968E;
-  --text-muted: #6A665E;
-  --accent: #E07A5F;
-  --accent-hover: #E8907A;
-  --accent-secondary: #81B29A;
-  --border: #2A2D35;
-  --border-strong: #3A3D45;
-  --code-bg: #1A1D23;
-  --selection: rgba(224, 122, 95, 0.2);
-  --shadow-fold: 8px 0 24px -8px rgba(0, 0, 0, 0.5);
-}
-
-/* Base Styles */
+/* ===================================================================
+   Base
+   =================================================================== */
 * {
   box-sizing: border-box;
 }
@@ -57,15 +59,15 @@ body {
   padding: 0;
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  font-family: 'Bookerly', 'Georgia', 'Palatino', serif;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  font-family: var(--font-body);
+  transition: background-color 0.35s ease, color 0.35s ease;
 }
 
 ::selection {
   background: var(--selection);
 }
 
-/* Scrollbar Styling */
+/* Scrollbars */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -84,10 +86,12 @@ body {
   background: var(--text-muted);
 }
 
-/* Editor Styles */
+/* ===================================================================
+   Editor
+   =================================================================== */
 .editor-container {
   background: var(--bg-editor);
-  transition: background-color 0.3s ease;
+  transition: background-color 0.35s ease;
 }
 
 .editor-textarea {
@@ -98,7 +102,7 @@ body {
   border: none;
   outline: none;
   resize: none;
-  font-family: 'FiraCode Nerd Font', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 0.9375rem;
   line-height: 1.7;
   color: var(--text-primary);
@@ -110,19 +114,208 @@ body {
   font-style: italic;
 }
 
-/* Preview Pane Styles */
-.preview-container {
+/* ===================================================================
+   Reading pane (table of contents + scrolling article)
+   =================================================================== */
+.reading-pane {
+  display: flex;
+  height: 100%;
   background: var(--bg-preview);
   box-shadow: var(--shadow-fold);
-  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+  transition: background-color 0.35s ease, box-shadow 0.35s ease;
 }
 
-/* Markdown Content Styling */
+.preview-container {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-preview);
+  transition: background-color 0.35s ease;
+}
+
+/* Reading progress bar — pinned to the top of the scroll viewport */
+.reading-progress {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  width: 100%;
+  height: 3px;
+  background: var(--border);
+}
+
+.reading-progress-fill {
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  background: linear-gradient(90deg, var(--accent-secondary), var(--accent));
+  transition: transform 0.08s linear;
+}
+
+/* ===================================================================
+   Table of contents (the document index)
+   =================================================================== */
+.toc-sidebar {
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+}
+
+.toc-inner {
+  width: 264px;
+  height: 100%;
+  overflow-y: auto;
+  padding: 1.75rem 1.1rem 2.5rem;
+}
+
+.toc-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.1rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.toc-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  font-style: italic;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.toc-empty code {
+  font-family: var(--font-mono);
+  font-style: normal;
+  font-size: 0.78rem;
+  padding: 0.05em 0.3em;
+  background: var(--code-bg);
+  border-radius: 3px;
+}
+
+.toc-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc-subtree {
+  margin-left: 0.55rem;
+  border-left: 1px solid var(--border);
+}
+
+.toc-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.1rem;
+}
+
+/* Collapse/expand toggle for sections with sub-headings */
+.toc-toggle {
+  flex-shrink: 0;
+  width: 1.15rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.toc-toggle:hover {
+  color: var(--accent);
+  background: var(--code-bg);
+}
+
+.toc-chevron {
+  display: flex;
+}
+
+.toc-toggle-spacer {
+  flex-shrink: 0;
+  width: 1.15rem;
+}
+
+.toc-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0.28rem 0.4rem;
+  border: none;
+  background: none;
+  border-radius: 5px;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.86rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.toc-link .toc-tick {
+  flex-shrink: 0;
+  width: 2px;
+  align-self: stretch;
+  border-radius: 1px;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.toc-text {
+  overflow-wrap: anywhere;
+}
+
+.toc-link:hover {
+  color: var(--text-primary);
+  background: var(--code-bg);
+}
+
+.toc-link.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.toc-link.active .toc-tick {
+  background: var(--accent);
+}
+
+.toc-level-1 {
+  font-weight: 600;
+}
+
+.toc-level-3 .toc-text {
+  font-size: 0.95em;
+  color: var(--text-muted);
+}
+
+.toc-link.active .toc-text {
+  color: var(--accent);
+}
+
+/* ===================================================================
+   Markdown content
+   =================================================================== */
 .markdown-body {
-  padding: 1.5rem 2rem;
+  padding: 1.75rem 2rem 4rem;
   max-width: 70%;
   margin: 0 auto;
-  font-family: 'Bookerly', 'Georgia', 'Palatino', serif;
+  font-family: var(--font-body);
   font-size: 1.0625rem;
   line-height: 1.6;
   color: var(--text-primary);
@@ -143,12 +336,14 @@ body {
 .markdown-body h4,
 .markdown-body h5,
 .markdown-body h6 {
-  font-family: 'Bookerly', 'Georgia', 'Palatino', serif;
+  position: relative;
+  font-family: var(--font-head);
   font-weight: 600;
   line-height: 1.3;
   margin-top: 1.3em;
   margin-bottom: 0.5em;
   color: var(--text-primary);
+  scroll-margin-top: 1.5rem;
 }
 
 .markdown-body h1 {
@@ -156,7 +351,6 @@ body {
   font-weight: 700;
   margin-top: 0;
   padding-bottom: 0.5rem;
-  position: relative;
 }
 
 .markdown-body h1::after {
@@ -208,13 +402,41 @@ body {
   letter-spacing: 0.05em;
 }
 
+/* Hover anchor links on headings */
+.heading-anchor {
+  position: absolute;
+  left: -1.45em;
+  top: 0;
+  width: 1.45em;
+  line-height: inherit;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.heading-anchor::after {
+  content: '#';
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.85em;
+}
+
+.markdown-body h1:hover .heading-anchor,
+.markdown-body h2:hover .heading-anchor,
+.markdown-body h3:hover .heading-anchor,
+.markdown-body h4:hover .heading-anchor,
+.heading-anchor:focus-visible {
+  opacity: 0.75;
+}
+
 /* Paragraphs */
 .markdown-body p {
   margin: 0 0 0.9em;
 }
 
 /* Links */
-.markdown-body a {
+.markdown-body a:not(.heading-anchor) {
   color: var(--accent);
   text-decoration: underline;
   text-decoration-thickness: 1px;
@@ -222,11 +444,11 @@ body {
   transition: color 0.2s ease;
 }
 
-.markdown-body a:hover {
+.markdown-body a:not(.heading-anchor):hover {
   color: var(--accent-hover);
 }
 
-/* Bold & Italic */
+/* Bold & italic */
 .markdown-body strong {
   font-weight: 600;
 }
@@ -235,7 +457,6 @@ body {
   font-style: italic;
 }
 
-/* Strikethrough */
 .markdown-body del {
   text-decoration: line-through;
   color: var(--text-secondary);
@@ -283,7 +504,7 @@ body {
   list-style-type: decimal;
 }
 
-/* Task Lists */
+/* Task lists */
 .markdown-body .task-list-item {
   list-style: none;
   margin-left: -1.5em;
@@ -321,9 +542,9 @@ body {
   transform: rotate(45deg);
 }
 
-/* Code - Inline */
+/* Inline code */
 .markdown-body code {
-  font-family: 'FiraCode Nerd Font', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 0.875em;
   padding: 0.15em 0.4em;
   background: var(--code-bg);
@@ -331,7 +552,7 @@ body {
   color: var(--accent-secondary);
 }
 
-/* Code - Block */
+/* Code blocks */
 .markdown-body pre {
   margin: 0.9em 0;
   padding: 1em 1.2em;
@@ -343,7 +564,7 @@ body {
 }
 
 .markdown-body pre code {
-  font-family: 'FiraCode Nerd Font', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   padding: 0;
   background: none;
   border-radius: 0;
@@ -352,41 +573,31 @@ body {
   line-height: 1.6;
 }
 
-/* Syntax Highlighting - Custom Theme */
+/* Syntax highlighting — driven entirely by theme variables */
 .markdown-body pre code .hljs-keyword,
 .markdown-body pre code .hljs-selector-tag {
-  color: var(--accent);
+  color: var(--code-keyword);
   font-weight: 500;
 }
 
 .markdown-body pre code .hljs-string,
 .markdown-body pre code .hljs-attr {
-  color: var(--accent-secondary);
+  color: var(--code-string);
 }
 
 .markdown-body pre code .hljs-number,
 .markdown-body pre code .hljs-literal {
-  color: #B07D48;
-}
-
-.dark .markdown-body pre code .hljs-number,
-.dark .markdown-body pre code .hljs-literal {
-  color: #D4A656;
+  color: var(--code-number);
 }
 
 .markdown-body pre code .hljs-comment {
-  color: var(--text-muted);
+  color: var(--code-comment);
   font-style: italic;
 }
 
 .markdown-body pre code .hljs-function,
 .markdown-body pre code .hljs-title {
-  color: #5A7A9A;
-}
-
-.dark .markdown-body pre code .hljs-function,
-.dark .markdown-body pre code .hljs-title {
-  color: #7FA8C9;
+  color: var(--code-function);
 }
 
 .markdown-body pre code .hljs-params {
@@ -394,11 +605,7 @@ body {
 }
 
 .markdown-body pre code .hljs-built_in {
-  color: #8959A8;
-}
-
-.dark .markdown-body pre code .hljs-built_in {
-  color: #B77FDB;
+  color: var(--code-builtin);
 }
 
 /* Math / KaTeX */
@@ -418,18 +625,15 @@ body {
   text-align: center;
 }
 
-.markdown-body .katex .base {
-  color: var(--text-primary);
-}
-
-/* Ensure math symbols are visible in dark mode */
-.dark .markdown-body .katex .mord,
-.dark .markdown-body .katex .mbin,
-.dark .markdown-body .katex .mrel,
-.dark .markdown-body .katex .mopen,
-.dark .markdown-body .katex .mclose,
-.dark .markdown-body .katex .mpunct,
-.dark .markdown-body .katex .minner {
+.markdown-body .katex,
+.markdown-body .katex .base,
+.markdown-body .katex .mord,
+.markdown-body .katex .mbin,
+.markdown-body .katex .mrel,
+.markdown-body .katex .mopen,
+.markdown-body .katex .mclose,
+.markdown-body .katex .mpunct,
+.markdown-body .katex .minner {
   color: var(--text-primary);
 }
 
@@ -450,22 +654,22 @@ body {
 
 .markdown-body th {
   background: var(--code-bg);
-  font-family: 'Bookerly', 'Georgia', 'Palatino', serif;
+  font-family: var(--font-head);
   font-weight: 600;
   font-size: 0.875rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
-.markdown-body tr:nth-child(even) {
+[data-mode="light"] .markdown-body tr:nth-child(even) {
   background: rgba(0, 0, 0, 0.02);
 }
 
-.dark .markdown-body tr:nth-child(even) {
+[data-mode="dark"] .markdown-body tr:nth-child(even) {
   background: rgba(255, 255, 255, 0.02);
 }
 
-/* Horizontal Rule Ornament */
+/* Horizontal rule ornament */
 .markdown-body .hr-ornament {
   margin: 2.5em 0;
   text-align: center;
@@ -482,7 +686,7 @@ body {
   margin: 1.5em 0;
 }
 
-/* Code Block Copy Button */
+/* Code block copy button */
 .code-block-wrapper {
   position: relative;
 }
@@ -492,7 +696,7 @@ body {
   top: 0.5rem;
   right: 0.5rem;
   padding: 0.35rem 0.65rem;
-  font-family: 'FiraCode Nerd Font', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   background: var(--bg-primary);
   border: 1px solid var(--border);
@@ -520,7 +724,9 @@ body {
   opacity: 1;
 }
 
-/* Floating Controls */
+/* ===================================================================
+   Floating controls
+   =================================================================== */
 .floating-controls {
   position: fixed;
   top: 1rem;
@@ -545,8 +751,8 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.dark .floating-btn {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+[data-mode="dark"] .floating-btn {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .floating-btn:hover {
@@ -555,7 +761,141 @@ body {
   transform: scale(1.05);
 }
 
-/* Divider Handle */
+.floating-btn.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-primary);
+}
+
+.floating-btn.is-on:hover {
+  color: var(--bg-primary);
+  filter: brightness(1.08);
+}
+
+/* ===================================================================
+   Theme picker popover
+   =================================================================== */
+.theme-picker {
+  position: relative;
+}
+
+.theme-popover {
+  position: absolute;
+  top: calc(100% + 0.6rem);
+  right: 0;
+  width: 312px;
+  padding: 0.85rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.35);
+  transform-origin: top right;
+}
+
+.theme-popover-title {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0.1rem 0.5rem 0.65rem;
+}
+
+.theme-group + .theme-group {
+  margin-top: 0.55rem;
+}
+
+.theme-group-label {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 0.35rem 0.5rem 0.3rem;
+}
+
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.theme-option:hover {
+  background: var(--code-bg);
+}
+
+.theme-option.active {
+  border-color: var(--accent);
+  background: var(--code-bg);
+}
+
+.theme-swatch {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  width: 40px;
+  height: 31px;
+  border-radius: 7px;
+  border: 1px solid var(--border-strong);
+  overflow: hidden;
+}
+
+.theme-swatch span {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+}
+
+.theme-swatch span:nth-child(1) {
+  left: 5px;
+  bottom: 5px;
+}
+
+.theme-swatch span:nth-child(2) {
+  right: 5px;
+  top: 5px;
+}
+
+.theme-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.theme-option-name {
+  font-family: var(--font-head);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.theme-option-blurb {
+  font-family: var(--font-body);
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.theme-check {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+/* ===================================================================
+   Divider handle
+   =================================================================== */
 .divider {
   width: 6px;
   background: var(--border);
@@ -588,7 +928,9 @@ body {
   opacity: 1;
 }
 
-/* Animation Classes */
+/* ===================================================================
+   Animations
+   =================================================================== */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -604,15 +946,100 @@ body {
   animation: fadeIn 0.3s ease-out;
 }
 
-/* Utility Classes */
 .no-select {
   user-select: none;
 }
 
-/* Responsive */
+/* ===================================================================
+   Per-theme texture & flourishes
+   =================================================================== */
+
+/* Nocturne — a soft wash of moonlight */
+[data-theme="nocturne"] body {
+  background-image: radial-gradient(
+    ellipse at 50% -5%,
+    rgba(196, 167, 231, 0.12),
+    transparent 55%
+  );
+  background-attachment: fixed;
+}
+
+[data-theme="nocturne"] .markdown-body h1::after {
+  content: '☾';
+  font-size: 0.95rem;
+  letter-spacing: 0;
+}
+
+/* Evergreen — moonlight filtering through a dark canopy */
+[data-theme="evergreen"] body {
+  background-image:
+    radial-gradient(circle at 16% 10%, rgba(143, 179, 107, 0.1), transparent 46%),
+    radial-gradient(circle at 84% 84%, rgba(216, 154, 91, 0.08), transparent 44%);
+  background-attachment: fixed;
+}
+
+[data-theme="evergreen"] .markdown-body h1::after {
+  content: '❧';
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+/* Newsprint — broadsheet masthead rules */
+[data-theme="newsprint"] .markdown-body h1 {
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  border-top: 3px double var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  padding: 0.35em 0 0.3em;
+}
+
+[data-theme="newsprint"] .markdown-body h1::after {
+  content: '';
+  display: none;
+}
+
+[data-theme="newsprint"] .markdown-body h2::after {
+  content: '';
+  display: none;
+}
+
+[data-theme="newsprint"] .markdown-body h2 {
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 1.5rem;
+}
+
+[data-theme="newsprint"] .markdown-body blockquote {
+  font-family: var(--font-head);
+}
+
+/* Forest — soft dappled light on the page */
+[data-theme="forest"] body {
+  background-image:
+    radial-gradient(circle at 18% 12%, rgba(92, 122, 74, 0.07), transparent 45%),
+    radial-gradient(circle at 82% 78%, rgba(176, 94, 46, 0.06), transparent 42%);
+  background-attachment: fixed;
+}
+
+[data-theme="forest"] .markdown-body h1::after {
+  content: '❧';
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+/* ===================================================================
+   Responsive
+   =================================================================== */
+@media (max-width: 900px) {
+  .markdown-body {
+    max-width: 100%;
+  }
+}
+
 @media (max-width: 768px) {
   .markdown-body {
-    padding: 1.5rem;
+    padding: 1.5rem 1.5rem 3rem;
     font-size: 1rem;
   }
 
@@ -632,5 +1059,13 @@ body {
   .markdown-body pre {
     padding: 1em;
     font-size: 0.8125rem;
+  }
+
+  .theme-popover {
+    width: 280px;
+  }
+
+  .heading-anchor {
+    display: none;
   }
 }

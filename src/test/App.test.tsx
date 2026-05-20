@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import App from '../App'
 
 describe('App', () => {
   beforeEach(() => {
     localStorage.clear()
+    document.documentElement.removeAttribute('data-theme')
   })
 
   it('renders editor textarea when editor is shown', () => {
@@ -17,8 +18,10 @@ describe('App', () => {
 
   it('renders sample markdown content by default', () => {
     render(<App />)
-    // Check for sample content heading in preview
-    expect(screen.getByText('Welcome to Literary Atelier')).toBeInTheDocument()
+    // Sample content heading appears in the preview
+    expect(
+      screen.getByRole('heading', { name: 'Welcome to Literary Atelier' }),
+    ).toBeInTheDocument()
   })
 
   it('updates preview when editor content changes', () => {
@@ -32,19 +35,18 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'Test Heading' })).toBeInTheDocument()
   })
 
-  it('has a theme toggle button', () => {
+  it('has a theme picker button', () => {
     render(<App />)
-    const themeButton = screen.getByRole('button', { name: /switch to/i })
-    expect(themeButton).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /choose theme/i })).toBeInTheDocument()
   })
 
-  it('toggles theme when theme button is clicked', () => {
+  it('applies a theme selected from the picker', () => {
     render(<App />)
-    const themeButton = screen.getByRole('button', { name: /switch to dark theme/i })
+    fireEvent.click(screen.getByRole('button', { name: /choose theme/i }))
 
-    fireEvent.click(themeButton)
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /nocturne/i }))
 
-    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    expect(document.documentElement.dataset.theme).toBe('nocturne')
   })
 
   it('has a resizable divider when editor is shown', () => {
@@ -57,7 +59,7 @@ describe('App', () => {
     expect(divider).toHaveAttribute('role', 'separator')
   })
 
-  it('persists content to localStorage', () => {
+  it('persists content to localStorage', async () => {
     render(<App />)
     // Show editor first
     fireEvent.click(screen.getByRole('button', { name: /show editor/i }))
@@ -65,7 +67,10 @@ describe('App', () => {
 
     fireEvent.change(textarea, { target: { value: '# Persisted Content' } })
 
-    expect(localStorage.getItem('md-render-content')).toBe('# Persisted Content')
+    // Persistence is gated on async startup initialisation completing first.
+    await waitFor(() => {
+      expect(localStorage.getItem('md-render-content')).toBe('# Persisted Content')
+    })
   })
 
   it('starts with editor collapsed by default', () => {
@@ -83,5 +88,20 @@ describe('App', () => {
 
     // Button label should change to "Hide editor"
     expect(screen.getByRole('button', { name: /hide editor/i })).toBeInTheDocument()
+  })
+
+  it('shows the document index by default', () => {
+    render(<App />)
+    const indexButton = screen.getByRole('button', { name: /hide document index/i })
+    expect(indexButton).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('toggles the document index off', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: /hide document index/i }))
+
+    const indexButton = screen.getByRole('button', { name: /show document index/i })
+    expect(indexButton).toHaveAttribute('aria-pressed', 'false')
+    expect(localStorage.getItem('md-render-toc')).toBe('false')
   })
 })
