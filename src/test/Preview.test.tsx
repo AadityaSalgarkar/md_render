@@ -4,24 +4,24 @@ import { Preview } from '../components/Preview'
 
 describe('Preview', () => {
   it('renders markdown headings', () => {
-    render(<Preview content="# Hello World" />)
+    render(<Preview content="# Hello World" tocOpen={false} />)
     expect(screen.getByRole('heading', { name: 'Hello World' })).toBeInTheDocument()
   })
 
   it('renders bold text', () => {
-    render(<Preview content="**bold text**" />)
+    render(<Preview content="**bold text**" tocOpen={false} />)
     const strong = screen.getByText('bold text')
     expect(strong.tagName.toLowerCase()).toBe('strong')
   })
 
   it('renders italic text', () => {
-    render(<Preview content="*italic text*" />)
+    render(<Preview content="*italic text*" tocOpen={false} />)
     const em = screen.getByText('italic text')
     expect(em.tagName.toLowerCase()).toBe('em')
   })
 
   it('renders links', () => {
-    render(<Preview content="[Link](https://example.com)" />)
+    render(<Preview content="[Link](https://example.com)" tocOpen={false} />)
     const link = screen.getByRole('link', { name: 'Link' })
     expect(link).toHaveAttribute('href', 'https://example.com')
   })
@@ -30,7 +30,7 @@ describe('Preview', () => {
     const content = `- Item 1
 - Item 2
 - Item 3`
-    render(<Preview content={content} />)
+    render(<Preview content={content} tocOpen={false} />)
     expect(screen.getByText('Item 1')).toBeInTheDocument()
     expect(screen.getByText('Item 2')).toBeInTheDocument()
     expect(screen.getByText('Item 3')).toBeInTheDocument()
@@ -40,7 +40,7 @@ describe('Preview', () => {
     const content = `1. First
 2. Second
 3. Third`
-    render(<Preview content={content} />)
+    render(<Preview content={content} tocOpen={false} />)
     expect(screen.getByText('First')).toBeInTheDocument()
     expect(screen.getByText('Second')).toBeInTheDocument()
   })
@@ -49,7 +49,7 @@ describe('Preview', () => {
     const content = `\`\`\`javascript
 const x = 1;
 \`\`\``
-    render(<Preview content={content} />)
+    render(<Preview content={content} tocOpen={false} />)
     // Syntax highlighting breaks text into spans, so check for code element with class
     const codeElement = document.querySelector('code.hljs')
     expect(codeElement).toBeInTheDocument()
@@ -57,13 +57,13 @@ const x = 1;
   })
 
   it('renders inline code', () => {
-    render(<Preview content="Use `inline code` here" />)
+    render(<Preview content="Use `inline code` here" tocOpen={false} />)
     const code = screen.getByText('inline code')
     expect(code.tagName.toLowerCase()).toBe('code')
   })
 
   it('renders blockquotes', () => {
-    render(<Preview content="> This is a quote" />)
+    render(<Preview content="> This is a quote" tocOpen={false} />)
     const blockquote = screen.getByText('This is a quote').closest('blockquote')
     expect(blockquote).toBeInTheDocument()
   })
@@ -74,14 +74,14 @@ const x = 1;
 |----------|----------|
 | Cell 1   | Cell 2   |
 `
-    render(<Preview content={tableMarkdown} />)
+    render(<Preview content={tableMarkdown} tocOpen={false} />)
     expect(screen.getByRole('table')).toBeInTheDocument()
     expect(screen.getByText('Header 1')).toBeInTheDocument()
     expect(screen.getByText('Cell 1')).toBeInTheDocument()
   })
 
   it('renders GFM strikethrough', () => {
-    render(<Preview content="~~strikethrough~~" />)
+    render(<Preview content="~~strikethrough~~" tocOpen={false} />)
     const del = screen.getByText('strikethrough')
     expect(del.tagName.toLowerCase()).toBe('del')
   })
@@ -89,7 +89,7 @@ const x = 1;
   it('renders GFM task lists', () => {
     const content = `- [x] Done
 - [ ] Todo`
-    render(<Preview content={content} />)
+    render(<Preview content={content} tocOpen={false} />)
     const checkboxes = screen.getAllByRole('checkbox')
     expect(checkboxes).toHaveLength(2)
     expect(checkboxes[0]).toBeChecked()
@@ -100,13 +100,13 @@ const x = 1;
     const content = `\`\`\`js
 code
 \`\`\``
-    render(<Preview content={content} />)
+    render(<Preview content={content} tocOpen={false} />)
     const copyButton = screen.getByRole('button', { name: /copy/i })
     expect(copyButton).toBeInTheDocument()
   })
 
   it('renders inline math', () => {
-    render(<Preview content="The equation $E = mc^2$ is famous." />)
+    render(<Preview content="The equation $E = mc^2$ is famous." tocOpen={false} />)
     const katexSpan = document.querySelector('.katex')
     expect(katexSpan).toBeInTheDocument()
   })
@@ -115,7 +115,7 @@ code
     const content = `$$
 \\frac{1}{2}
 $$`
-    render(<Preview content={content} />)
+    render(<Preview content={content} tocOpen={false} />)
     const katexDisplay = document.querySelector('.katex-display')
     expect(katexDisplay).toBeInTheDocument()
   })
@@ -130,10 +130,36 @@ $$
 $$
 
 And some **bold** text.`
-    render(<Preview content={content} />)
+    render(<Preview content={content} tocOpen={false} />)
     expect(screen.getByRole('heading', { name: 'Math Section' })).toBeInTheDocument()
     expect(document.querySelector('.katex')).toBeInTheDocument()
     expect(document.querySelector('.katex-display')).toBeInTheDocument()
     expect(screen.getByText('bold')).toBeInTheDocument()
+  })
+
+  it('gives headings slug ids so the index can link to them', () => {
+    const content = `# Hello World
+
+## Nested Section`
+    render(<Preview content={content} tocOpen={false} />)
+    expect(screen.getByRole('heading', { name: 'Hello World' })).toHaveAttribute(
+      'id',
+      'hello-world',
+    )
+    expect(screen.getByRole('heading', { name: 'Nested Section' })).toHaveAttribute(
+      'id',
+      'nested-section',
+    )
+  })
+
+  it('builds a document index from headings when the sidebar is open', () => {
+    const content = `# Title One
+
+## Section Two`
+    render(<Preview content={content} tocOpen />)
+    const index = screen.getByRole('complementary', { name: /document index/i })
+    expect(index).toBeInTheDocument()
+    // Heading text appears both in the article and the index.
+    expect(screen.getAllByText('Title One').length).toBeGreaterThan(1)
   })
 })

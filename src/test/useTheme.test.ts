@@ -5,58 +5,63 @@ import { useTheme } from '../hooks/useTheme'
 describe('useTheme', () => {
   beforeEach(() => {
     localStorage.clear()
-    document.documentElement.classList.remove('dark')
+    document.documentElement.removeAttribute('data-theme')
+    document.documentElement.removeAttribute('data-mode')
+    document.documentElement.removeAttribute('style')
   })
 
-  it('defaults to light theme', () => {
+  it('defaults to the warm-paper theme', () => {
     const { result } = renderHook(() => useTheme())
-    expect(result.current.theme).toBe('light')
+    expect(result.current.themeId).toBe('warm-paper')
   })
 
-  it('toggles theme from light to dark', () => {
-    const { result } = renderHook(() => useTheme())
-
-    act(() => {
-      result.current.toggleTheme()
-    })
-
-    expect(result.current.theme).toBe('dark')
-    expect(document.documentElement.classList.contains('dark')).toBe(true)
-  })
-
-  it('toggles theme from dark to light', () => {
-    localStorage.setItem('md-render-theme', 'dark')
-    const { result } = renderHook(() => useTheme())
-
-    act(() => {
-      result.current.toggleTheme()
-    })
-
-    expect(result.current.theme).toBe('light')
-    expect(document.documentElement.classList.contains('dark')).toBe(false)
-  })
-
-  it('persists theme to localStorage', () => {
-    const { result } = renderHook(() => useTheme())
-
-    act(() => {
-      result.current.toggleTheme()
-    })
-
-    expect(localStorage.getItem('md-render-theme')).toBe('dark')
-  })
-
-  it('loads theme from localStorage on mount', () => {
-    localStorage.setItem('md-render-theme', 'dark')
-    const { result } = renderHook(() => useTheme())
-
-    expect(result.current.theme).toBe('dark')
-  })
-
-  it('adds dark class to document element when dark theme', () => {
-    localStorage.setItem('md-render-theme', 'dark')
+  it('applies the theme to the document element', () => {
     renderHook(() => useTheme())
+    expect(document.documentElement.dataset.theme).toBe('warm-paper')
+    expect(document.documentElement.dataset.mode).toBe('light')
+    expect(document.documentElement.style.getPropertyValue('--accent')).not.toBe('')
+  })
 
-    expect(document.documentElement.classList.contains('dark')).toBe(true)
+  it('switches to another registered theme via setTheme', () => {
+    const { result } = renderHook(() => useTheme())
+
+    act(() => {
+      result.current.setTheme('terminal')
+    })
+
+    expect(result.current.themeId).toBe('terminal')
+    expect(document.documentElement.dataset.theme).toBe('terminal')
+    expect(document.documentElement.dataset.mode).toBe('dark')
+  })
+
+  it('ignores unknown theme ids', () => {
+    const { result } = renderHook(() => useTheme())
+
+    act(() => {
+      result.current.setTheme('does-not-exist')
+    })
+
+    expect(result.current.themeId).toBe('warm-paper')
+  })
+
+  it('persists the selected theme to localStorage', () => {
+    const { result } = renderHook(() => useTheme())
+
+    act(() => {
+      result.current.setTheme('forest')
+    })
+
+    expect(localStorage.getItem('md-render-theme')).toBe('forest')
+  })
+
+  it('loads a stored theme on mount', () => {
+    localStorage.setItem('md-render-theme', 'midnight-ink')
+    const { result } = renderHook(() => useTheme())
+    expect(result.current.themeId).toBe('midnight-ink')
+  })
+
+  it('exposes the full theme list', () => {
+    const { result } = renderHook(() => useTheme())
+    expect(result.current.themes.length).toBeGreaterThanOrEqual(5)
   })
 })

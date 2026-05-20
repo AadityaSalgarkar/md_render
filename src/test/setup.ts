@@ -42,3 +42,20 @@ Object.defineProperty(navigator, 'clipboard', {
     writeText: () => Promise.resolve(),
   },
 })
+
+// jsdom lacks IntersectionObserver (used by the scroll-spy table of contents).
+class IntersectionObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return []
+  }
+}
+Object.defineProperty(globalThis, 'IntersectionObserver', {
+  writable: true,
+  value: IntersectionObserverStub,
+})
+
+// jsdom does not implement scrollIntoView; provide a no-op so navigation works.
+Element.prototype.scrollIntoView = Element.prototype.scrollIntoView || (() => {})
