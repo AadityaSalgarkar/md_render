@@ -53,4 +53,40 @@ describe('TableOfContents', () => {
     const inactiveButton = screen.getByText('Usage').closest('button')
     expect(inactiveButton).not.toHaveAttribute('aria-current')
   })
+
+  it('collapses a section to hide its sub-headings', () => {
+    render(
+      <TableOfContents headings={headings} activeId={null} open onNavigate={() => {}} />,
+    )
+    expect(screen.getByText('Usage')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /collapse section/i }))
+
+    expect(screen.queryByText('Usage')).not.toBeInTheDocument()
+    expect(screen.queryByText('API Reference')).not.toBeInTheDocument()
+    // The parent heading itself stays visible.
+    expect(screen.getByText('Introduction')).toBeInTheDocument()
+  })
+
+  it('re-expands a collapsed section', () => {
+    render(
+      <TableOfContents headings={headings} activeId={null} open onNavigate={() => {}} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /collapse section/i }))
+    expect(screen.queryByText('Usage')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /expand section/i }))
+    expect(screen.getByText('Usage')).toBeInTheDocument()
+  })
+
+  it('keeps leaf headings without a collapse toggle', () => {
+    const flat: Heading[] = [
+      { id: 'one', text: 'One', level: 1 },
+      { id: 'two', text: 'Two', level: 1 },
+    ]
+    render(
+      <TableOfContents headings={flat} activeId={null} open onNavigate={() => {}} />,
+    )
+    expect(screen.queryByRole('button', { name: /collapse section/i })).toBeNull()
+  })
 })
