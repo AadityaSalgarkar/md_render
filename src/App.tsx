@@ -72,21 +72,25 @@ export default function App() {
     let unlistenDeepLink: (() => void) | undefined
 
     const setupListeners = async () => {
-      // Listen for custom open-file event from Rust backend
-      unlistenOpenFile = await listen<string>('open-file', (event) => {
-        loadFile(event.payload)
-      })
+      try {
+        // Listen for custom open-file event from Rust backend
+        unlistenOpenFile = await listen<string>('open-file', (event) => {
+          loadFile(event.payload)
+        })
 
-      // Listen for deep-link events (macOS file associations)
-      unlistenDeepLink = await onOpenUrl((urls) => {
-        for (const url of urls) {
-          if (url.startsWith('file://')) {
-            const filePath = decodeURIComponent(url.replace('file://', ''))
-            loadFile(filePath)
-            break
+        // Listen for deep-link events (macOS file associations)
+        unlistenDeepLink = await onOpenUrl((urls) => {
+          for (const url of urls) {
+            if (url.startsWith('file://')) {
+              const filePath = decodeURIComponent(url.replace('file://', ''))
+              loadFile(filePath)
+              break
+            }
           }
-        }
-      })
+        })
+      } catch {
+        // Tauri APIs are unavailable outside the desktop shell (web mode).
+      }
     }
 
     setupListeners()
