@@ -5,21 +5,30 @@ import remarkMath from 'remark-math'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeKatex from 'rehype-katex'
 import rehypeSlug from 'rehype-slug'
+import rehypeRaw from 'rehype-raw'
 import 'katex/dist/katex.min.css'
 import type { Components } from 'react-markdown'
 import { TableOfContents } from './TableOfContents'
 import { ReadingProgress } from './ReadingProgress'
+import { resolveImageSrc } from '../lib/resolveImageSrc'
 import type { Heading } from '../types'
 
 interface PreviewProps {
   content: string
   tocOpen: boolean
+  /** Directory of the open file — used to resolve relative image paths. */
+  baseDir?: string | null
+}
+
+/** Block script-bearing URLs; let everything else (file:, data:, …) through. */
+function permissiveUrlTransform(url: string): string {
+  return /^\s*(javascript|vbscript):/i.test(url) ? '' : url
 }
 
 /** Levels lifted into the index. */
 const TOC_SELECTOR = 'h1[id], h2[id], h3[id]'
 
-export function Preview({ content, tocOpen }: PreviewProps) {
+export function Preview({ content, tocOpen, baseDir }: PreviewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const articleRef = useRef<HTMLElement>(null)
   const [headings, setHeadings] = useState<Heading[]>([])
@@ -33,6 +42,11 @@ export function Preview({ content, tocOpen }: PreviewProps) {
     h4: makeHeading('h4'),
     // Decorative horizontal rule.
     hr: () => <div className="hr-ornament">◆  ◆  ◆</div>,
+    // Resolve local/relative image paths against the open file's directory.
+    img: ({ node, src, ...props }) => {
+      void node
+      return <img src={resolveImageSrc(typeof src === 'string' ? src : '', baseDir)} {...props} />
+    },
     // Render task-list checkboxes as read-only.
     input: ({ type, checked, ...props }) => {
       if (type === 'checkbox') {
@@ -40,7 +54,7 @@ export function Preview({ content, tocOpen }: PreviewProps) {
       }
       return <input type={type} {...props} />
     },
-  }), [])
+  }), [baseDir])
 
   // Lift headings out of the rendered article so the index can mirror them.
   useEffect(() => {
@@ -113,8 +127,9 @@ export function Preview({ content, tocOpen }: PreviewProps) {
         <article ref={articleRef} className="markdown-body animate-fade-in">
           <Markdown
             remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[rehypeSlug, rehypeHighlight, rehypeKatex]}
+            rehypePlugins={[rehypeRaw, rehypeSlug, rehypeHighlight, rehypeKatex]}
             components={components}
+            urlTransform={permissiveUrlTransform}
           >
             {content}
           </Markdown>

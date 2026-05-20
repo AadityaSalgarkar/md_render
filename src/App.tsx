@@ -5,6 +5,7 @@ import { Preview } from './components/Preview'
 import { ThemePicker } from './components/ThemePicker'
 import { useTheme } from './hooks/useTheme'
 import { sampleMarkdown } from './lib/sampleMarkdown'
+import { dirname } from './lib/resolveImageSrc'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link'
@@ -20,6 +21,7 @@ function readStoredToc(): boolean {
 export default function App() {
   const { themeId, setTheme, themes } = useTheme()
   const [content, setContent] = useState(sampleMarkdown)
+  const [baseDir, setBaseDir] = useState<string | null>(null)
   const [fileLoaded, setFileLoaded] = useState(false)
 
   // Load file helper
@@ -27,6 +29,7 @@ export default function App() {
     try {
       const text = await invoke<string>('read_file', { path: filePath })
       setContent(text)
+      setBaseDir(dirname(filePath))
       setFileLoaded(true)
     } catch (err) {
       console.error('Failed to load file:', err)
@@ -236,7 +239,7 @@ export default function App() {
           }}
           transition={{ duration: 0.3, ease: 'easeInOut' }}
         >
-          <Preview content={content} tocOpen={isTocOpen} />
+          <Preview content={content} tocOpen={isTocOpen} baseDir={baseDir} />
         </motion.div>
       </div>
     </div>
