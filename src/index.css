@@ -954,42 +954,34 @@ body {
    Per-theme texture & flourishes
    =================================================================== */
 
-/* Terminal — CRT scanlines + phosphor glow */
-[data-theme="terminal"] body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  pointer-events: none;
-  background:
-    repeating-linear-gradient(
-      to bottom,
-      rgba(0, 0, 0, 0) 0px,
-      rgba(0, 0, 0, 0) 2px,
-      rgba(0, 0, 0, 0.16) 3px,
-      rgba(0, 0, 0, 0) 4px
-    ),
-    radial-gradient(ellipse at center, transparent 62%, rgba(0, 0, 0, 0.55) 100%);
+/* Nocturne — a soft wash of moonlight */
+[data-theme="nocturne"] body {
+  background-image: radial-gradient(
+    ellipse at 50% -5%,
+    rgba(196, 167, 231, 0.12),
+    transparent 55%
+  );
+  background-attachment: fixed;
 }
 
-[data-theme="terminal"] .markdown-body {
-  text-shadow: 0 0 5px rgba(74, 246, 38, 0.35);
+[data-theme="nocturne"] .markdown-body h1::after {
+  content: '☾';
+  font-size: 0.95rem;
+  letter-spacing: 0;
 }
 
-[data-theme="terminal"] .markdown-body h1::after {
-  content: '> _';
-  letter-spacing: 0.1em;
-  color: var(--accent);
+/* Evergreen — moonlight filtering through a dark canopy */
+[data-theme="evergreen"] body {
+  background-image:
+    radial-gradient(circle at 16% 10%, rgba(143, 179, 107, 0.1), transparent 46%),
+    radial-gradient(circle at 84% 84%, rgba(216, 154, 91, 0.08), transparent 44%);
+  background-attachment: fixed;
 }
 
-[data-theme="terminal"] .markdown-body h2::after {
-  content: '//';
-  color: var(--text-muted);
-}
-
-[data-theme="terminal"] .toc-heading,
-[data-theme="terminal"] .theme-popover-title {
-  text-shadow: 0 0 5px rgba(74, 246, 38, 0.4);
+[data-theme="evergreen"] .markdown-body h1::after {
+  content: '❧';
+  font-size: 1rem;
+  letter-spacing: 0;
 }
 
 /* Newsprint — broadsheet masthead rules */

@@ -26,11 +26,11 @@ describe('useTheme', () => {
     const { result } = renderHook(() => useTheme())
 
     act(() => {
-      result.current.setTheme('terminal')
+      result.current.setTheme('nocturne')
     })
 
-    expect(result.current.themeId).toBe('terminal')
-    expect(document.documentElement.dataset.theme).toBe('terminal')
+    expect(result.current.themeId).toBe('nocturne')
+    expect(document.documentElement.dataset.theme).toBe('nocturne')
     expect(document.documentElement.dataset.mode).toBe('dark')
   })
 

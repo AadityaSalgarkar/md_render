@@ -44,9 +44,9 @@ describe('App', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: /choose theme/i }))
 
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /terminal/i }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /nocturne/i }))
 
-    expect(document.documentElement.dataset.theme).toBe('terminal')
+    expect(document.documentElement.dataset.theme).toBe('nocturne')
   })
 
   it('has a resizable divider when editor is shown', () => {

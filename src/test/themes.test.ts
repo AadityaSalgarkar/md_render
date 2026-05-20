@@ -61,7 +61,7 @@ describe('resolveTheme', () => {
   })
 
   it('honours a valid stored id over the fallback', () => {
-    expect(resolveTheme('terminal', false).id).toBe('terminal')
+    expect(resolveTheme('nocturne', false).id).toBe('nocturne')
   })
 
   it('ignores an invalid stored id', () => {
