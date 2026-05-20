@@ -162,4 +162,26 @@ And some **bold** text.`
     // Heading text appears both in the article and the index.
     expect(screen.getAllByText('Title One').length).toBeGreaterThan(1)
   })
+
+  it('renders a remote image with its URL intact', () => {
+    render(
+      <Preview content="![diagram](https://example.com/d.png)" tocOpen={false} />,
+    )
+    const img = screen.getByRole('img', { name: 'diagram' })
+    expect(img).toHaveAttribute('src', 'https://example.com/d.png')
+  })
+
+  it('renders inline SVG embedded in the markdown', () => {
+    const content = '<svg aria-label="badge"><circle cx="5" cy="5" r="4" /></svg>'
+    render(<Preview content={content} tocOpen={false} />)
+    expect(document.querySelector('svg')).toBeInTheDocument()
+    expect(document.querySelector('svg circle')).toBeInTheDocument()
+  })
+
+  it('renders raw HTML blocks', () => {
+    render(<Preview content={'<div data-box="1">boxed text</div>'} tocOpen={false} />)
+    const box = document.querySelector('div[data-box]')
+    expect(box).toBeInTheDocument()
+    expect(box?.textContent).toContain('boxed text')
+  })
 })
