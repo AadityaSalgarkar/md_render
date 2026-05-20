@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Editor } from './components/Editor'
 import { Preview } from './components/Preview'
+import { ThemePicker } from './components/ThemePicker'
 import { useTheme } from './hooks/useTheme'
 import { sampleMarkdown } from './lib/sampleMarkdown'
 import { invoke } from '@tauri-apps/api/core'
@@ -11,8 +12,13 @@ import { onOpenUrl } from '@tauri-apps/plugin-deep-link'
 const MIN_PANE_WIDTH = 280
 const DEFAULT_SPLIT = 0.45
 
+function readStoredToc(): boolean {
+  if (typeof window === 'undefined') return true
+  return localStorage.getItem('md-render-toc') !== 'false'
+}
+
 export default function App() {
-  const { theme, toggleTheme } = useTheme()
+  const { themeId, setTheme, themes } = useTheme()
   const [content, setContent] = useState(sampleMarkdown)
   const [fileLoaded, setFileLoaded] = useState(false)
 
@@ -97,19 +103,24 @@ export default function App() {
       localStorage.setItem('md-render-content', content)
     }
   }, [content, fileLoaded])
+
   const [splitPosition, setSplitPosition] = useState(DEFAULT_SPLIT)
   const [isDragging, setIsDragging] = useState(false)
   const [isEditorCollapsed, setIsEditorCollapsed] = useState(true)
+  const [isTocOpen, setIsTocOpen] = useState(readStoredToc)
   const containerRef = useRef<HTMLDivElement>(null)
 
   const toggleEditor = useCallback(() => {
-    setIsEditorCollapsed(prev => !prev)
+    setIsEditorCollapsed((prev) => !prev)
   }, [])
 
-  // Persist content to localStorage
-  useEffect(() => {
-    localStorage.setItem('md-render-content', content)
-  }, [content])
+  const toggleToc = useCallback(() => {
+    setIsTocOpen((prev) => {
+      const next = !prev
+      localStorage.setItem('md-render-toc', String(next))
+      return next
+    })
+  }, [])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -160,6 +171,17 @@ export default function App() {
       {/* Floating Controls */}
       <div className="floating-controls">
         <motion.button
+          className={`floating-btn ${isTocOpen ? 'is-on' : ''}`}
+          onClick={toggleToc}
+          whileTap={{ scale: 0.95 }}
+          aria-pressed={isTocOpen}
+          aria-label={isTocOpen ? 'Hide document index' : 'Show document index'}
+          title="Index"
+        >
+          <IndexIcon />
+        </motion.button>
+
+        <motion.button
           className="floating-btn"
           onClick={toggleEditor}
           whileTap={{ scale: 0.95 }}
@@ -169,28 +191,17 @@ export default function App() {
           {isEditorCollapsed ? <EditIcon /> : <EyeIcon />}
         </motion.button>
 
-        <motion.button
-          className="floating-btn"
-          onClick={toggleTheme}
-          whileTap={{ scale: 0.95 }}
-          aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
-          title={theme === 'light' ? 'Dark mode' : 'Light mode'}
-        >
-          {theme === 'light' ? <SunIcon /> : <MoonIcon />}
-        </motion.button>
+        <ThemePicker themes={themes} activeId={themeId} onSelect={setTheme} />
       </div>
 
-      <div
-        ref={containerRef}
-        className="flex-1 flex overflow-hidden"
-      >
+      <div ref={containerRef} className="flex-1 flex overflow-hidden">
         {/* Editor Pane */}
         <motion.div
           className="h-full overflow-hidden"
           initial={false}
           animate={{
             width: isEditorCollapsed ? 0 : `${splitPosition * 100}%`,
-            opacity: isEditorCollapsed ? 0 : 1
+            opacity: isEditorCollapsed ? 0 : 1,
           }}
           transition={{ duration: 0.3, ease: 'easeInOut' }}
         >
@@ -207,7 +218,7 @@ export default function App() {
           initial={false}
           animate={{
             width: isEditorCollapsed ? 0 : 6,
-            opacity: isEditorCollapsed ? 0 : 1
+            opacity: isEditorCollapsed ? 0 : 1,
           }}
           transition={{ duration: 0.3, ease: 'easeInOut' }}
         />
@@ -217,14 +228,27 @@ export default function App() {
           className="h-full overflow-hidden"
           initial={false}
           animate={{
-            width: isEditorCollapsed ? '100%' : `${(1 - splitPosition) * 100}%`
+            width: isEditorCollapsed ? '100%' : `${(1 - splitPosition) * 100}%`,
           }}
           transition={{ duration: 0.3, ease: 'easeInOut' }}
         >
-          <Preview content={content} />
+          <Preview content={content} tocOpen={isTocOpen} />
         </motion.div>
       </div>
     </div>
+  )
+}
+
+function IndexIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="9" y1="6" x2="20" y2="6" />
+      <line x1="9" y1="12" x2="20" y2="12" />
+      <line x1="9" y1="18" x2="20" y2="18" />
+      <circle cx="4.5" cy="6" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="4.5" cy="12" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="4.5" cy="18" r="1.1" fill="currentColor" stroke="none" />
+    </svg>
   )
 }
 
@@ -245,28 +269,3 @@ function EyeIcon() {
     </svg>
   )
 }
-
-function SunIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="5" />
-      <line x1="12" y1="1" x2="12" y2="3" />
-      <line x1="12" y1="21" x2="12" y2="23" />
-      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-      <line x1="1" y1="12" x2="3" y2="12" />
-      <line x1="21" y1="12" x2="23" y2="12" />
-      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-    </svg>
-  )
-}
-
-function MoonIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-    </svg>
-  )
-}
-
