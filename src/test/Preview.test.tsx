@@ -1,5 +1,5 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Preview } from '../components/Preview'
 
 const mermaidMock = vi.hoisted(() => ({
@@ -250,5 +250,31 @@ And some **bold** text.`
     const box = document.querySelector('div[data-box]')
     expect(box).toBeInTheDocument()
     expect(box?.textContent).toContain('boxed text')
+  })
+
+  it('reports selected rendered text for comment creation', () => {
+    const selections: string[] = []
+    render(
+      <Preview
+        content="A paragraph to discuss."
+        tocOpen={false}
+        onTextSelection={(text) => selections.push(text)}
+      />,
+    )
+
+    const paragraph = screen.getByText('A paragraph to discuss.')
+    const textNode = paragraph.firstChild
+    expect(textNode).toBeTruthy()
+
+    const range = document.createRange()
+    range.setStart(textNode!, 2)
+    range.setEnd(textNode!, 11)
+    const selection = window.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+
+    fireEvent.mouseUp(paragraph)
+
+    expect(selections).toEqual(['paragraph'])
   })
 })

@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 // Global state to store the launch file path
@@ -8,6 +9,38 @@ static LAUNCH_FILE: Mutex<Option<String>> = Mutex::new(None);
 fn read_file(path: String) -> Result<String, String> {
   fs::read_to_string(&path)
     .map_err(|e| format!("Failed to read file: {}", e))
+}
+
+#[tauri::command]
+fn write_file(path: String, content: String) -> Result<(), String> {
+  fs::write(&path, content)
+    .map_err(|e| format!("Failed to write file: {}", e))
+}
+
+#[tauri::command]
+fn export_markdown(path: String, content: String) -> Result<String, String> {
+  let output_path = export_path(&path);
+  fs::write(&output_path, content)
+    .map_err(|e| format!("Failed to export file: {}", e))?;
+  Ok(output_path.to_string_lossy().to_string())
+}
+
+fn export_path(path: &str) -> PathBuf {
+  let source = Path::new(path);
+  let stem = source
+    .file_stem()
+    .and_then(|value| value.to_str())
+    .unwrap_or("export");
+  let extension = source
+    .extension()
+    .and_then(|value| value.to_str())
+    .unwrap_or("md");
+  let file_name = format!("{}.clean.{}", stem, extension);
+
+  source
+    .parent()
+    .map(|parent| parent.join(&file_name))
+    .unwrap_or_else(|| PathBuf::from(file_name))
 }
 
 #[tauri::command]
@@ -53,7 +86,7 @@ pub fn run() {
   }
 
   tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![read_file, get_launch_file])
+    .invoke_handler(tauri::generate_handler![read_file, write_file, export_markdown, get_launch_file])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

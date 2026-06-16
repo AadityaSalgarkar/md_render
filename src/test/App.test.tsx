@@ -104,4 +104,56 @@ describe('App', () => {
     expect(indexButton).toHaveAttribute('aria-pressed', 'false')
     expect(localStorage.getItem('md-render-toc')).toBe('false')
   })
+
+  it('shows saved comments and responses in the comments pane', async () => {
+    localStorage.setItem(
+      'md-render-content',
+      'Visible text.\n<chat><comment>Review this sentence.</comment><response>Suggested response.</response></chat>',
+    )
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: /show comments/i }))
+
+    expect(await screen.findByText('Review this sentence.')).toBeInTheDocument()
+    expect(screen.getByText('Suggested response.')).toBeInTheDocument()
+    expect(screen.getAllByText('Visible text.')).toHaveLength(1)
+  })
+
+  it('closes the comments pane when review work is done', async () => {
+    localStorage.setItem(
+      'md-render-content',
+      'Visible text.\n<chat><comment>Review this sentence.</comment></chat>',
+    )
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: /show comments/i }))
+    expect(await screen.findByRole('complementary', { name: /comments/i })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /close comments/i }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('complementary', { name: /comments/i })).not.toBeInTheDocument()
+    })
+  })
+
+  it('refreshes rendered text when review work is done', async () => {
+    localStorage.setItem(
+      'md-render-content',
+      'Original rendered text.\n<chat><comment>Review this sentence.</comment></chat>',
+    )
+    render(<App />)
+
+    expect(await screen.findByText('Original rendered text.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /show comments/i }))
+    expect(await screen.findByRole('complementary', { name: /comments/i })).toBeInTheDocument()
+
+    localStorage.setItem(
+      'md-render-content',
+      'Updated rendered text.\n<chat><comment>Review this sentence.</comment></chat>',
+    )
+    fireEvent.click(screen.getByRole('button', { name: /close comments/i }))
+
+    expect(await screen.findByText('Updated rendered text.')).toBeInTheDocument()
+    expect(screen.queryByText('Original rendered text.')).not.toBeInTheDocument()
+  })
 })

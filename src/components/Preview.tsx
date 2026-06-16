@@ -27,6 +27,7 @@ interface PreviewProps {
   tocOpen: boolean
   /** Directory of the open file — used to resolve relative image paths. */
   baseDir?: string | null
+  onTextSelection?: (text: string) => void
 }
 
 /** Block script-bearing URLs; let everything else (file:, data:, …) through. */
@@ -37,7 +38,7 @@ function permissiveUrlTransform(url: string): string {
 /** Levels lifted into the index. */
 const TOC_SELECTOR = 'h1[id], h2[id], h3[id]'
 
-export function Preview({ content, tocOpen, baseDir }: PreviewProps) {
+export function Preview({ content, tocOpen, baseDir, onTextSelection }: PreviewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const articleRef = useRef<HTMLElement>(null)
   const [headings, setHeadings] = useState<Heading[]>([])
@@ -123,6 +124,24 @@ export function Preview({ content, tocOpen, baseDir }: PreviewProps) {
     }
   }, [])
 
+  const handleSelection = useCallback(() => {
+    if (!onTextSelection || !articleRef.current) return
+    const selection = window.getSelection()
+    const text = selection?.toString().trim() ?? ''
+    if (!selection || !text || selection.rangeCount === 0) return
+
+    const range = selection.getRangeAt(0)
+    const container = range.commonAncestorContainer
+    const selectedInsideArticle = articleRef.current.contains(
+      container.nodeType === Node.ELEMENT_NODE
+        ? container as Element
+        : container.parentElement,
+    )
+    if (selectedInsideArticle) {
+      onTextSelection(text)
+    }
+  }, [onTextSelection])
+
   return (
     <div className="reading-pane">
       <TableOfContents
@@ -133,7 +152,12 @@ export function Preview({ content, tocOpen, baseDir }: PreviewProps) {
       />
       <div ref={scrollRef} className="preview-container">
         <ReadingProgress containerRef={scrollRef} resetKey={content} />
-        <article ref={articleRef} className="markdown-body animate-fade-in">
+        <article
+          ref={articleRef}
+          className="markdown-body animate-fade-in"
+          onMouseUp={handleSelection}
+          onKeyUp={handleSelection}
+        >
           <Markdown
             remarkPlugins={[remarkGfm, remarkMath]}
             rehypePlugins={[rehypeRaw, rehypeSlug, rehypeHighlight, rehypeKatex]}
