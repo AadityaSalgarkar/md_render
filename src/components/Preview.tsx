@@ -1,4 +1,12 @@
-import { useMemo, useState, useCallback, useRef, useEffect } from 'react'
+import {
+  Children,
+  isValidElement,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+} from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -10,6 +18,7 @@ import 'katex/dist/katex.min.css'
 import type { Components } from 'react-markdown'
 import { TableOfContents } from './TableOfContents'
 import { ReadingProgress } from './ReadingProgress'
+import { MermaidDiagram } from './MermaidDiagram'
 import { resolveImageSrc } from '../lib/resolveImageSrc'
 import type { Heading } from '../types'
 
@@ -170,19 +179,13 @@ interface PreWithCopyProps {
 
 function PreWithCopy({ children, className }: PreWithCopyProps) {
   const [copied, setCopied] = useState(false)
+  const codeBlock = getCodeBlockChild(children)
+
+  if (codeBlock && isMermaidLanguage(codeBlock.props.className)) {
+    return <MermaidDiagram chart={getTextContent(codeBlock.props.children).trim()} />
+  }
 
   const handleCopy = useCallback(async () => {
-    const getTextContent = (node: React.ReactNode): string => {
-      if (typeof node === 'string') return node
-      if (typeof node === 'number') return String(node)
-      if (!node) return ''
-      if (Array.isArray(node)) return node.map(getTextContent).join('')
-      if (typeof node === 'object' && 'props' in node) {
-        return getTextContent((node as React.ReactElement).props.children)
-      }
-      return ''
-    }
-
     const text = getTextContent(children)
 
     try {
@@ -206,4 +209,37 @@ function PreWithCopy({ children, className }: PreWithCopyProps) {
       </button>
     </div>
   )
+}
+
+interface CodeElementProps {
+  children?: React.ReactNode
+  className?: string
+}
+
+function getCodeBlockChild(children: React.ReactNode): React.ReactElement<CodeElementProps> | null {
+  const [child] = Children.toArray(children)
+  if (!isValidElement<CodeElementProps>(child)) return null
+  return child.type === 'code' ? child : null
+}
+
+function isMermaidLanguage(className?: string): boolean {
+  return (className ?? '')
+    .toLowerCase()
+    .split(/\s+/)
+    .some((token) => (
+      token === 'mermaid'
+      || token === 'language-mermaid'
+      || token === 'language-language-mermaid'
+    ))
+}
+
+function getTextContent(node: React.ReactNode): string {
+  if (typeof node === 'string') return node
+  if (typeof node === 'number') return String(node)
+  if (!node) return ''
+  if (Array.isArray(node)) return node.map(getTextContent).join('')
+  if (isValidElement<{ children?: React.ReactNode }>(node)) {
+    return getTextContent(node.props.children)
+  }
+  return ''
 }
