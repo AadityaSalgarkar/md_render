@@ -111,6 +111,10 @@ pub fn run() {
   };
 
   let launch_file = match mode {
+    cli::Mode::Help => {
+      println!("{}", cli::USAGE);
+      return;
+    }
     cli::Mode::Serve {
       host,
       port,

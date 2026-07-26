@@ -19,6 +19,8 @@ pub struct Document {
 /// What the process should do, decided entirely by argv.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {
+  /// Print usage and exit.
+  Help,
   /// Normal Tauri window.
   Desktop { launch_file: Option<PathBuf> },
   /// Headless HTTP server.
@@ -77,6 +79,7 @@ pub fn parse(args: &[String]) -> Result<Mode, CliError> {
   while idx < args.len() {
     let arg = &args[idx];
     match arg.as_str() {
+      "--help" | "-h" => return Ok(Mode::Help),
       "--port" | "-p" => {
         let value = args.get(idx + 1).ok_or(CliError::MissingValue("--port"))?;
         port = Some(parse_port(value)?);
@@ -246,6 +249,12 @@ mod tests {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir
+  }
+
+  #[test]
+  fn help_is_requested_explicitly() {
+    assert_eq!(parse(&args(&["--help"])).unwrap(), Mode::Help);
+    assert_eq!(parse(&args(&["-h"])).unwrap(), Mode::Help);
   }
 
   #[test]
