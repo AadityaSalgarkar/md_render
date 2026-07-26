@@ -25,3 +25,10 @@ tauri = { version = "2.9.4", features = ["protocol-asset"] }
 tauri-plugin-log = "2"
 tauri-plugin-deep-link = "2.4.5"
 urlencoding = "2.1.3"
+# Headless server mode. tokio/hyper are already in the tree via tauri.
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "signal"] }
+rust-embed = "8"
+mime_guess = "2"
+uuid = { version = "1", features = ["v4"] }
+dirs = "6"

@@ -43,22 +43,28 @@ export function resolvePath(baseDir: string | null | undefined, src: string): st
   return normalizePosix(path)
 }
 
-/**
- * Turn a markdown image `src` into something the webview can render. Remote,
- * `data:` and `blob:` URLs are returned unchanged; local files are resolved
- * against `baseDir` and handed to Tauri's asset protocol. Outside Tauri (web
- * mode, tests) it degrades to the resolved filesystem path.
- */
-export function resolveImageSrc(
-  src: string | undefined,
-  baseDir: string | null | undefined,
-): string {
-  if (!src || PASSTHROUGH.test(src)) return src ?? ''
-  const path = resolvePath(baseDir, src)
-  if (!path.startsWith('/')) return src // unresolved relative path
+/** Default resolver: Tauri's asset protocol, degrading to the plain path. */
+function defaultAssetUrl(path: string): string {
   try {
     return convertFileSrc(path)
   } catch {
     return path
   }
+}
+
+/**
+ * Turn a markdown image `src` into something the page can render. Remote,
+ * `data:` and `blob:` URLs are returned unchanged; local files are resolved
+ * against `baseDir` and handed to `assetUrl`, which differs per backend —
+ * Tauri's asset protocol on the desktop, `/api/asset` when served over HTTP.
+ */
+export function resolveImageSrc(
+  src: string | undefined,
+  baseDir: string | null | undefined,
+  assetUrl: (path: string) => string = defaultAssetUrl,
+): string {
+  if (!src || PASSTHROUGH.test(src)) return src ?? ''
+  const path = resolvePath(baseDir, src)
+  if (!path.startsWith('/')) return src // unresolved relative path
+  return assetUrl(path)
 }
