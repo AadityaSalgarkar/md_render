@@ -24,8 +24,10 @@ typographic themes.
 - System color-scheme detection picks a light or dark theme on first run
 - 70% text width for comfortable reading
 - File associations for `.md` and `.markdown` files
-- Read-only server mode (`mdrender --port a.md ./docs`) that renders documents
-  as browser tabs on port 10000, usable over SSH from a headless machine
+- Several files open as tabs, in the window or in the browser
+- Server mode (`mdrender --port a.md ./docs`) serving the same app on port
+  10000, with the same editing and saving, usable over SSH from a headless
+  machine
 
 ## Themes
 
@@ -137,9 +139,15 @@ mdrender --port 8080 notes.md
 ```
 
 Each file becomes a tab; directory arguments contribute every `.md` and
-`.markdown` file found beneath them. Open the URL in a browser and the tabs,
-document index, themes, math, Mermaid diagrams and images all work as they do
-in the desktop app.
+`.markdown` file found beneath them. Open the URL in a browser and everything
+works as it does in the desktop app — tabs, the document index, themes, math,
+Mermaid diagrams, images, and editing and saving back to disk.
+
+The desktop window takes the same arguments and opens the same tabs:
+
+```bash
+mdrender notes.md ./docs
+```
 
 Running the same command again while a server is already on that port **adds
 the file as another tab** rather than failing:
@@ -164,22 +172,30 @@ mdrender --port ~/notes.md           # on the server
 
 Then open `http://127.0.0.1:10000` in your local browser.
 
-### What server mode will and will not do
+### What server mode can do
 
-Server mode is **read-only**. It renders documents; it has no endpoint that
-writes to disk, so the editor pane, Save and the comment composer are hidden.
-Saved comments already in a document are still displayed.
+Server mode has the same capabilities as the desktop window: editing, saving,
+autosave, review comments and exporting the clean copy all work in the browser
+and write to the same files on disk.
+
+What it will not do:
 
 - It binds `127.0.0.1` by default. `--host` overrides this and prints a warning,
-  since any other address exposes your file contents to the network.
+  since any other address exposes your file contents — and the ability to edit
+  them — to the network.
+- Reads and writes are limited to the documents the server was told to open.
+  Sitting inside a served directory is not enough, so a stray file next to your
+  markdown cannot be read or overwritten.
 - Images are only served from the directories of the documents being served,
   and only if they carry an image extension. Requests are resolved and checked
   against that allowlist, so `..` and symlinks cannot escape it.
-- Documents are fetched by an opaque id rather than a path, so no
-  caller-supplied path reaches the filesystem.
-- Adding tabs to a running server requires a token that the server writes to
-  `$XDG_STATE_HOME/md-render/servers/<port>.json` with mode `0600`, so only
-  processes running as the same user can widen what the server reads.
+- Every write carries a token that the server injects into the page it serves.
+  Handing the token to the page grants exactly the trust already implied by
+  being able to reach the port, while stopping a page on another origin from
+  forging a write, since it cannot read the token.
+- Adding tabs to a running server requires the token from
+  `$XDG_STATE_HOME/md-render/servers/<port>.json`, written with mode `0600`, so
+  only processes running as the same user can widen what the server touches.
 
 Note that ports run from 1 to 65535; anything outside that range is rejected
 with an error rather than being silently clamped.
