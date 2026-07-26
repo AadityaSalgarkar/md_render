@@ -10,6 +10,36 @@ use std::sync::Mutex;
 // Global state to store the launch file path
 static LAUNCH_FILE: Mutex<Option<String>> = Mutex::new(None);
 
+/// Documents named on the command line, surfaced to the frontend as tabs.
+static LAUNCH_DOCUMENTS: Mutex<Vec<cli::Document>> = Mutex::new(Vec::new());
+
+#[derive(serde::Serialize)]
+pub struct DocumentMeta {
+  id: usize,
+  label: String,
+  path: String,
+}
+
+/// The open documents, mirroring the server's `/api/files` so the frontend can
+/// build tabs the same way in either mode.
+#[tauri::command]
+fn list_documents() -> Vec<DocumentMeta> {
+  LAUNCH_DOCUMENTS
+    .lock()
+    .map(|documents| {
+      documents
+        .iter()
+        .enumerate()
+        .map(|(id, doc)| DocumentMeta {
+          id,
+          label: doc.label.clone(),
+          path: doc.path.to_string_lossy().to_string(),
+        })
+        .collect()
+    })
+    .unwrap_or_default()
+}
+
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
   fs::read_to_string(&path)
@@ -30,7 +60,7 @@ fn export_markdown(path: String, content: String) -> Result<String, String> {
   Ok(output_path.to_string_lossy().to_string())
 }
 
-fn export_path(path: &str) -> PathBuf {
+pub(crate) fn export_path(path: &str) -> PathBuf {
   let source = Path::new(path);
   let stem = source
     .file_stem()
@@ -110,7 +140,7 @@ pub fn run() {
     }
   };
 
-  let launch_file = match mode {
+  let documents = match mode {
     cli::Mode::Help => {
       println!("{}", cli::USAGE);
       return;
@@ -126,18 +156,27 @@ pub fn run() {
       }
       return;
     }
-    cli::Mode::Desktop { launch_file } => launch_file,
+    cli::Mode::Desktop { documents } => documents,
   };
 
   // Check for launch file from command-line args before building the app
-  if let Some(file_path) = launch_file {
+  if let Some(first) = documents.first() {
     if let Ok(mut guard) = LAUNCH_FILE.lock() {
-      *guard = Some(file_path.to_string_lossy().to_string());
+      *guard = Some(first.path.to_string_lossy().to_string());
     }
+  }
+  if let Ok(mut guard) = LAUNCH_DOCUMENTS.lock() {
+    *guard = documents;
   }
 
   tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![read_file, write_file, export_markdown, get_launch_file])
+    .invoke_handler(tauri::generate_handler![
+      read_file,
+      write_file,
+      export_markdown,
+      get_launch_file,
+      list_documents
+    ])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

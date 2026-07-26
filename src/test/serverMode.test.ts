@@ -1,5 +1,13 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -27,6 +35,17 @@ let image: string
 /** Ports are picked high and random-ish to avoid collisions between runs. */
 function pickPort(): number {
   return 30000 + Math.floor(Math.random() * 20000)
+}
+
+/** The token the server injected into the page it serves. */
+let injectedToken = ''
+const token = () => injectedToken
+
+async function readInjectedToken(url: string): Promise<string> {
+  const html = await (await fetch(`${url}/`)).text()
+  return html.match(/__MD_RENDER_TOKEN__=("(?:[^"\\]|\\.)*")/)?.[1]
+    ? (JSON.parse(html.match(/__MD_RENDER_TOKEN__=("(?:[^"\\]|\\.)*")/)![1]) as string)
+    : ''
 }
 
 async function waitForServer(url: string, attempts = 100): Promise<boolean> {
@@ -72,6 +91,9 @@ beforeAll(async () => {
 
   const ready = await waitForServer(origin)
   if (!ready) throw new Error('md-render server did not come up')
+
+  injectedToken = await readInjectedToken(origin)
+  if (!injectedToken) throw new Error('server did not inject a token')
 }, 40_000)
 
 afterAll(() => {
@@ -85,6 +107,8 @@ describe.skipIf(!binary)('md-render --port', () => {
 
     // Without this the app would start in desktop mode and try Tauri calls.
     expect(html).toContain('__MD_RENDER_SERVER__')
+    // And the token the page needs in order to save.
+    expect(html).toContain('__MD_RENDER_TOKEN__')
   })
 
   it('lists an explicit file and the markdown found under a directory', async () => {
@@ -106,13 +130,53 @@ describe.skipIf(!binary)('md-render --port', () => {
     expect(document.path).toBe(firstDoc)
   })
 
-  it('reports itself as read-only and refuses writes', async () => {
+  it('reports the same capabilities as the desktop app', async () => {
     const backend = serverBackend(origin)
 
     expect(backend.mode).toBe('server')
-    expect(backend.writable).toBe(false)
-    await expect(backend.writeFile(firstDoc, 'nope')).rejects.toThrow()
-    await expect(backend.exportMarkdown(firstDoc, 'nope')).rejects.toThrow()
+    expect(backend.writable).toBe(true)
+  })
+
+  it('saves an open document back to disk', async () => {
+    // The token the server injects into the page; supplied here the same way
+    // the browser would.
+    ;(globalThis as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ = token()
+    const backend = serverBackend(origin)
+
+    await backend.writeFile(firstDoc, '# Edited through the browser\n')
+
+    expect(readFileSync(firstDoc, 'utf8')).toContain('Edited through the browser')
+    // And reading it back through the backend agrees with disk.
+    expect(await backend.readFile(firstDoc)).toContain('Edited through the browser')
+  })
+
+  it('exports the clean copy beside the document', async () => {
+    ;(globalThis as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ = token()
+    const backend = serverBackend(origin)
+
+    const output = await backend.exportMarkdown(firstDoc, '# Clean copy\n')
+
+    expect(output).toContain('first.clean.md')
+    expect(readFileSync(output, 'utf8')).toContain('Clean copy')
+  })
+
+  it('refuses to save without the injected token', async () => {
+    ;(globalThis as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ = 'wrong-token'
+    const backend = serverBackend(origin)
+    const before = readFileSync(firstDoc, 'utf8')
+
+    await expect(backend.writeFile(firstDoc, '# forged\n')).rejects.toThrow()
+    expect(readFileSync(firstDoc, 'utf8')).toBe(before)
+  })
+
+  it('refuses to touch a file that is not one of the open documents', async () => {
+    ;(globalThis as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ = token()
+    const backend = serverBackend(origin)
+    const outsider = path.join(work, 'not-open.md')
+    writeFileSync(outsider, '# untouched\n')
+
+    await expect(backend.writeFile(outsider, '# hijacked\n')).rejects.toThrow()
+    expect(readFileSync(outsider, 'utf8')).toBe('# untouched\n')
   })
 
   it('serves an image beside the document', async () => {

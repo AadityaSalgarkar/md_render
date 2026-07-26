@@ -25,11 +25,6 @@ fn record_path_under(base: &std::path::Path, port: u16) -> PathBuf {
     .join(format!("{}.json", port))
 }
 
-/// `$XDG_STATE_HOME/md-render/servers/<port>.json`.
-pub fn record_path(port: u16) -> Option<PathBuf> {
-  Some(record_path_under(&base_dir()?, port))
-}
-
 /// Write the record with owner-only permissions. The token gates the endpoint
 /// that adds documents, so it must not be world-readable.
 fn write_under(base: &std::path::Path, record: &ServerRecord) -> std::io::Result<()> {
