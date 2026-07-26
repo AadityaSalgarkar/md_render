@@ -197,6 +197,73 @@ describe('bin/mdrender on macOS', () => {
   })
 })
 
+describe('bin/mdrender argument handling for server mode', () => {
+  beforeEach(() => {
+    stubUname('Linux')
+    writeStub('md-render', recordingStub())
+  })
+
+  it('passes --port through untouched and absolutises the file', () => {
+    const doc = path.join(work, 'note.md')
+    writeFileSync(doc, '# hello')
+
+    execFileSync('bash', [WRAPPER, '--port', '8080', 'note.md'], {
+      cwd: work,
+      env: { ...process.env, PATH: `${stubBin}:${process.env.PATH ?? ''}` },
+      encoding: 'utf8',
+    })
+
+    const log = recorded()
+    // The flag must survive verbatim; only the path is rewritten.
+    expect(log).toContain(`ARGS=--port 8080 ${doc}`)
+  })
+
+  it('does not mistake a port number for a file path', () => {
+    const doc = path.join(work, 'note.md')
+    writeFileSync(doc, '# hello')
+
+    execFileSync('bash', [WRAPPER, '--port', '8080', doc], {
+      cwd: work,
+      env: { ...process.env, PATH: `${stubBin}:${process.env.PATH ?? ''}` },
+      encoding: 'utf8',
+    })
+
+    const log = recorded()
+    // "8080" must not be absolutised into <cwd>/8080.
+    expect(log).not.toContain(`${work}/8080`)
+    expect(log).toContain('ARGS=--port 8080 ')
+  })
+
+  it('passes --host and multiple paths through', () => {
+    const a = path.join(work, 'a.md')
+    const b = path.join(work, 'b.md')
+    writeFileSync(a, '# a')
+    writeFileSync(b, '# b')
+
+    execFileSync('bash', [WRAPPER, '--host', '127.0.0.1', '--port', '9000', a, b], {
+      cwd: work,
+      env: { ...process.env, PATH: `${stubBin}:${process.env.PATH ?? ''}` },
+      encoding: 'utf8',
+    })
+
+    const log = recorded()
+    expect(log).toContain(`ARGS=--host 127.0.0.1 --port 9000 ${a} ${b}`)
+  })
+
+  it('supports the --port=N form', () => {
+    const doc = path.join(work, 'note.md')
+    writeFileSync(doc, '# hello')
+
+    execFileSync('bash', [WRAPPER, '--port=8081', doc], {
+      cwd: work,
+      env: { ...process.env, PATH: `${stubBin}:${process.env.PATH ?? ''}` },
+      encoding: 'utf8',
+    })
+
+    expect(recorded()).toContain(`ARGS=--port=8081 ${doc}`)
+  })
+})
+
 describe('bin/mdrender on an unsupported platform', () => {
   it('exits with an error', () => {
     stubUname('SunOS')
