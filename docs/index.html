@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="warm-paper">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MD_RENDER — markdown, set like a book</title>
+<meta name="description" content="A markdown renderer for macOS and Linux with book typography, six themes, tabs, review comments, and a server mode for reading over SSH.">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<style>
+/* Tokens lifted verbatim from src/lib/themes.ts — the page wears the app's
+   own Warm Paper theme, and Midnight Ink when toggled. */
+:root, [data-theme="warm-paper"] {
+  --bg-primary: #FAF7F2;
+  --bg-secondary: #F5F1EA;
+  --text-primary: #1A1A1A;
+  --text-secondary: #5C5C5C;
+  --text-muted: #8A8A8A;
+  --accent: #C9553D;
+  --accent-hover: #B84A34;
+  --accent-secondary: #2D5A4A;
+  --border: #E8E2D9;
+  --border-strong: #D4CCC0;
+  --code-bg: #F0EDE6;
+  --selection: rgba(201, 85, 61, 0.15);
+  --code-keyword: #C9553D;
+  --code-string: #2D5A4A;
+  --code-comment: #8A8A8A;
+  --btn-bg: #FFFDF8;
+  --shadow: 0 1px 3px rgba(26, 26, 26, 0.08), 0 6px 24px -12px rgba(26, 26, 26, 0.18);
+}
+[data-theme="midnight-ink"] {
+  --bg-primary: #121418;
+  --bg-secondary: #1A1D23;
+  --text-primary: #E8E4DC;
+  --text-secondary: #9A968E;
+  --text-muted: #6A665E;
+  --accent: #E07A5F;
+  --accent-hover: #E8907A;
+  --accent-secondary: #81B29A;
+  --border: #2A2D35;
+  --border-strong: #3A3D45;
+  --code-bg: #1A1D23;
+  --selection: rgba(224, 122, 95, 0.2);
+  --code-keyword: #E07A5F;
+  --code-string: #81B29A;
+  --code-comment: #6A665E;
+  --btn-bg: #1A1D23;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 6px 24px -12px rgba(0, 0, 0, 0.6);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+::selection { background: var(--selection); }
+html { scroll-behavior: smooth; scroll-padding-top: 3.5rem; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { transition: none !important; }
+}
+
+body {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 1.0625rem;
+  line-height: 1.72;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+/* Reading progress, exactly where the app puts it. */
+#progress {
+  position: fixed; top: 0; left: 0; height: 3px; width: 0;
+  background: var(--accent); z-index: 60;
+}
+
+/* Floating controls — the app's round buttons, top-right. */
+.controls {
+  position: fixed; top: 1rem; right: 1rem; z-index: 50;
+  display: flex; gap: 0.5rem;
+}
+.fbtn {
+  width: 2.6rem; height: 2.6rem; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--btn-bg); color: var(--text-secondary);
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+  cursor: pointer; transition: color 0.15s ease, transform 0.1s ease;
+}
+.fbtn:hover { color: var(--accent); }
+.fbtn:active { transform: scale(0.95); }
+.fbtn:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.fbtn.is-on { background: var(--accent); border-color: var(--accent); color: #FAF7F2; }
+.fbtn svg { width: 18px; height: 18px; }
+
+/* Layout: the app's index + article reading layout. */
+.layout { display: flex; min-height: 100vh; }
+
+#index {
+  width: 250px; flex-shrink: 0;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  padding: 2.2rem 1.4rem;
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+body.index-closed #index { display: none; }
+#index .kicker {
+  font-family: "IBM Plex Mono", monospace; font-size: 0.68rem;
+  letter-spacing: 0.22em; color: var(--text-muted);
+  border-bottom: 1px solid var(--border); padding-bottom: 0.8rem; margin-bottom: 0.9rem;
+}
+#index a {
+  display: block; padding: 0.32rem 0 0.32rem 0.85rem;
+  color: var(--text-secondary); text-decoration: none;
+  font-size: 0.94rem; border-left: 2px solid transparent;
+}
+#index a:hover { color: var(--text-primary); }
+#index a.active {
+  color: var(--accent); border-left-color: var(--accent); font-weight: 500;
+}
+#index a.sub { padding-left: 1.9rem; font-size: 0.88rem; }
+
+main { flex: 1; min-width: 0; }
+.measure {
+  max-width: 70%; min-width: min(46rem, 92%);
+  margin: 0 auto; padding: 4.5rem 2rem 5rem;
+}
+
+/* Type */
+h1, h2, h3 { font-family: "Playfair Display", Georgia, serif; line-height: 1.15; }
+h1 { font-size: clamp(2.6rem, 6vw, 4.2rem); font-weight: 700; letter-spacing: -0.01em; }
+h2 {
+  font-size: 1.9rem; font-weight: 600;
+  margin: 3.6rem 0 0.4rem;
+  padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
+  position: relative;
+}
+h2::after {
+  content: "◆"; position: absolute; left: 0; bottom: -0.42rem;
+  font-size: 0.5rem; color: var(--border-strong); background: var(--bg-primary);
+  padding-right: 0.5rem;
+}
+h3 { font-size: 1.28rem; font-weight: 600; margin: 2.2rem 0 0.2rem; }
+h2 a.anchor, h3 a.anchor { color: inherit; text-decoration: none; }
+h2 a.anchor:hover::before, h3 a.anchor:hover::before {
+  content: "#"; color: var(--accent); position: absolute; margin-left: -1.1rem;
+  font-family: "IBM Plex Mono", monospace; font-weight: 400;
+}
+p, ul, ol { margin: 0.85rem 0; }
+li { margin: 0.3rem 0; }
+ul { padding-left: 1.3rem; }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { color: var(--accent-hover); }
+strong { font-weight: 600; }
+.muted { color: var(--text-secondary); }
+
+/* Hero */
+.hero { padding-top: 1.8rem; text-align: center; }
+.eyebrow {
+  font-family: "IBM Plex Mono", monospace; font-size: 0.75rem;
+  letter-spacing: 0.2em; color: var(--text-muted); text-transform: uppercase;
+}
+.hero h1 { margin: 0.9rem 0 0; }
+.ornament {
+  color: var(--border-strong); font-size: 0.6rem; letter-spacing: 1.2em;
+  margin: 1.6rem 0; text-align: center;
+}
+.ornament::before, .ornament::after { content: "—"; letter-spacing: normal; margin: 0 0.9rem; }
+.lede {
+  font-size: 1.2rem; color: var(--text-secondary);
+  max-width: 36rem; margin: 0 auto 2.4rem; font-style: italic;
+}
+.lede em { font-style: normal; }
+
+/* Terminal + window frames */
+.frame {
+  border: 1px solid var(--border-strong); border-radius: 10px;
+  overflow: hidden; box-shadow: var(--shadow);
+  background: var(--bg-secondary); text-align: left;
+}
+.frame .bar {
+  display: flex; align-items: center; gap: 0.4rem;
+  padding: 0.55rem 0.9rem; border-bottom: 1px solid var(--border);
+  font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; color: var(--text-muted);
+}
+.frame .bar .dots { display: flex; gap: 0.32rem; }
+.frame .bar .dots i {
+  width: 0.62rem; height: 0.62rem; border-radius: 50%;
+  background: var(--border-strong); display: block;
+}
+.frame .bar .addr { margin-left: 0.6rem; }
+.frame img { display: block; width: 100%; height: auto; }
+
+.terminal {
+  font-family: "IBM Plex Mono", monospace; font-size: 0.86rem; line-height: 1.65;
+  padding: 1.1rem 1.3rem; white-space: pre; overflow-x: auto;
+  color: var(--text-primary);
+}
+.terminal .p { color: var(--accent); }
+.terminal .d { color: var(--text-muted); }
+.terminal .s { color: var(--accent-secondary); }
+
+.hero .duo {
+  display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.4rem;
+  align-items: start; margin-top: 2.6rem;
+}
+.hero .duo figcaption {
+  font-family: "IBM Plex Mono", monospace; font-size: 0.72rem;
+  color: var(--text-muted); margin-top: 0.6rem; text-align: center;
+}
+
+/* Code */
+pre {
+  background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 1rem 1.2rem; overflow-x: auto;
+  margin: 1.1rem 0;
+}
+code {
+  font-family: "IBM Plex Mono", monospace; font-size: 0.86em;
+}
+p code, li code, td code {
+  background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 0.08em 0.35em;
+}
+pre .c { color: var(--code-comment); }
+pre .k { color: var(--code-keyword); }
+pre .s { color: var(--code-string); }
+
+/* Tables */
+table { border-collapse: collapse; width: 100%; margin: 1.1rem 0; font-size: 0.97rem; }
+th, td { text-align: left; padding: 0.5rem 0.9rem; border-bottom: 1px solid var(--border); }
+th {
+  font-family: "IBM Plex Mono", monospace; font-size: 0.72rem;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted);
+  font-weight: 500;
+}
+td:first-child { white-space: nowrap; }
+
+/* Swatch rows for the themes section */
+.swatch { display: inline-flex; gap: 0.25rem; vertical-align: middle; }
+.swatch i {
+  width: 0.95rem; height: 0.95rem; border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.12); display: block;
+}
+
+footer {
+  border-top: 1px solid var(--border); margin-top: 4rem; padding-top: 1.6rem;
+  color: var(--text-muted); font-size: 0.92rem;
+  display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem;
+}
+footer .mono, .mono { font-family: "IBM Plex Mono", monospace; font-size: 0.8rem; }
+
+@media (max-width: 900px) {
+  #index { display: none; }
+  .measure { max-width: 100%; padding: 3.5rem 1.3rem 4rem; }
+  .hero .duo { grid-template-columns: 1fr; }
+  body.index-open #index {
+    display: block; position: fixed; inset: 0; width: 100%; height: 100vh; z-index: 40;
+    padding-top: 4.5rem;
+  }
+}
+</style>
+</head>
+<body>
+<div id="progress" aria-hidden="true"></div>
+
+<nav class="controls" aria-label="Page controls">
+  <button class="fbtn is-on" id="indexBtn" aria-pressed="true" aria-label="Toggle index" title="Index">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4.5" cy="6" r="1.1" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.1" fill="currentColor" stroke="none"/></svg>
+  </button>
+  <button class="fbtn" id="themeBtn" aria-label="Switch between Warm Paper and Midnight Ink" title="Theme">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><path d="M12 22a10 10 0 1 1 10-10c0 2.5-1.5 4-3.5 4H16a2 2 0 0 0-2 2c0 .6.2 1 .5 1.5.4.7.1 1.7-.8 2-.6.2-1.1.5-1.7.5z"/></svg>
+  </button>
+  <a class="fbtn" href="https://github.com/AadityaSalgarkar/md_render" aria-label="Source on GitHub" title="GitHub">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.09.68-.22.68-.49 0-.24-.01-.89-.01-1.75-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.5-1.11-1.5-.91-.63.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.57 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.7 0 0 .84-.28 2.75 1.05a9.36 9.36 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.4.2 2.44.1 2.7.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.59.69.49A10.03 10.03 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
+  </a>
+</nav>
+
+<div class="layout">
+<aside id="index" aria-label="Document index">
+  <div class="kicker">☰&nbsp; INDEX</div>
+  <a href="#overview">Overview</a>
+  <a href="#install">Install</a>
+  <a href="#install-macos" class="sub">macOS</a>
+  <a href="#install-linux" class="sub">Linux</a>
+  <a href="#cli">Command line</a>
+  <a href="#server">Server mode</a>
+  <a href="#remote" class="sub">Reading over SSH</a>
+  <a href="#security" class="sub">What the server touches</a>
+  <a href="#editing">Editing &amp; comments</a>
+  <a href="#themes">Themes</a>
+  <a href="#claude">Claude Code integration</a>
+  <a href="#development">Development</a>
+  <a href="#machines">For machines</a>
+</aside>
+
+<main>
+<div class="measure">
+
+<header class="hero">
+  <div class="eyebrow">MD_RENDER · macOS + Linux · Tauri 2</div>
+  <h1>Markdown, set like a book.</h1>
+  <div class="ornament">◆</div>
+  <p class="lede">A markdown renderer with book typography — six themes, a
+  document index, math, Mermaid, review comments — in a desktop window or
+  served to your browser over SSH.</p>
+
+  <div class="frame">
+    <div class="terminal"><span class="p">$</span> mdrender --port notes.md ./docs
+serving 4 files on <span class="s">http://127.0.0.1:10000</span>
+  <span class="d">[1]</span> notes.md
+  <span class="d">[2]</span> api.md
+  <span class="d">[3]</span> guide/setup.md
+  <span class="d">[4]</span> guide/usage.md
+<span class="d">(ctrl-c to stop)</span></div>
+  </div>
+
+  <div class="duo">
+    <figure>
+      <div class="frame">
+        <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="addr">127.0.0.1:10000</span></div>
+        <img src="assets/browser.png" alt="MD_RENDER serving three documents as browser tabs, with the index, math, highlighted code and a Mermaid diagram" width="1280" height="900">
+      </div>
+      <figcaption>server mode in a browser — same app, same tabs</figcaption>
+    </figure>
+    <figure>
+      <div class="frame"><img src="assets/desktop.png" alt="The MD_RENDER desktop window on Linux with the same three documents open as tabs" width="810" height="632"></div>
+      <figcaption>the desktop window on Linux</figcaption>
+    </figure>
+  </div>
+</header>
+
+<section id="overview">
+  <h2><a class="anchor" href="#overview">Overview</a></h2>
+  <p>MD_RENDER opens <code>.md</code> and <code>.markdown</code> files and sets
+  them in serious book typography. It is a small Tauri app: a Rust core with a
+  React reading surface, built for macOS and Linux.</p>
+  <ul>
+    <li>Six typographic themes, three light and three dark, each with its own
+    faces, colors and code palette</li>
+    <li>Collapsible document index built from headings, with scroll-spy and a
+    reading-progress bar</li>
+    <li>Several files open as tabs — in the window or in the browser</li>
+    <li>GitHub-flavored markdown, KaTeX math, Mermaid diagrams,
+    syntax-highlighted code, local images</li>
+    <li>Split-pane editor with save, 30-second autosave, and save-on-close</li>
+    <li>Review comments attached to selected passages, stored in the markdown
+    itself, with clean export</li>
+    <li>Server mode: the same app served over HTTP, with the same editing</li>
+  </ul>
+</section>
+
+<section id="install">
+  <h2><a class="anchor" href="#install">Install</a></h2>
+  <p><code>make install</code> detects the platform and installs the right
+  thing. Both installs also place the <code>mdrender</code> wrapper at
+  <code>~/bin/mdrender</code>.</p>
+
+  <h3 id="install-macos"><a class="anchor" href="#install-macos">macOS</a></h3>
+<pre><code>git clone https://github.com/AadityaSalgarkar/md_render
+cd md_render
+npm install
+make install        <span class="c"># builds and installs MD_RENDER.app + ~/bin/mdrender</span></code></pre>
+  <p>To make it the default app for markdown:
+  <code>brew install duti &amp;&amp; duti -s com.mdrender.app .md all</code></p>
+
+  <h3 id="install-linux"><a class="anchor" href="#install-linux">Linux</a></h3>
+  <p>Build prerequisites on Debian/Ubuntu (names differ on other distros),
+  plus Rust via <a href="https://rustup.rs">rustup</a> and Node:</p>
+<pre><code>sudo apt install build-essential curl wget file pkg-config \
+  libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+  libayatana-appindicator3-dev librsvg2-dev libgtk-3-dev</code></pre>
+<pre><code>git clone https://github.com/AadityaSalgarkar/md_render
+cd md_render
+npm install
+make install        <span class="c"># everything under ~/.local and ~/bin — no root</span></code></pre>
+  <table>
+    <tr><th>Path</th><th>Contents</th></tr>
+    <tr><td><code>~/.local/bin/md-render</code></td><td>application binary</td></tr>
+    <tr><td><code>~/bin/mdrender</code></td><td>command-line wrapper</td></tr>
+    <tr><td><code>~/.local/share/applications/md-render.desktop</code></td><td>desktop entry, <code>.md</code> association</td></tr>
+    <tr><td><code>~/.local/share/icons/hicolor/*/apps/</code></td><td>icons</td></tr>
+  </table>
+  <p><code>npm run tauri:build</code> also emits <code>.deb</code>,
+  <code>.rpm</code> and <code>.AppImage</code> bundles under
+  <code>src-tauri/target/release/bundle/</code>. Set <code>PREFIX</code> to
+  install elsewhere: <code>make install-linux PREFIX=/usr/local</code>.</p>
+</section>
+
+<section id="cli">
+  <h2><a class="anchor" href="#cli">Command line</a></h2>
+<pre><code>mdrender                    <span class="c"># open the app</span>
+mdrender notes.md           <span class="c"># open one file</span>
+mdrender a.md b.md ./docs   <span class="c"># several files and a directory — tabs</span>
+mdrender --port notes.md    <span class="c"># serve to a browser instead (port 10000)</span></code></pre>
+  <p>Directory arguments contribute every markdown file beneath them,
+  recursively, in stable sorted order. The window and the server build their
+  tabs from the same list, so the same arguments produce the same result in
+  either mode.</p>
+  <p>The refresh control in the app rescans those directories, so markdown
+  added after launch appears as a new tab. Files opened from the file manager
+  or via a link join the tab strip rather than replacing the open document.</p>
+</section>
+
+<section id="server">
+  <h2><a class="anchor" href="#server">Server mode</a></h2>
+  <p><code>--port</code> serves the app over HTTP instead of opening a window.
+  The port defaults to <strong>10000</strong>; pass a number to override:
+  <code>mdrender --port 8080 notes.md</code>. Everything works as it does in
+  the window — tabs, index, themes, math, diagrams, images, and editing and
+  saving back to disk.</p>
+  <p>Running the command again while a server already holds the port
+  <strong>adds the file as another tab</strong> rather than failing:</p>
+<pre><code><span class="k">$</span> mdrender --port extra.md
+added to http://127.0.0.1:10000
+  extra.md</code></pre>
+  <p>An open browser picks the new tab up within a few seconds, no reload.</p>
+
+  <h3 id="remote"><a class="anchor" href="#remote">Reading over SSH</a></h3>
+  <p>The main reason the mode exists: the machine rendering the markdown needs
+  no display.</p>
+<pre><code>ssh -L 10000:127.0.0.1:10000 my-server
+mdrender --port ~/notes.md          <span class="c"># on the server</span></code></pre>
+  <p>Then open <code>http://127.0.0.1:10000</code> in your local browser.</p>
+
+  <h3 id="security"><a class="anchor" href="#security">What the server touches</a></h3>
+  <p>Server mode can edit and save, so its reach is bounded deliberately:</p>
+  <ul>
+    <li>Binds <code>127.0.0.1</code> by default. <code>--host</code> overrides
+    it and prints a warning, since any other address exposes your files — and
+    the ability to edit them — to the network.</li>
+    <li>Reads and writes are limited to the documents the server was told to
+    open. Sitting inside a served directory is not enough; a stray file next
+    to your markdown cannot be read or overwritten.</li>
+    <li>Images are served only from the directories of open documents, and
+    only with image extensions. Paths are resolved before checking, so
+    <code>..</code> and symlinks cannot escape.</li>
+    <li>Every write carries a token the server injects into the page it
+    serves. A page on another origin cannot read that token, so it cannot
+    forge a write.</li>
+    <li>Adding tabs to a running server requires the token from
+    <code>$XDG_STATE_HOME/md-render/servers/&lt;port&gt;.json</code>, written
+    with mode <code>0600</code> — only processes running as the same user can
+    widen what the server touches.</li>
+  </ul>
+</section>
+
+<section id="editing">
+  <h2><a class="anchor" href="#editing">Editing &amp; comments</a></h2>
+  <p>The editor pane sits beside the preview behind a draggable divider. With
+  a file open, Save writes immediately; unsaved edits also autosave every 30
+  seconds and before the window closes. When nothing is waiting to save, the
+  same sync refreshes the preview from disk, so edits made elsewhere show up.</p>
+  <p>Select any passage in the preview to attach a review comment. Comments
+  live in the markdown itself as <code>&lt;chat&gt;</code> blocks beside the
+  text they discuss, so they travel with the file and survive any editor.
+  <em>Export clean .md</em> writes a copy with every comment stripped —
+  <code>notes.md</code> becomes <code>notes.clean.md</code> next to it.</p>
+</section>
+
+<section id="themes">
+  <h2><a class="anchor" href="#themes">Themes</a></h2>
+  <p>Chosen from the palette control; the choice is remembered. Each theme is
+  a full set of faces, surfaces and a code palette. This page wears two of
+  them — try the palette button above.</p>
+  <table>
+    <tr><th></th><th>Light</th><th></th><th>Dark</th></tr>
+    <tr>
+      <td><span class="swatch"><i style="background:#FAF7F2"></i><i style="background:#C9553D"></i><i style="background:#2D5A4A"></i></span></td>
+      <td><strong>Warm Paper</strong> — book typography on aged cream</td>
+      <td><span class="swatch"><i style="background:#121418"></i><i style="background:#E07A5F"></i><i style="background:#81B29A"></i></span></td>
+      <td><strong>Midnight Ink</strong> — warm ink on blue-black</td>
+    </tr>
+    <tr>
+      <td><span class="swatch"><i style="background:#FFFFFF"></i><i style="background:#1A1A1A"></i><i style="background:#B31B1B"></i></span></td>
+      <td><strong>Newsprint</strong> — high-contrast editorial broadsheet</td>
+      <td><span class="swatch"><i style="background:#191724"></i><i style="background:#C4A7E7"></i><i style="background:#9CCFD8"></i></span></td>
+      <td><strong>Nocturne</strong> — muted iris &amp; foam on plum</td>
+    </tr>
+    <tr>
+      <td><span class="swatch"><i style="background:#F4F1E8"></i><i style="background:#4A5D43"></i><i style="background:#8B5E3C"></i></span></td>
+      <td><strong>Forest</strong> — moss and bark on a sage page</td>
+      <td><span class="swatch"><i style="background:#0B1512"></i><i style="background:#7FB685"></i><i style="background:#D9A05B"></i></span></td>
+      <td><strong>Evergreen</strong> — moss and amber on pine-black</td>
+    </tr>
+  </table>
+</section>
+
+<section id="claude">
+  <h2><a class="anchor" href="#claude">Claude Code integration</a></h2>
+  <p>A small PostToolUse hook opens plan files in MD_RENDER the moment Claude
+  Code writes them:</p>
+<pre><code><span class="c">#!/bin/bash
+# ~/.claude/hooks/open-plan-in-md-render.sh</span>
+INPUT=$(cat)
+FILE_PATH=$(echo <span class="s">"$INPUT"</span> | jq -r <span class="s">'.tool_input.file_path // empty'</span>)
+<span class="k">if</span> [[ <span class="s">"$FILE_PATH"</span> == ~/.claude/plans/* ]]; <span class="k">then</span>
+    ~/bin/mdrender <span class="s">"$FILE_PATH"</span> 2&gt;/dev/null &amp;
+<span class="k">fi</span>
+<span class="k">exit</span> 0</code></pre>
+  <p>Register it in <code>~/.claude/settings.json</code> under
+  <code>hooks.PostToolUse</code> with matcher <code>Write</code>. Agents can
+  also drive the app directly — see
+  <a href="skills.md">skills.md</a> for a ready-made skill.</p>
+</section>
+
+<section id="development">
+  <h2><a class="anchor" href="#development">Development</a></h2>
+<pre><code>npm run tauri:dev    <span class="c"># Tauri window + Vite dev server</span>
+npm run tauri:build  <span class="c"># production build and bundles</span>
+npm run dev          <span class="c"># frontend only, in a browser</span>
+make test            <span class="c"># Rust + frontend test suites</span>
+npm run lint</code></pre>
+  <p>The frontend is React 18 + TypeScript on Vite, markdown via
+  react-markdown with remark-gfm, remark-math, rehype-katex, rehype-highlight
+  and rehype-raw. The Rust side is Tauri 2 plus an axum server for
+  <code>--port</code>. Tests run against the real binary over real HTTP —
+  nothing in the suites mocks the code under test.</p>
+  <p>A note for builders: a plain <code>cargo build --release</code> emits
+  <code>target/release/app</code>, which expects the dev server and shows a
+  blank “could not connect” window. The usable binary comes from
+  <code>npm run tauri:build</code>, as <code>target/release/md-render</code>.</p>
+</section>
+
+<section id="machines">
+  <h2><a class="anchor" href="#machines">For machines</a></h2>
+  <p>Two plain-text files describe this project to language models and
+  agents:</p>
+  <ul>
+    <li><a href="llms.txt" class="mono">llms.txt</a> — a compact map of the
+    project for LLMs, following <a href="https://llmstxt.org">llmstxt.org</a></li>
+    <li><a href="skills.md" class="mono">skills.md</a> — a drop-in skill
+    teaching an agent to render and serve markdown with MD_RENDER</li>
+  </ul>
+</section>
+
+<footer>
+  <span>MIT · <a href="https://github.com/AadityaSalgarkar/md_render">github.com/AadityaSalgarkar/md_render</a></span>
+  <span class="mono">rendered the way it renders</span>
+</footer>
+
+</div>
+</main>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var themeBtn = document.getElementById('themeBtn');
+  var indexBtn = document.getElementById('indexBtn');
+  var progress = document.getElementById('progress');
+
+  // Theme: ?theme= wins, then the remembered choice, then the OS preference —
+  // the same order the app uses on first run.
+  var fromQuery = new URLSearchParams(location.search).get('theme');
+  var stored = null;
+  try { stored = localStorage.getItem('md-render-docs-theme'); } catch (e) {}
+  var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  var theme = fromQuery || stored || (dark ? 'midnight-ink' : 'warm-paper');
+  if (theme !== 'warm-paper' && theme !== 'midnight-ink') theme = 'warm-paper';
+  root.setAttribute('data-theme', theme);
+
+  themeBtn.addEventListener('click', function () {
+    theme = theme === 'warm-paper' ? 'midnight-ink' : 'warm-paper';
+    root.setAttribute('data-theme', theme);
+    try { localStorage.setItem('md-render-docs-theme', theme); } catch (e) {}
+  });
+
+  // Index toggle, like the app's Index control. On narrow screens the index
+  // starts hidden, so the button must not claim otherwise.
+  if (window.matchMedia('(max-width: 900px)').matches) {
+    indexBtn.classList.remove('is-on');
+    indexBtn.setAttribute('aria-pressed', 'false');
+  }
+  indexBtn.addEventListener('click', function () {
+    var narrow = window.matchMedia('(max-width: 900px)').matches;
+    document.body.classList.toggle(narrow ? 'index-open' : 'index-closed');
+    var on = narrow
+      ? document.body.classList.contains('index-open')
+      : !document.body.classList.contains('index-closed');
+    indexBtn.classList.toggle('is-on', on);
+    indexBtn.setAttribute('aria-pressed', String(on));
+  });
+  // Close the mobile index after navigating.
+  document.querySelectorAll('#index a').forEach(function (a) {
+    a.addEventListener('click', function () {
+      document.body.classList.remove('index-open');
+    });
+  });
+
+  // Reading progress.
+  function paint() {
+    var max = document.documentElement.scrollHeight - window.innerHeight;
+    progress.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + '%';
+  }
+  window.addEventListener('scroll', paint, { passive: true });
+  window.addEventListener('resize', paint);
+  paint();
+
+  // Scroll-spy for the index.
+  var links = Array.prototype.slice.call(document.querySelectorAll('#index a'));
+  var byId = {};
+  links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+  var targets = Object.keys(byId)
+    .map(function (id) { return document.getElementById(id); })
+    .filter(Boolean);
+  function spy() {
+    var current = targets[0];
+    targets.forEach(function (t) {
+      if (t.getBoundingClientRect().top <= window.innerHeight * 0.3) current = t;
+    });
+    links.forEach(function (a) { a.classList.remove('active'); });
+    if (current && byId[current.id]) byId[current.id].classList.add('active');
+  }
+  window.addEventListener('scroll', spy, { passive: true });
+  spy();
+})();
+</script>
+</body>
+</html>
