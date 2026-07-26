@@ -1,11 +1,17 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Editor } from './components/Editor'
 import { Preview } from './components/Preview'
 import { ThemePicker } from './components/ThemePicker'
+import { CommentPane } from './components/CommentPane'
 import { useTheme } from './hooks/useTheme'
 import { sampleMarkdown } from './lib/sampleMarkdown'
 import { dirname } from './lib/resolveImageSrc'
+import {
+  insertCommentForSelection,
+  parseChatThreads,
+  stripCommentThreads,
+} from './lib/comments'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link'
@@ -21,14 +27,20 @@ function readStoredToc(): boolean {
 export default function App() {
   const { themeId, setTheme, themes } = useTheme()
   const [content, setContent] = useState(sampleMarkdown)
+  const [filePath, setFilePath] = useState<string | null>(null)
   const [baseDir, setBaseDir] = useState<string | null>(null)
   const [fileLoaded, setFileLoaded] = useState(false)
+  const [selectedText, setSelectedText] = useState<string | null>(null)
+  const [commentsOpen, setCommentsOpen] = useState(false)
+  const [saveState, setSaveState] = useState<string | null>(null)
+  const [exportState, setExportState] = useState<string | null>(null)
 
   // Load file helper
   const loadFile = useCallback(async (filePath: string) => {
     try {
       const text = await invoke<string>('read_file', { path: filePath })
       setContent(text)
+      setFilePath(filePath)
       setBaseDir(dirname(filePath))
       setFileLoaded(true)
     } catch (err) {
@@ -63,6 +75,7 @@ export default function App() {
       if (stored !== null) {
         setContent(stored)
       }
+      setFilePath(null)
       setFileLoaded(true)
     }
 
@@ -111,6 +124,9 @@ export default function App() {
     }
   }, [content, fileLoaded])
 
+  const renderedContent = useMemo(() => stripCommentThreads(content), [content])
+  const commentThreads = useMemo(() => parseChatThreads(content), [content])
+
   const [splitPosition, setSplitPosition] = useState(DEFAULT_SPLIT)
   const [isDragging, setIsDragging] = useState(false)
   const [isEditorCollapsed, setIsEditorCollapsed] = useState(true)
@@ -128,6 +144,73 @@ export default function App() {
       return next
     })
   }, [])
+
+  const handleTextSelection = useCallback((text: string) => {
+    setSelectedText(text)
+    setCommentsOpen(true)
+    setSaveState(null)
+  }, [])
+
+  const saveContentToFile = useCallback(async (nextContent: string) => {
+    if (filePath) {
+      await invoke('write_file', { path: filePath, content: nextContent })
+    }
+    setContent(nextContent)
+  }, [filePath])
+
+  const handleSaveComment = useCallback(async (comment: string) => {
+    if (!selectedText) return
+    const result = insertCommentForSelection(content, selectedText, comment)
+    if (!result.inserted) return
+
+    try {
+      await saveContentToFile(result.content)
+      setSelectedText(null)
+      setSaveState(filePath ? 'Saved to markdown file.' : 'Saved to local draft.')
+    } catch (err) {
+      setSaveState('Could not write to the markdown file.')
+      console.error('Failed to save comment:', err)
+    }
+  }, [content, filePath, saveContentToFile, selectedText])
+
+  const handleRefreshComments = useCallback(async () => {
+    if (!filePath) {
+      const stored = localStorage.getItem('md-render-content')
+      if (stored !== null) setContent(stored)
+      setSaveState('Refreshed from local draft.')
+      return
+    }
+
+    try {
+      const text = await invoke<string>('read_file', { path: filePath })
+      setContent(text)
+      setBaseDir(dirname(filePath))
+      setSaveState('Refreshed from markdown file.')
+    } catch (err) {
+      setSaveState('Could not refresh the markdown file.')
+      console.error('Failed to refresh comments:', err)
+    }
+  }, [filePath])
+
+  const handleExportCleanMarkdown = useCallback(async () => {
+    const cleanContent = stripCommentThreads(content)
+    if (!filePath) {
+      downloadMarkdown(cleanContent, 'md-render-export.md')
+      setExportState('Downloaded clean markdown.')
+      return
+    }
+
+    try {
+      const outputPath = await invoke<string>('export_markdown', {
+        path: filePath,
+        content: cleanContent,
+      })
+      setExportState(`Exported ${basename(outputPath)}`)
+    } catch (err) {
+      setExportState('Could not export clean markdown.')
+      console.error('Failed to export markdown:', err)
+    }
+  }, [content, filePath])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -176,7 +259,7 @@ export default function App() {
   return (
     <div className="h-screen flex overflow-hidden relative">
       {/* Floating Controls */}
-      <div className="floating-controls">
+      <div className={`floating-controls ${commentsOpen ? 'comments-open' : ''}`}>
         <motion.button
           className={`floating-btn ${isTocOpen ? 'is-on' : ''}`}
           onClick={toggleToc}
@@ -196,6 +279,17 @@ export default function App() {
           title={isEditorCollapsed ? 'Edit' : 'Read'}
         >
           {isEditorCollapsed ? <EditIcon /> : <EyeIcon />}
+        </motion.button>
+
+        <motion.button
+          className={`floating-btn ${commentsOpen ? 'is-on' : ''}`}
+          onClick={() => setCommentsOpen((prev) => !prev)}
+          whileTap={{ scale: 0.95 }}
+          aria-pressed={commentsOpen}
+          aria-label={commentsOpen ? 'Hide comments' : 'Show comments'}
+          title="Comments"
+        >
+          <CommentIcon />
         </motion.button>
 
         <ThemePicker themes={themes} activeId={themeId} onSelect={setTheme} />
@@ -239,8 +333,24 @@ export default function App() {
           }}
           transition={{ duration: 0.3, ease: 'easeInOut' }}
         >
-          <Preview content={content} tocOpen={isTocOpen} baseDir={baseDir} />
+          <Preview
+            content={renderedContent}
+            tocOpen={isTocOpen}
+            baseDir={baseDir}
+            onTextSelection={handleTextSelection}
+          />
         </motion.div>
+        <CommentPane
+          open={commentsOpen}
+          selectedText={selectedText}
+          threads={commentThreads}
+          saveState={saveState}
+          exportState={exportState}
+          onSave={handleSaveComment}
+          onRefresh={handleRefreshComments}
+          onExport={handleExportCleanMarkdown}
+          onClose={() => setCommentsOpen(false)}
+        />
       </div>
     </div>
   )
@@ -275,4 +385,30 @@ function EyeIcon() {
       <circle cx="12" cy="12" r="3" />
     </svg>
   )
+}
+
+function CommentIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+      <line x1="8" y1="9" x2="16" y2="9" />
+      <line x1="8" y1="13" x2="13" y2="13" />
+    </svg>
+  )
+}
+
+function basename(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path
+}
+
+function downloadMarkdown(content: string, filename: string) {
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
