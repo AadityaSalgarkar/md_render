@@ -59,6 +59,15 @@ rm -rf /Applications/MD_RENDER.app
 cp -R src-tauri/target/release/bundle/macos/MD_RENDER.app /Applications/
 ```
 
+Or use the Makefile:
+
+```bash
+make build          # build the macOS app bundle
+make install        # build and install to /Applications plus ~/bin/mdrender
+make install-clean  # install, then remove dist/ and src-tauri/target/
+make clean          # remove local build artifacts
+```
+
 ## Wrapper Script
 
 The wrapper script allows opening files with the app from the command line. Save this as `~/bin/mdrender`:
