@@ -24,8 +24,9 @@ pub struct Document {
 pub enum Mode {
   /// Print usage and exit.
   Help,
-  /// Normal Tauri window.
-  Desktop { launch_file: Option<PathBuf> },
+  /// Normal Tauri window. More than one document opens as tabs, matching what
+  /// server mode does with the same arguments.
+  Desktop { documents: Vec<Document> },
   /// Headless HTTP server.
   Serve {
     host: String,
@@ -134,18 +135,12 @@ pub fn parse(args: &[String]) -> Result<Mode, CliError> {
         documents,
       })
     }
-    None => Ok(Mode::Desktop {
-      launch_file: paths.iter().find_map(|candidate| {
-        let path = Path::new(candidate);
-        if path.is_file() {
-          Some(path.to_path_buf())
-        } else if has_markdown_extension(path) {
-          Some(path.to_path_buf())
-        } else {
-          None
-        }
-      }),
-    }),
+    None => {
+      // Unreadable paths are not fatal here: the desktop app opens with its
+      // local draft rather than refusing to start, as it always has.
+      let documents = collect_documents(&paths).unwrap_or_default();
+      Ok(Mode::Desktop { documents })
+    }
   }
 }
 
@@ -277,18 +272,54 @@ mod tests {
 
   #[test]
   fn no_port_means_desktop_mode() {
-    assert_eq!(parse(&args(&[])).unwrap(), Mode::Desktop { launch_file: None });
+    assert_eq!(
+      parse(&args(&[])).unwrap(),
+      Mode::Desktop { documents: vec![] }
+    );
   }
 
   #[test]
   fn desktop_mode_picks_up_a_markdown_argument() {
-    let mode = parse(&args(&["notes.md"])).unwrap();
-    assert_eq!(
-      mode,
-      Mode::Desktop {
-        launch_file: Some(PathBuf::from("notes.md"))
+    let dir = temp_dir("desktop-one");
+    let file = dir.join("notes.md");
+    fs::write(&file, "# notes").unwrap();
+
+    match parse(&args(&[file.to_str().unwrap()])).unwrap() {
+      Mode::Desktop { documents } => {
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].label, "notes.md");
       }
-    );
+      other => panic!("expected desktop mode, got {:?}", other),
+    }
+  }
+
+  #[test]
+  fn desktop_mode_opens_several_documents_as_tabs() {
+    // The same arguments that produce tabs in server mode produce tabs here.
+    let dir = temp_dir("desktop-many");
+    let a = dir.join("a.md");
+    let b = dir.join("b.md");
+    fs::write(&a, "# a").unwrap();
+    fs::write(&b, "# b").unwrap();
+
+    match parse(&args(&[a.to_str().unwrap(), b.to_str().unwrap()])).unwrap() {
+      Mode::Desktop { documents } => {
+        assert_eq!(documents.len(), 2);
+        assert_eq!(documents[0].label, "a.md");
+        assert_eq!(documents[1].label, "b.md");
+      }
+      other => panic!("expected desktop mode, got {:?}", other),
+    }
+  }
+
+  #[test]
+  fn desktop_mode_survives_a_path_that_does_not_exist() {
+    // Finder and the wrapper can hand us odd arguments; opening the draft is
+    // better than refusing to start.
+    match parse(&args(&["/definitely/not/here.md"])).unwrap() {
+      Mode::Desktop { documents } => assert!(documents.is_empty()),
+      other => panic!("expected desktop mode, got {:?}", other),
+    }
   }
 
   #[test]

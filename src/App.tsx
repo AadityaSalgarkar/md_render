@@ -36,6 +36,7 @@ export default function App() {
   const [backend] = useState<Backend>(() => detectBackend())
   const [documents, setDocuments] = useState<DocumentMeta[]>([])
   const [activeDocId, setActiveDocId] = useState<string | null>(null)
+  const [documentsChecked, setDocumentsChecked] = useState(false)
   const [content, setContent] = useState(sampleMarkdown)
   const [filePath, setFilePath] = useState<string | null>(null)
   const [baseDir, setBaseDir] = useState<string | null>(null)
@@ -78,7 +79,7 @@ export default function App() {
     }
   }, [updateContent])
 
-  /** Server mode: load one of the served documents into the preview. */
+  /** Load one of the open documents (a tab) into the preview. */
   const loadDocument = useCallback(async (id: string) => {
     try {
       const document = await backendRef.current.readDocument(id)
@@ -100,10 +101,11 @@ export default function App() {
     }
   }, [updateContent])
 
-  // Server mode: pull the tab list, and keep pulling so documents handed to the
-  // running server by a later `md-render --port` invocation appear on their own.
+  // Both modes build their tabs from the same document list. Server mode keeps
+  // polling so documents handed to the running server by a later
+  // `md-render --port` invocation appear on their own; the desktop list is
+  // fixed at launch, so one pass is enough.
   useEffect(() => {
-    if (backend.mode !== 'server') return
     let cancelled = false
 
     const refresh = async () => {
@@ -111,6 +113,7 @@ export default function App() {
         const found = await backend.listDocuments()
         if (cancelled) return
         setDocuments(found)
+        if (found.length > 0) setDocumentsChecked(true)
 
         const current = activeDocIdRef.current
         if (!current || !found.some((doc) => doc.id === current)) {
@@ -118,14 +121,20 @@ export default function App() {
           const initial = found.find((doc) => doc.id === requested) ?? found[0]
           if (initial) await loadDocument(initial.id)
         }
-      } catch (err) {
-        console.error('Failed to list documents:', err)
+      } catch {
+        // No document list available (plain browser, or the desktop command is
+        // missing): the startup path below falls back to the local draft.
+      } finally {
+        if (!cancelled) setDocumentsChecked(true)
       }
     }
 
     void refresh()
-    const interval = window.setInterval(() => void refresh(), DOCUMENT_POLL_INTERVAL_MS)
+    if (backend.mode !== 'server') return () => {
+      cancelled = true
+    }
 
+    const interval = window.setInterval(() => void refresh(), DOCUMENT_POLL_INTERVAL_MS)
     return () => {
       cancelled = true
       window.clearInterval(interval)
@@ -134,10 +143,11 @@ export default function App() {
 
   // Load file on startup and persist content to localStorage
   useEffect(() => {
-    const initializeFile = async () => {
-      // Server mode gets its content from the document list instead.
-      if (backendRef.current.mode === 'server') return
+    // Wait for the document list; when there is one it supplies the content.
+    if (!documentsChecked) return
+    if (documents.length > 0) return
 
+    const initializeFile = async () => {
       // Check for launch file from Tauri
       try {
         const launchFile = await backendRef.current.getLaunchFile()
@@ -169,7 +179,7 @@ export default function App() {
     }
 
     initializeFile()
-  }, [loadFile, updateContent])
+  }, [documents, documentsChecked, loadFile, updateContent])
 
   // Listen for file open events (from macOS Finder double-click)
   useEffect(() => {
@@ -206,13 +216,14 @@ export default function App() {
     }
   }, [loadFile])
 
-  // Persist content to localStorage when changed (but not on first load).
-  // Server mode is a viewer, so it must not overwrite the desktop draft.
+  // Persist content to localStorage when changed (but not on first load). The
+  // browser and the desktop webview have separate storage, so this does not
+  // cross over between the two.
   useEffect(() => {
-    if (fileLoaded && backend.mode !== 'server') {
+    if (fileLoaded) {
       localStorage.setItem('md-render-content', content)
     }
-  }, [backend, content, fileLoaded])
+  }, [content, fileLoaded])
 
   const renderedContent = useMemo(() => stripCommentThreads(content), [content])
   const commentThreads = useMemo(() => parseChatThreads(content), [content])
@@ -263,14 +274,6 @@ export default function App() {
   }, [updateContent])
 
   const syncOpenFile = useCallback(async (status: 'manual' | 'periodic' | 'close') => {
-    // Server mode is read-only: re-read the active document so edits made on
-    // disk show up, and never attempt a write.
-    if (backendRef.current.mode === 'server') {
-      const id = activeDocIdRef.current
-      if (id) await loadDocument(id)
-      return
-    }
-
     const path = filePathRef.current
     if (!path) {
       if (status === 'manual') {
@@ -311,7 +314,7 @@ export default function App() {
       }
       throw err
     }
-  }, [loadDocument, updateContent, writeOpenFile])
+  }, [updateContent, writeOpenFile])
 
   const saveContentToFile = useCallback(async (nextContent: string) => {
     updateContent(nextContent)

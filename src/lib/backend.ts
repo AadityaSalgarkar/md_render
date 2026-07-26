@@ -1,4 +1,5 @@
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
+import { dirname } from './resolveImageSrc'
 
 /** One open document — a tab. */
 export interface DocumentMeta {
@@ -17,7 +18,8 @@ export interface DocumentBody extends DocumentMeta {
  * - `desktop` — the Tauri shell, with filesystem access. Also the fallback in a
  *   plain browser, where the Tauri calls simply fail and the app drops back to
  *   the draft held in localStorage.
- * - `server`  — a browser talking to `md-render --port`. Read-only.
+ * - `server`  — a browser talking to `md-render --port`, with the same
+ *   capabilities as the desktop app.
  */
 export type BackendMode = 'desktop' | 'server'
 
@@ -39,16 +41,36 @@ export function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }
 
-const notSupported = (action: string) => () =>
-  Promise.reject(new Error(`${action} is not available in this mode`))
+/** Token the server injected into the page; required for anything that writes. */
+function serverToken(): string {
+  if (typeof window === 'undefined') return ''
+  return (window as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ ?? ''
+}
 
-/** Tauri shell: the existing behaviour, unchanged. */
+/** Tauri shell. */
 export function desktopBackend(): Backend {
+  const listDocuments = async (): Promise<DocumentMeta[]> => {
+    const documents = await invoke<Array<{ id: number; label: string; path: string }>>(
+      'list_documents',
+    )
+    return documents.map((doc) => ({
+      id: String(doc.id),
+      label: doc.label,
+      path: doc.path,
+    }))
+  }
+
   return {
     mode: 'desktop',
     writable: true,
-    listDocuments: async () => [],
-    readDocument: notSupported('reading documents by id') as Backend['readDocument'],
+    listDocuments,
+    readDocument: async (id) => {
+      const documents = await listDocuments()
+      const document = documents.find((doc) => doc.id === id)
+      if (!document) throw new Error(`no document with id ${id}`)
+      const content = await invoke<string>('read_file', { path: document.path })
+      return { ...document, baseDir: dirname(document.path), content }
+    },
     assetUrl: (path) => {
       try {
         return convertFileSrc(path)
@@ -73,7 +95,10 @@ export function desktopBackend(): Backend {
 export function serverBackend(base = ''): Backend {
   return {
     mode: 'server',
-    writable: false,
+    // Full parity with the desktop app: editing, saving and exporting all work.
+    // Writes are limited to the documents the server was told to open and carry
+    // the injected token.
+    writable: true,
     listDocuments: async () => {
       const response = await fetch(`${base}/api/files`)
       if (!response.ok) throw new Error(`could not list documents (${response.status})`)
@@ -107,9 +132,36 @@ export function serverBackend(base = ''): Backend {
       }
     },
     assetUrl: (path) => `${base}/api/asset?path=${encodeURIComponent(path)}`,
-    readFile: notSupported('reading arbitrary files'),
-    writeFile: notSupported('saving'),
-    exportMarkdown: notSupported('exporting'),
+    readFile: async (path) => {
+      const response = await fetch(`${base}/api/read?path=${encodeURIComponent(path)}`)
+      if (!response.ok) throw new Error(`could not read file (${response.status})`)
+      const body = (await response.json()) as { content: string }
+      return body.content
+    },
+    writeFile: async (path, content) => {
+      const response = await fetch(`${base}/api/file`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${serverToken()}`,
+        },
+        body: JSON.stringify({ path, content }),
+      })
+      if (!response.ok) throw new Error(`could not save (${response.status})`)
+    },
+    exportMarkdown: async (path, content) => {
+      const response = await fetch(`${base}/api/export`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${serverToken()}`,
+        },
+        body: JSON.stringify({ path, content }),
+      })
+      if (!response.ok) throw new Error(`could not export (${response.status})`)
+      const body = (await response.json()) as { path: string }
+      return body.path
+    },
     getLaunchFile: async () => null,
   }
 }

@@ -65,6 +65,13 @@ impl ServerState {
     added
   }
 
+  /// Whether `path` is one of the documents this server was asked to open.
+  /// Reads and writes are limited to exactly these files — being inside a
+  /// served directory is not enough.
+  fn is_open_document(&self, path: &Path) -> bool {
+    self.documents.iter().any(|doc| doc.path == path)
+  }
+
   /// Whether `path` may be served as an asset: it must sit under a known root
   /// and carry an image extension.
   fn allows_asset(&self, path: &Path) -> bool {
@@ -109,6 +116,44 @@ struct PathQuery {
 #[derive(Deserialize)]
 struct AddDocuments {
   paths: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct WriteBody {
+  path: String,
+  content: String,
+}
+
+/// Every mutating route carries the token the server handed to the page it
+/// served. Anything that can reach the port can read, but a drive-by request
+/// from another origin cannot read the token, so it cannot write.
+fn authorised(headers: &HeaderMap, state: &Shared) -> bool {
+  let presented = headers
+    .get(header::AUTHORIZATION)
+    .and_then(|value| value.to_str().ok())
+    .and_then(|value| value.strip_prefix("Bearer "))
+    .unwrap_or_default();
+
+  !presented.is_empty() && presented == state.read().unwrap().token
+}
+
+/// Resolve a caller-supplied path and confirm it is an open document.
+fn resolve_open_document(state: &Shared, raw: &str) -> Result<PathBuf, Response> {
+  let path = PathBuf::from(raw)
+    .canonicalize()
+    .map_err(|_| (StatusCode::NOT_FOUND, "no such document").into_response())?;
+
+  if !state.read().unwrap().is_open_document(&path) {
+    return Err(
+      (
+        StatusCode::FORBIDDEN,
+        "that file is not one of the served documents",
+      )
+        .into_response(),
+    );
+  }
+
+  Ok(path)
 }
 
 fn documents_of(state: &Shared) -> Vec<DocumentMeta> {
@@ -168,6 +213,78 @@ async fn read_file(State(state): State<Shared>, Query(query): Query<IdQuery>) ->
   }
 }
 
+/// Read an open document by path. The desktop app refreshes this way, so
+/// server mode needs it too for the two to behave identically.
+async fn read_by_path(State(state): State<Shared>, Query(query): Query<PathQuery>) -> Response {
+  let path = match resolve_open_document(&state, &query.path) {
+    Ok(path) => path,
+    Err(response) => return response,
+  };
+
+  match std::fs::read_to_string(&path) {
+    Ok(content) => Json(serde_json::json!({ "content": content })).into_response(),
+    Err(err) => (
+      StatusCode::INTERNAL_SERVER_ERROR,
+      format!("could not read document: {}", err),
+    )
+      .into_response(),
+  }
+}
+
+/// Save an open document back to disk.
+async fn write_by_path(
+  State(state): State<Shared>,
+  headers: HeaderMap,
+  Json(body): Json<WriteBody>,
+) -> Response {
+  if !authorised(&headers, &state) {
+    return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
+  }
+
+  let path = match resolve_open_document(&state, &body.path) {
+    Ok(path) => path,
+    Err(response) => return response,
+  };
+
+  match std::fs::write(&path, body.content) {
+    Ok(()) => Json(serde_json::json!({ "written": true })).into_response(),
+    Err(err) => (
+      StatusCode::INTERNAL_SERVER_ERROR,
+      format!("could not write document: {}", err),
+    )
+      .into_response(),
+  }
+}
+
+/// Write the comment-stripped copy beside an open document, mirroring the
+/// desktop export command.
+async fn export_by_path(
+  State(state): State<Shared>,
+  headers: HeaderMap,
+  Json(body): Json<WriteBody>,
+) -> Response {
+  if !authorised(&headers, &state) {
+    return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
+  }
+
+  let path = match resolve_open_document(&state, &body.path) {
+    Ok(path) => path,
+    Err(response) => return response,
+  };
+
+  let output = crate::export_path(&path.to_string_lossy());
+  match std::fs::write(&output, body.content) {
+    Ok(()) => {
+      Json(serde_json::json!({ "path": output.to_string_lossy() })).into_response()
+    }
+    Err(err) => (
+      StatusCode::INTERNAL_SERVER_ERROR,
+      format!("could not export document: {}", err),
+    )
+      .into_response(),
+  }
+}
+
 async fn read_asset(State(state): State<Shared>, Query(query): Query<PathQuery>) -> Response {
   // Canonicalise before checking: this resolves `..` and symlinks, so the
   // allowlist cannot be walked out of.
@@ -195,14 +312,7 @@ async fn add_documents(
   headers: HeaderMap,
   Json(body): Json<AddDocuments>,
 ) -> Response {
-  let presented = headers
-    .get(header::AUTHORIZATION)
-    .and_then(|value| value.to_str().ok())
-    .and_then(|value| value.strip_prefix("Bearer "))
-    .unwrap_or_default()
-    .to_string();
-
-  if presented.is_empty() || presented != state.read().unwrap().token {
+  if !authorised(&headers, &state) {
     return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
   }
 
@@ -218,21 +328,29 @@ async fn add_documents(
 }
 
 /// Marker the frontend reads to know it is running against this server rather
-/// than inside the desktop shell. Injected rather than probed so the very first
-/// render already knows which mode it is in.
-const SERVER_MARKER: &str = "<script>window.__MD_RENDER_SERVER__=true</script>";
+/// than inside the desktop shell, plus the token it needs for saving. Injected
+/// rather than probed so the very first render already knows which mode it is
+/// in.
+///
+/// Handing the token to the page gives it exactly the trust already implied by
+/// being able to reach the port. What it buys is that a page on another origin
+/// cannot read the token, so it cannot forge a write.
+pub fn inject_marker(html: &str, token: &str) -> String {
+  let marker = format!(
+    "<script>window.__MD_RENDER_SERVER__=true;window.__MD_RENDER_TOKEN__={}</script>",
+    serde_json::to_string(token).unwrap_or_else(|_| "\"\"".to_string())
+  );
 
-pub fn inject_marker(html: &str) -> String {
   match html.find("</head>") {
-    Some(index) => format!("{}{}{}", &html[..index], SERVER_MARKER, &html[index..]),
+    Some(index) => format!("{}{}{}", &html[..index], marker, &html[index..]),
     // No </head> to anchor to: prepending still runs before the app bundle.
-    None => format!("{}{}", SERVER_MARKER, html),
+    None => format!("{}{}", marker, html),
   }
 }
 
 /// Serve the built frontend out of the binary, falling back to `index.html` so
 /// client-side routing works.
-async fn static_handler(uri: Uri) -> Response {
+async fn static_handler(State(state): State<Shared>, uri: Uri) -> Response {
   let path = uri.path().trim_start_matches('/');
   let path = if path.is_empty() { "index.html" } else { path };
 
@@ -244,7 +362,8 @@ async fn static_handler(uri: Uri) -> Response {
   match asset {
     Some(file) => {
       if is_index {
-        let html = inject_marker(&String::from_utf8_lossy(&file.data));
+        let token = state.read().unwrap().token.clone();
+        let html = inject_marker(&String::from_utf8_lossy(&file.data), &token);
         return ([(header::CONTENT_TYPE, "text/html")], html).into_response();
       }
       let mime = mime_guess::from_path(path).first_or_octet_stream();
@@ -262,7 +381,9 @@ pub fn router(state: Shared) -> Router {
   Router::new()
     .route("/api/health", get(health))
     .route("/api/files", get(list_files))
-    .route("/api/file", get(read_file))
+    .route("/api/file", get(read_file).put(write_by_path))
+    .route("/api/read", get(read_by_path))
+    .route("/api/export", post(export_by_path))
     .route("/api/asset", get(read_asset))
     .route("/api/documents", post(add_documents))
     .fallback(static_handler)
@@ -352,7 +473,7 @@ mod tests {
   #[test]
   fn marker_goes_into_the_head_before_the_app_bundle() {
     let html = "<html><head><title>MD</title></head><body><script src=\"/app.js\"></script></body></html>";
-    let injected = inject_marker(html);
+    let injected = inject_marker(html, "tok");
 
     assert!(injected.contains("__MD_RENDER_SERVER__"));
     assert!(injected.find("__MD_RENDER_SERVER__").unwrap() < injected.find("/app.js").unwrap());
@@ -360,8 +481,24 @@ mod tests {
   }
 
   #[test]
+  fn marker_carries_the_token_the_page_needs_for_saving() {
+    let injected = inject_marker("<html><head></head></html>", "s3cret");
+
+    assert!(injected.contains("__MD_RENDER_TOKEN__"));
+    assert!(injected.contains("\"s3cret\""));
+  }
+
+  #[test]
+  fn marker_escapes_a_token_containing_quotes() {
+    // Serialised as JSON so an awkward token cannot break out of the script.
+    let injected = inject_marker("<html><head></head></html>", "a\"b");
+
+    assert!(injected.contains("\"a\\\"b\""));
+  }
+
+  #[test]
   fn marker_still_injected_without_a_head_tag() {
-    assert!(inject_marker("<div>bare</div>").contains("__MD_RENDER_SERVER__"));
+    assert!(inject_marker("<div>bare</div>", "tok").contains("__MD_RENDER_SERVER__"));
   }
 
   #[test]
@@ -525,6 +662,104 @@ mod tests {
       // The new document shows up as a tab, which is what the browser polls for.
       let (_, files) = http(addr, get(addr, "/api/files")).await;
       assert!(files.contains("b.md"));
+    });
+  }
+
+  #[test]
+  fn saves_open_documents_and_refuses_everything_else() {
+    let dir = temp_dir("write");
+    let doc = dir.join("a.md");
+    fs::write(&doc, "# before").unwrap();
+
+    let outsider = dir.join("not-open.md");
+    fs::write(&outsider, "# untouched").unwrap();
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      vec![Document {
+        path: doc.clone(),
+        label: "a.md".to_string(),
+      }],
+      "write-token".to_string(),
+    )));
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      tokio::spawn(async move {
+        let _ = axum::serve(listener, router(shared)).await;
+      });
+
+      let put = |path: &Path, content: &str, token: Option<&str>| {
+        let body =
+          serde_json::json!({ "path": path.display().to_string(), "content": content }).to_string();
+        let auth = token
+          .map(|t| format!("Authorization: Bearer {}\r\n", t))
+          .unwrap_or_default();
+        format!(
+          "PUT /api/file HTTP/1.1\r\nHost: {}\r\n{}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+          addr,
+          auth,
+          body.len(),
+          body
+        )
+      };
+
+      // No token: refused, and the file on disk is untouched.
+      let (status, _) = http(addr, put(&doc, "# forged", None)).await;
+      assert_eq!(status, 401);
+      assert_eq!(fs::read_to_string(&doc).unwrap(), "# before");
+
+      // Wrong token: same.
+      let (status, _) = http(addr, put(&doc, "# forged", Some("nope"))).await;
+      assert_eq!(status, 401);
+      assert_eq!(fs::read_to_string(&doc).unwrap(), "# before");
+
+      // With the token, the save lands.
+      let (status, _) = http(addr, put(&doc, "# after", Some("write-token"))).await;
+      assert_eq!(status, 200);
+      assert_eq!(fs::read_to_string(&doc).unwrap(), "# after");
+
+      // A file that is not an open document cannot be written even with the
+      // token — being next to one is not enough.
+      let (status, _) = http(addr, put(&outsider, "# hijacked", Some("write-token"))).await;
+      assert_eq!(status, 403);
+      assert_eq!(fs::read_to_string(&outsider).unwrap(), "# untouched");
+
+      // Reading back by path works, mirroring how the desktop app refreshes.
+      let (status, body) = http(
+        addr,
+        get(addr, &format!("/api/read?path={}", doc.display())),
+      )
+      .await;
+      assert_eq!(status, 200);
+      assert!(body.contains("# after"));
+
+      // And reading a non-document by path is refused too.
+      let (status, _) = http(
+        addr,
+        get(addr, &format!("/api/read?path={}", outsider.display())),
+      )
+      .await;
+      assert_eq!(status, 403);
+
+      // Export writes the clean copy beside the document.
+      let export_body =
+        serde_json::json!({ "path": doc.display().to_string(), "content": "# clean" }).to_string();
+      let export = format!(
+        "POST /api/export HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer write-token\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        addr,
+        export_body.len(),
+        export_body
+      );
+      let (status, response) = http(addr, export).await;
+      assert_eq!(status, 200);
+      assert!(response.contains("a.clean.md"));
+      assert_eq!(fs::read_to_string(dir.join("a.clean.md")).unwrap(), "# clean");
     });
   }
 
