@@ -724,6 +724,58 @@ body {
   opacity: 1;
 }
 
+/* Mermaid diagrams */
+.markdown-body .mermaid-diagram {
+  margin: 1.5em 0;
+}
+
+.markdown-body .mermaid-diagram-frame {
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.markdown-body .mermaid-diagram-frame svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.markdown-body .mermaid-loading {
+  margin-top: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.markdown-body .mermaid-diagram--error {
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-secondary);
+  border-radius: 8px;
+}
+
+.markdown-body .mermaid-diagram--error figcaption {
+  font-family: var(--font-head);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.markdown-body .mermaid-error-message {
+  margin: 0.35rem 0 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.markdown-body .mermaid-diagram--error pre {
+  margin-bottom: 0;
+}
+
 /* ===================================================================
    Floating controls
    =================================================================== */

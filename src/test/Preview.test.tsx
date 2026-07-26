@@ -1,8 +1,26 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import { Preview } from '../components/Preview'
 
+const mermaidMock = vi.hoisted(() => ({
+  initialize: vi.fn(),
+  parse: vi.fn(),
+  render: vi.fn(),
+}))
+
+vi.mock('mermaid', () => ({
+  default: mermaidMock,
+}))
+
 describe('Preview', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mermaidMock.parse.mockResolvedValue({ diagramType: 'flowchart-v2' })
+    mermaidMock.render.mockResolvedValue({
+      svg: '<svg role="img" aria-label="Rendered Mermaid"></svg>',
+    })
+  })
+
   it('renders markdown headings', () => {
     render(<Preview content="# Hello World" tocOpen={false} />)
     expect(screen.getByRole('heading', { name: 'Hello World' })).toBeInTheDocument()
@@ -45,7 +63,7 @@ describe('Preview', () => {
     expect(screen.getByText('Second')).toBeInTheDocument()
   })
 
-  it('renders code blocks', () => {
+  it('renders code blocks with syntax highlighting', () => {
     const content = `\`\`\`javascript
 const x = 1;
 \`\`\``
@@ -54,6 +72,55 @@ const x = 1;
     const codeElement = document.querySelector('code.hljs')
     expect(codeElement).toBeInTheDocument()
     expect(codeElement?.textContent).toContain('const')
+    expect(mermaidMock.render).not.toHaveBeenCalled()
+  })
+
+  it('renders flowchart Mermaid fenced code blocks as diagrams', async () => {
+    const content = `\`\`\`mermaid
+flowchart TD
+  A[Start] --> B[Finish]
+\`\`\``
+    render(<Preview content={content} tocOpen={false} />)
+
+    await waitFor(() => {
+      expect(mermaidMock.render).toHaveBeenCalledWith(
+        expect.stringMatching(/^mermaid-/),
+        expect.stringContaining('flowchart TD'),
+      )
+    })
+
+    const diagram = screen.getByTestId('mermaid-diagram')
+    await waitFor(() => expect(diagram.querySelector('svg')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /copy code/i })).not.toBeInTheDocument()
+  })
+
+  it('renders language-mermaid fenced code blocks as diagrams', async () => {
+    const content = `\`\`\`language-mermaid
+flowchart LR
+  A --> B
+\`\`\``
+    render(<Preview content={content} tocOpen={false} />)
+
+    await waitFor(() => {
+      expect(mermaidMock.render).toHaveBeenCalledWith(
+        expect.stringMatching(/^mermaid-/),
+        expect.stringContaining('flowchart LR'),
+      )
+    })
+  })
+
+  it('falls back gracefully when Mermaid rendering fails', async () => {
+    mermaidMock.parse.mockRejectedValueOnce(new Error('Expected a diagram type.'))
+    const content = `\`\`\`mermaid
+not a valid diagram
+\`\`\``
+    render(<Preview content={content} tocOpen={false} />)
+
+    const error = await screen.findByRole('alert', { name: /mermaid diagram error/i })
+    expect(error).toHaveTextContent('Unable to render Mermaid diagram.')
+    expect(error).toHaveTextContent('Expected a diagram type.')
+    expect(error.querySelector('code.language-mermaid')).toHaveTextContent('not a valid diagram')
+    expect(mermaidMock.render).not.toHaveBeenCalled()
   })
 
   it('renders inline code', () => {

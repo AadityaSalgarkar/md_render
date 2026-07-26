@@ -15,6 +15,7 @@ collapsible index, reading progress, and a set of six typographic themes.
   highlighting and foldable sections
 - Reading-progress bar and hover anchor links on headings
 - Syntax highlighting for code blocks (highlight.js)
+- Mermaid diagrams from fenced `mermaid` or `language-mermaid` code blocks
 - Math with KaTeX — inline `$…$`, `$$…$$`, and ` ```math ` blocks
 - GitHub Flavored Markdown: tables, task lists, strikethrough
 - Local images resolved relative to the open file, plus inline SVG and raw HTML
@@ -96,6 +97,21 @@ mdrender README.md
 mdrender ~/.claude/plans/my-plan.md
 ```
 
+## Mermaid Diagrams
+
+MD_RENDER renders Mermaid fences as diagrams instead of highlighted source. Use
+either `mermaid` or `language-mermaid` as the fence language:
+
+```mermaid
+flowchart LR
+  Markdown --> Preview
+  Preview --> Mermaid
+  Mermaid --> Diagram
+```
+
+If Mermaid cannot parse a diagram, MD_RENDER shows a readable render error and
+keeps the original source visible as a fallback code block.
+
 ## Claude Code Hooks Integration
 
 MD_RENDER can automatically open plan files when Claude Code writes them. This is useful for reviewing plans in a readable format.
@@ -176,6 +192,7 @@ Or manually: Right-click any .md file > Get Info > Open with > MD_RENDER > Chang
 - **Backend**: Tauri 2.x (Rust), with the asset protocol enabled for local images
 - **Styling**: Tailwind CSS; theme tokens are CSS custom properties defined in `src/lib/themes.ts`
 - **Markdown**: react-markdown with remark-gfm, remark-math, rehype-raw, rehype-slug, rehype-highlight, rehype-katex
+- **Diagrams**: Mermaid for fenced flowcharts, sequence diagrams, and other Mermaid-supported diagram types
 - **Math**: KaTeX
 - **Fonts**: Playfair Display, Source Serif 4, Spectral, Fraunces, EB Garamond (prose); IBM Plex Mono, JetBrains Mono (code) — each theme picks its own pairing
 
