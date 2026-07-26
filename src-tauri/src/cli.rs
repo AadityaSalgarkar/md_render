@@ -26,12 +26,18 @@ pub enum Mode {
   Help,
   /// Normal Tauri window. More than one document opens as tabs, matching what
   /// server mode does with the same arguments.
-  Desktop { documents: Vec<Document> },
+  Desktop {
+    documents: Vec<Document>,
+    /// The path arguments as given, kept so directories can be rescanned when
+    /// the user asks to refresh.
+    sources: Vec<String>,
+  },
   /// Headless HTTP server.
   Serve {
     host: String,
     port: u16,
     documents: Vec<Document>,
+    sources: Vec<String>,
   },
 }
 
@@ -133,13 +139,17 @@ pub fn parse(args: &[String]) -> Result<Mode, CliError> {
         host: host.unwrap_or_else(|| "127.0.0.1".to_string()),
         port,
         documents,
+        sources: paths,
       })
     }
     None => {
       // Unreadable paths are not fatal here: the desktop app opens with its
       // local draft rather than refusing to start, as it always has.
       let documents = collect_documents(&paths).unwrap_or_default();
-      Ok(Mode::Desktop { documents })
+      Ok(Mode::Desktop {
+        documents,
+        sources: paths,
+      })
     }
   }
 }
@@ -274,7 +284,10 @@ mod tests {
   fn no_port_means_desktop_mode() {
     assert_eq!(
       parse(&args(&[])).unwrap(),
-      Mode::Desktop { documents: vec![] }
+      Mode::Desktop {
+        documents: vec![],
+        sources: vec![]
+      }
     );
   }
 
@@ -285,7 +298,7 @@ mod tests {
     fs::write(&file, "# notes").unwrap();
 
     match parse(&args(&[file.to_str().unwrap()])).unwrap() {
-      Mode::Desktop { documents } => {
+      Mode::Desktop { documents, .. } => {
         assert_eq!(documents.len(), 1);
         assert_eq!(documents[0].label, "notes.md");
       }
@@ -303,7 +316,7 @@ mod tests {
     fs::write(&b, "# b").unwrap();
 
     match parse(&args(&[a.to_str().unwrap(), b.to_str().unwrap()])).unwrap() {
-      Mode::Desktop { documents } => {
+      Mode::Desktop { documents, .. } => {
         assert_eq!(documents.len(), 2);
         assert_eq!(documents[0].label, "a.md");
         assert_eq!(documents[1].label, "b.md");
@@ -317,7 +330,7 @@ mod tests {
     // Finder and the wrapper can hand us odd arguments; opening the draft is
     // better than refusing to start.
     match parse(&args(&["/definitely/not/here.md"])).unwrap() {
-      Mode::Desktop { documents } => assert!(documents.is_empty()),
+      Mode::Desktop { documents, .. } => assert!(documents.is_empty()),
       other => panic!("expected desktop mode, got {:?}", other),
     }
   }
@@ -405,6 +418,7 @@ mod tests {
         host,
         port,
         documents,
+        ..
       } => {
         assert_eq!(host, "127.0.0.1");
         assert_eq!(port, 8080);

@@ -28,6 +28,8 @@ export interface Backend {
   /** Whether the UI may offer editing and saving. */
   writable: boolean
   listDocuments(): Promise<DocumentMeta[]>
+  /** Rescan the original path arguments, picking up documents added since. */
+  refreshDocuments(): Promise<DocumentMeta[]>
   readDocument(id: string): Promise<DocumentBody>
   /** Turn an absolute image path into something the page can load. */
   assetUrl(path: string): string
@@ -49,21 +51,28 @@ function serverToken(): string {
 
 /** Tauri shell. */
 export function desktopBackend(): Backend {
-  const listDocuments = async (): Promise<DocumentMeta[]> => {
-    const documents = await invoke<Array<{ id: number; label: string; path: string }>>(
-      'list_documents',
-    )
-    return documents.map((doc) => ({
+  const asMeta = (documents: Array<{ id: number; label: string; path: string }>) =>
+    documents.map((doc) => ({
       id: String(doc.id),
       label: doc.label,
       path: doc.path,
     }))
-  }
+
+  const listDocuments = async (): Promise<DocumentMeta[]> =>
+    asMeta(
+      await invoke<Array<{ id: number; label: string; path: string }>>('list_documents'),
+    )
 
   return {
     mode: 'desktop',
     writable: true,
     listDocuments,
+    refreshDocuments: async () =>
+      asMeta(
+        await invoke<Array<{ id: number; label: string; path: string }>>(
+          'refresh_documents',
+        ),
+      ),
     readDocument: async (id) => {
       const documents = await listDocuments()
       const document = documents.find((doc) => doc.id === id)
@@ -93,26 +102,29 @@ export function desktopBackend(): Backend {
  * Tests pass an absolute origin so they can drive a real server process.
  */
 export function serverBackend(base = ''): Backend {
+  const fetchDocuments = async (refresh: boolean): Promise<DocumentMeta[]> => {
+    const response = await fetch(`${base}/api/files${refresh ? '?refresh=true' : ''}`)
+    if (!response.ok) throw new Error(`could not list documents (${response.status})`)
+    const documents = (await response.json()) as Array<{
+      id: number
+      label: string
+      path: string
+    }>
+    return documents.map((doc) => ({
+      id: String(doc.id),
+      label: doc.label,
+      path: doc.path,
+    }))
+  }
+
   return {
     mode: 'server',
     // Full parity with the desktop app: editing, saving and exporting all work.
     // Writes are limited to the documents the server was told to open and carry
     // the injected token.
     writable: true,
-    listDocuments: async () => {
-      const response = await fetch(`${base}/api/files`)
-      if (!response.ok) throw new Error(`could not list documents (${response.status})`)
-      const documents = (await response.json()) as Array<{
-        id: number
-        label: string
-        path: string
-      }>
-      return documents.map((doc) => ({
-        id: String(doc.id),
-        label: doc.label,
-        path: doc.path,
-      }))
-    },
+    listDocuments: () => fetchDocuments(false),
+    refreshDocuments: () => fetchDocuments(true),
     readDocument: async (id) => {
       const response = await fetch(`${base}/api/file?id=${encodeURIComponent(id)}`)
       if (!response.ok) throw new Error(`could not read document (${response.status})`)

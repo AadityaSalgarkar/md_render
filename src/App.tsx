@@ -14,6 +14,7 @@ import {
   stripCommentThreads,
 } from './lib/comments'
 import { detectBackend, type Backend, type DocumentMeta } from './lib/backend'
+import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -181,6 +182,35 @@ export default function App() {
     initializeFile()
   }, [documents, documentsChecked, loadFile, updateContent])
 
+  /**
+   * A file handed to the running app — a Finder double-click or a deep link.
+   * It joins the tab strip instead of replacing whatever is open.
+   */
+  const openExternalFile = useCallback(async (filePath: string) => {
+    try {
+      const found = await invoke<Array<{ id: number; label: string; path: string }>>(
+        'add_document',
+        { path: filePath },
+      )
+      const meta = found.map((doc) => ({
+        id: String(doc.id),
+        label: doc.label,
+        path: doc.path,
+      }))
+      setDocuments(meta)
+      setDocumentsChecked(true)
+
+      const opened = meta.find((doc) => doc.path === filePath)
+      if (opened) {
+        await loadDocument(opened.id)
+        return
+      }
+    } catch {
+      // Older shell without the command, or not in Tauri at all.
+    }
+    await loadFile(filePath)
+  }, [loadDocument, loadFile])
+
   // Listen for file open events (from macOS Finder double-click)
   useEffect(() => {
     let unlistenOpenFile: (() => void) | undefined
@@ -190,7 +220,7 @@ export default function App() {
       try {
         // Listen for custom open-file event from Rust backend
         unlistenOpenFile = await listen<string>('open-file', (event) => {
-          loadFile(event.payload)
+          void openExternalFile(event.payload)
         })
 
         // Listen for deep-link events (macOS file associations)
@@ -198,7 +228,7 @@ export default function App() {
           for (const url of urls) {
             if (url.startsWith('file://')) {
               const filePath = decodeURIComponent(url.replace('file://', ''))
-              loadFile(filePath)
+              void openExternalFile(filePath)
               break
             }
           }
@@ -214,7 +244,7 @@ export default function App() {
       unlistenOpenFile?.()
       unlistenDeepLink?.()
     }
-  }, [loadFile])
+  }, [openExternalFile])
 
   // Persist content to localStorage when changed (but not on first load). The
   // browser and the desktop webview have separate storage, so this does not
@@ -245,6 +275,20 @@ export default function App() {
       return next
     })
   }, [])
+
+  /** Rescan for documents added since launch and show them as tabs. */
+  const handleRefreshDocuments = useCallback(async () => {
+    try {
+      const found = await backendRef.current.refreshDocuments()
+      setDocuments(found)
+      setDocumentsChecked(true)
+      if (!activeDocIdRef.current && found.length > 0) {
+        await loadDocument(found[0].id)
+      }
+    } catch (err) {
+      console.error('Failed to refresh documents:', err)
+    }
+  }, [loadDocument])
 
   const handleTextSelection = useCallback((text: string) => {
     setSelectedText(text)
@@ -512,6 +556,16 @@ export default function App() {
         )}
 
         <motion.button
+          className="floating-btn"
+          onClick={handleRefreshDocuments}
+          whileTap={{ scale: 0.95 }}
+          aria-label="Refresh documents"
+          title="Refresh documents"
+        >
+          <RefreshIcon />
+        </motion.button>
+
+        <motion.button
           className={`floating-btn ${commentsOpen ? 'is-on' : ''}`}
           onClick={() => setCommentsOpen((prev) => !prev)}
           whileTap={{ scale: 0.95 }}
@@ -616,6 +670,16 @@ function EyeIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
       <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+function RefreshIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="23 4 23 10 17 10" />
+      <polyline points="1 20 1 14 7 14" />
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
     </svg>
   )
 }

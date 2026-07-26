@@ -31,14 +31,17 @@ pub struct ServerState {
   documents: Vec<Document>,
   /// Directories under which `/api/asset` may read. One per document parent.
   roots: HashSet<PathBuf>,
+  /// The path arguments as given, rescanned when a refresh is requested.
+  sources: Vec<String>,
   token: String,
 }
 
 impl ServerState {
-  pub fn new(documents: Vec<Document>, token: String) -> Self {
+  pub fn new(documents: Vec<Document>, sources: Vec<String>, token: String) -> Self {
     let mut state = ServerState {
       documents: Vec::new(),
       roots: HashSet::new(),
+      sources,
       token,
     };
     state.add_documents(documents);
@@ -178,7 +181,22 @@ async fn health() -> impl IntoResponse {
   }))
 }
 
-async fn list_files(State(state): State<Shared>) -> impl IntoResponse {
+#[derive(Deserialize)]
+struct ListQuery {
+  /// Set by the refresh control. Rescanning on every poll would walk the
+  /// directory tree every few seconds for no reason.
+  #[serde(default)]
+  refresh: bool,
+}
+
+async fn list_files(State(state): State<Shared>, Query(query): Query<ListQuery>) -> impl IntoResponse {
+  if query.refresh {
+    let sources = state.read().unwrap().sources.clone();
+    if let Ok(found) = crate::cli::collect_documents(&sources) {
+      state.write().unwrap().add_documents(found);
+    }
+  }
+
   Json(documents_of(&state))
 }
 
@@ -391,9 +409,18 @@ pub fn router(state: Shared) -> Router {
 }
 
 /// Run the server until Ctrl-C.
-pub fn run(host: &str, port: u16, documents: Vec<Document>) -> Result<(), String> {
+pub fn run(
+  host: &str,
+  port: u16,
+  documents: Vec<Document>,
+  sources: Vec<String>,
+) -> Result<(), String> {
   let token = uuid::Uuid::new_v4().to_string();
-  let shared: Shared = Arc::new(RwLock::new(ServerState::new(documents, token.clone())));
+  let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+    documents,
+    sources,
+    token.clone(),
+  )));
 
   let runtime = tokio::runtime::Builder::new_multi_thread()
     .enable_all()
@@ -466,6 +493,7 @@ mod tests {
         path: doc,
         label: "a.md".to_string(),
       }],
+      vec![],
       "token".to_string(),
     )
   }
@@ -585,6 +613,7 @@ mod tests {
         path: dir.join("a.md"),
         label: "a.md".to_string(),
       }],
+      vec![],
       "test-token".to_string(),
     )));
 
@@ -666,6 +695,50 @@ mod tests {
   }
 
   #[test]
+  fn refreshing_picks_up_markdown_added_to_a_served_directory() {
+    let dir = temp_dir("refresh");
+    fs::write(dir.join("first.md"), "# first").unwrap();
+
+    let sources = vec![dir.to_string_lossy().to_string()];
+    let initial = crate::cli::collect_documents(&sources).unwrap();
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      initial,
+      sources,
+      "refresh-token".to_string(),
+    )));
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      tokio::spawn(async move {
+        let _ = axum::serve(listener, router(shared)).await;
+      });
+
+      let (_, before) = http(addr, get(addr, "/api/files")).await;
+      assert!(before.contains("first.md"));
+      assert!(!before.contains("second.md"));
+
+      // Something drops a new document into the directory after launch.
+      fs::write(dir.join("second.md"), "# second").unwrap();
+
+      // A plain list does not rescan, so the poll stays cheap.
+      let (_, unrefreshed) = http(addr, get(addr, "/api/files")).await;
+      assert!(!unrefreshed.contains("second.md"));
+
+      // Asking for a refresh finds it.
+      let (status, refreshed) = http(addr, get(addr, "/api/files?refresh=true")).await;
+      assert_eq!(status, 200);
+      assert!(refreshed.contains("second.md"));
+      assert!(refreshed.contains("first.md"));
+    });
+  }
+
+  #[test]
   fn saves_open_documents_and_refuses_everything_else() {
     let dir = temp_dir("write");
     let doc = dir.join("a.md");
@@ -679,6 +752,7 @@ mod tests {
         path: doc.clone(),
         label: "a.md".to_string(),
       }],
+      vec![],
       "write-token".to_string(),
     )));
 
