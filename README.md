@@ -11,6 +11,7 @@ collapsible index, reading progress, and a set of six typographic themes.
   dark (Midnight Ink, Nocturne, Evergreen), each with its own fonts, colors, and
   code-syntax palette — chosen from a swatch popover
 - Collapsible split-pane editor and preview with a draggable divider
+- Manual Save control plus 30-second autosave/refresh for opened markdown files
 - Collapsible document index, auto-built from headings, with scroll-spy
   highlighting and foldable sections
 - Reading-progress bar and hover anchor links on headings
@@ -96,6 +97,14 @@ Usage:
 mdrender README.md
 mdrender ~/.claude/plans/my-plan.md
 ```
+
+When MD_RENDER opens a local `.md` or `.markdown` file, edits made in the
+editor pane can be saved immediately with the Save button. Unsaved local edits
+also autosave back to that file every 30 seconds and before the window closes.
+If there are no local edits waiting to save, the same 30-second sync refreshes
+the rendered text from disk. If the app is opened without a file, draft content
+is kept in browser storage for the next session and can also be saved with the
+Save button.
 
 ## Mermaid Diagrams
 

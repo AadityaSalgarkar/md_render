@@ -15,9 +15,11 @@ import {
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const MIN_PANE_WIDTH = 280
 const DEFAULT_SPLIT = 0.45
+const FILE_SYNC_INTERVAL_MS = 30_000
 
 function readStoredToc(): boolean {
   if (typeof window === 'undefined') return true
@@ -34,19 +36,31 @@ export default function App() {
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [saveState, setSaveState] = useState<string | null>(null)
   const [exportState, setExportState] = useState<string | null>(null)
+  const contentRef = useRef(content)
+  const filePathRef = useRef<string | null>(null)
+  const fileSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve())
+  const hasUnsavedChangesRef = useRef(false)
+  const closeAfterSaveRef = useRef(false)
+
+  const updateContent = useCallback((nextContent: string) => {
+    contentRef.current = nextContent
+    setContent(nextContent)
+  }, [])
 
   // Load file helper
   const loadFile = useCallback(async (filePath: string) => {
     try {
       const text = await invoke<string>('read_file', { path: filePath })
-      setContent(text)
+      updateContent(text)
+      filePathRef.current = filePath
+      hasUnsavedChangesRef.current = false
       setFilePath(filePath)
       setBaseDir(dirname(filePath))
       setFileLoaded(true)
     } catch (err) {
       console.error('Failed to load file:', err)
     }
-  }, [])
+  }, [updateContent])
 
   // Load file on startup and persist content to localStorage
   useEffect(() => {
@@ -73,14 +87,16 @@ export default function App() {
       // Load from localStorage if no file was launched
       const stored = localStorage.getItem('md-render-content')
       if (stored !== null) {
-        setContent(stored)
+        updateContent(stored)
       }
+      filePathRef.current = null
+      hasUnsavedChangesRef.current = false
       setFilePath(null)
       setFileLoaded(true)
     }
 
     initializeFile()
-  }, [loadFile])
+  }, [loadFile, updateContent])
 
   // Listen for file open events (from macOS Finder double-click)
   useEffect(() => {
@@ -151,12 +167,77 @@ export default function App() {
     setSaveState(null)
   }, [])
 
-  const saveContentToFile = useCallback(async (nextContent: string) => {
-    if (filePath) {
-      await invoke('write_file', { path: filePath, content: nextContent })
+  const writeOpenFile = useCallback((path: string, nextContent: string) => {
+    const save = fileSaveQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        await invoke('write_file', { path, content: nextContent })
+        if (filePathRef.current === path && contentRef.current === nextContent) {
+          hasUnsavedChangesRef.current = false
+        }
+      })
+    fileSaveQueueRef.current = save
+    return save
+  }, [])
+
+  const handleEditorChange = useCallback((nextContent: string) => {
+    updateContent(nextContent)
+    if (filePathRef.current) {
+      hasUnsavedChangesRef.current = true
+      setSaveState('Unsaved changes.')
     }
-    setContent(nextContent)
-  }, [filePath])
+  }, [updateContent])
+
+  const syncOpenFile = useCallback(async (status: 'manual' | 'periodic' | 'close') => {
+    const path = filePathRef.current
+    if (!path) {
+      if (status === 'manual') {
+        const stored = localStorage.getItem('md-render-content')
+        if (stored !== null) updateContent(stored)
+        setSaveState('Refreshed from local draft.')
+      }
+      return
+    }
+
+    if (hasUnsavedChangesRef.current) {
+      try {
+        await writeOpenFile(path, contentRef.current)
+        if (!hasUnsavedChangesRef.current && status !== 'close') {
+          setSaveState('Autosaved to markdown file.')
+        }
+      } catch (err) {
+        if (status !== 'close') {
+          setSaveState('Could not write to the markdown file.')
+        }
+        throw err
+      }
+      return
+    }
+
+    try {
+      const text = await invoke<string>('read_file', { path })
+      if (text !== contentRef.current) {
+        updateContent(text)
+        setSaveState('Refreshed from markdown file.')
+      } else if (status === 'manual') {
+        setSaveState('Refreshed from markdown file.')
+      }
+      setBaseDir(dirname(path))
+    } catch (err) {
+      if (status !== 'close') {
+        setSaveState('Could not refresh the markdown file.')
+      }
+      throw err
+    }
+  }, [updateContent, writeOpenFile])
+
+  const saveContentToFile = useCallback(async (nextContent: string) => {
+    updateContent(nextContent)
+    if (filePath) {
+      hasUnsavedChangesRef.current = true
+      await writeOpenFile(filePath, nextContent)
+    }
+  }, [filePath, updateContent, writeOpenFile])
 
   const handleSaveComment = useCallback(async (comment: string) => {
     if (!selectedText) return
@@ -174,23 +255,72 @@ export default function App() {
   }, [content, filePath, saveContentToFile, selectedText])
 
   const handleRefreshComments = useCallback(async () => {
-    if (!filePath) {
-      const stored = localStorage.getItem('md-render-content')
-      if (stored !== null) setContent(stored)
-      setSaveState('Refreshed from local draft.')
+    try {
+      await syncOpenFile('manual')
+    } catch (err) {
+      console.error('Failed to refresh comments:', err)
+    }
+  }, [syncOpenFile])
+
+  const handleSaveNow = useCallback(async () => {
+    const path = filePathRef.current
+    if (!path) {
+      localStorage.setItem('md-render-content', contentRef.current)
+      setSaveState('Saved local draft.')
       return
     }
 
     try {
-      const text = await invoke<string>('read_file', { path: filePath })
-      setContent(text)
-      setBaseDir(dirname(filePath))
-      setSaveState('Refreshed from markdown file.')
+      hasUnsavedChangesRef.current = true
+      await writeOpenFile(path, contentRef.current)
+      setSaveState('Saved to markdown file.')
     } catch (err) {
-      setSaveState('Could not refresh the markdown file.')
-      console.error('Failed to refresh comments:', err)
+      setSaveState('Could not write to the markdown file.')
+      console.error('Failed to save file:', err)
     }
-  }, [filePath])
+  }, [writeOpenFile])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void syncOpenFile('periodic').catch((err) => {
+        console.error('Failed to sync markdown file:', err)
+      })
+    }, FILE_SYNC_INTERVAL_MS)
+
+    return () => window.clearInterval(interval)
+  }, [syncOpenFile])
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+
+    const setupCloseGuard = async () => {
+      try {
+        const appWindow = getCurrentWindow()
+        unlisten = await appWindow.onCloseRequested(async (event) => {
+          if (closeAfterSaveRef.current) return
+          event.preventDefault()
+
+          try {
+            await syncOpenFile('close')
+            await fileSaveQueueRef.current
+          } catch (err) {
+            console.error('Failed to finish autosave before closing:', err)
+          } finally {
+            closeAfterSaveRef.current = true
+            await appWindow.close()
+          }
+        })
+      } catch {
+        // Tauri window APIs are unavailable outside the desktop shell (web mode).
+      }
+    }
+
+    setupCloseGuard()
+
+    return () => {
+      unlisten?.()
+    }
+  }, [syncOpenFile])
 
   const handleExportCleanMarkdown = useCallback(async () => {
     const cleanContent = stripCommentThreads(content)
@@ -282,6 +412,16 @@ export default function App() {
         </motion.button>
 
         <motion.button
+          className="floating-btn"
+          onClick={handleSaveNow}
+          whileTap={{ scale: 0.95 }}
+          aria-label="Save markdown"
+          title="Save"
+        >
+          <SaveIcon />
+        </motion.button>
+
+        <motion.button
           className={`floating-btn ${commentsOpen ? 'is-on' : ''}`}
           onClick={() => setCommentsOpen((prev) => !prev)}
           whileTap={{ scale: 0.95 }}
@@ -306,7 +446,7 @@ export default function App() {
           }}
           transition={{ duration: 0.3, ease: 'easeInOut' }}
         >
-          <Editor value={content} onChange={setContent} />
+          <Editor value={content} onChange={handleEditorChange} />
         </motion.div>
 
         {/* Divider */}
@@ -383,6 +523,16 @@ function EyeIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
       <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+function SaveIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+      <polyline points="17 21 17 13 7 13 7 21" />
+      <polyline points="7 3 7 8 15 8" />
     </svg>
   )
 }
