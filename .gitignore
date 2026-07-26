@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+
+# Editor and OS cruft
+.DS_Store
+*.local
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Local scratch space (see CLAUDE.md: deletions are staged here)
+to-delete/
+
+# Local shell helpers
+.macros
+
+# Tooling state
+.jj/
+.llm/

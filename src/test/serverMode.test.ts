@@ -202,6 +202,24 @@ describe.skipIf(!binary)('md-render --port', () => {
     expect(response.status).toBe(401)
   })
 
+  it('picks up a document added to a served directory when refreshed', async () => {
+    const backend = serverBackend(origin)
+    const before = await backend.listDocuments()
+    expect(before.map((doc) => doc.label)).not.toContain('appeared-later.md')
+
+    // Something writes a new file into the directory the server is serving.
+    writeFileSync(path.join(work, 'nested', 'appeared-later.md'), '# Appeared later\n')
+
+    // A plain list does not rescan, so the periodic poll stays cheap.
+    expect((await backend.listDocuments()).map((doc) => doc.label)).not.toContain(
+      'appeared-later.md',
+    )
+
+    // The refresh control does.
+    const after = await backend.refreshDocuments()
+    expect(after.map((doc) => doc.label)).toContain('appeared-later.md')
+  })
+
   it('adds a tab when the same command is run again against a live server', async () => {
     const before = await serverBackend(origin).listDocuments()
     expect(before.map((doc) => doc.label)).not.toContain('second.md')

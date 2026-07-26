@@ -13,6 +13,10 @@ static LAUNCH_FILE: Mutex<Option<String>> = Mutex::new(None);
 /// Documents named on the command line, surfaced to the frontend as tabs.
 static LAUNCH_DOCUMENTS: Mutex<Vec<cli::Document>> = Mutex::new(Vec::new());
 
+/// The path arguments as given, so a refresh can rescan directories and pick
+/// up markdown added since launch.
+static LAUNCH_SOURCES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
 #[derive(serde::Serialize)]
 pub struct DocumentMeta {
   id: usize,
@@ -20,10 +24,7 @@ pub struct DocumentMeta {
   path: String,
 }
 
-/// The open documents, mirroring the server's `/api/files` so the frontend can
-/// build tabs the same way in either mode.
-#[tauri::command]
-fn list_documents() -> Vec<DocumentMeta> {
+fn documents_as_meta() -> Vec<DocumentMeta> {
   LAUNCH_DOCUMENTS
     .lock()
     .map(|documents| {
@@ -38,6 +39,56 @@ fn list_documents() -> Vec<DocumentMeta> {
         .collect()
     })
     .unwrap_or_default()
+}
+
+/// Add documents to the open set, skipping ones already there. Returns whether
+/// anything was added.
+fn merge_documents(found: Vec<cli::Document>) -> bool {
+  let Ok(mut open) = LAUNCH_DOCUMENTS.lock() else {
+    return false;
+  };
+
+  let existing: std::collections::HashSet<PathBuf> =
+    open.iter().map(|doc| doc.path.clone()).collect();
+  let mut added = false;
+
+  for document in found {
+    if existing.contains(&document.path) {
+      continue;
+    }
+    open.push(document);
+    added = true;
+  }
+
+  added
+}
+
+/// The open documents, mirroring the server's `/api/files` so the frontend can
+/// build tabs the same way in either mode.
+#[tauri::command]
+fn list_documents() -> Vec<DocumentMeta> {
+  documents_as_meta()
+}
+
+/// Rescan the original path arguments and return the tab list. Markdown added
+/// to a directory that was named on the command line shows up here.
+#[tauri::command]
+fn refresh_documents() -> Vec<DocumentMeta> {
+  let sources = LAUNCH_SOURCES.lock().map(|s| s.clone()).unwrap_or_default();
+  if let Ok(found) = cli::collect_documents(&sources) {
+    merge_documents(found);
+  }
+  documents_as_meta()
+}
+
+/// Open a file that arrived while the app was running — a Finder double-click
+/// or a deep link — as another tab rather than replacing the current one.
+#[tauri::command]
+fn add_document(path: String) -> Vec<DocumentMeta> {
+  if let Ok(found) = cli::collect_documents(&[path]) {
+    merge_documents(found);
+  }
+  documents_as_meta()
 }
 
 #[tauri::command]
@@ -92,7 +143,12 @@ fn get_launch_file() -> Option<String> {
 
 /// Serve mode: either start a server, or hand the documents to one that is
 /// already holding the port.
-fn run_server(host: String, port: u16, documents: Vec<cli::Document>) -> Result<(), String> {
+fn run_server(
+  host: String,
+  port: u16,
+  documents: Vec<cli::Document>,
+  sources: Vec<String>,
+) -> Result<(), String> {
   match attach::probe(&host, port) {
     attach::Probe::MdRender => {
       let record = state::read(port).ok_or_else(|| {
@@ -123,7 +179,7 @@ fn run_server(host: String, port: u16, documents: Vec<cli::Document>) -> Result<
       "port {} is in use by another program",
       port
     )),
-    attach::Probe::Free => server::run(&host, port, documents),
+    attach::Probe::Free => server::run(&host, port, documents, sources),
   }
 }
 
@@ -140,7 +196,7 @@ pub fn run() {
     }
   };
 
-  let documents = match mode {
+  let (documents, sources) = match mode {
     cli::Mode::Help => {
       println!("{}", cli::USAGE);
       return;
@@ -149,14 +205,15 @@ pub fn run() {
       host,
       port,
       documents,
+      sources,
     } => {
-      if let Err(err) = run_server(host, port, documents) {
+      if let Err(err) = run_server(host, port, documents, sources) {
         eprintln!("md-render: {}", err);
         std::process::exit(1);
       }
       return;
     }
-    cli::Mode::Desktop { documents } => documents,
+    cli::Mode::Desktop { documents, sources } => (documents, sources),
   };
 
   // Check for launch file from command-line args before building the app
@@ -168,6 +225,9 @@ pub fn run() {
   if let Ok(mut guard) = LAUNCH_DOCUMENTS.lock() {
     *guard = documents;
   }
+  if let Ok(mut guard) = LAUNCH_SOURCES.lock() {
+    *guard = sources;
+  }
 
   tauri::Builder::default()
     .invoke_handler(tauri::generate_handler![
@@ -175,7 +235,9 @@ pub fn run() {
       write_file,
       export_markdown,
       get_launch_file,
-      list_documents
+      list_documents,
+      refresh_documents,
+      add_document
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
