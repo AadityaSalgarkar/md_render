@@ -1,12 +1,13 @@
 # MD_RENDER
 
-A native macOS markdown renderer built with Tauri, React, and TypeScript. It
-pairs a split-pane editor/preview with a documentation-site reading layout —
-collapsible index, reading progress, and a set of six typographic themes.
+A native markdown renderer for macOS and Linux, built with Tauri, React, and
+TypeScript. It pairs a split-pane editor/preview with a documentation-site
+reading layout — collapsible index, reading progress, and a set of six
+typographic themes.
 
 ## Features
 
-- Native macOS app built with Tauri 2.x
+- Native macOS and Linux app built with Tauri 2.x
 - Six typographic themes — three light (Warm Paper, Newsprint, Forest) and three
   dark (Midnight Ink, Nocturne, Evergreen), each with its own fonts, colors, and
   code-syntax palette — chosen from a swatch popover
@@ -37,21 +38,33 @@ remembered between sessions.
 
 ## Installation
 
-### From Release
+`make install` detects the platform and runs the right target, so the same
+command works on both systems:
+
+```bash
+make build          # build the app for the current platform
+make install        # build and install for the current platform
+make install-macos  # install MD_RENDER.app plus ~/bin/mdrender
+make install-linux  # install into $PREFIX (default ~/.local), no root needed
+make install-clean  # install, then remove dist/ and src-tauri/target/
+make test           # run the test suite
+make clean          # remove local build artifacts
+```
+
+### macOS
+
+#### From Release
 
 1. Download `MD_RENDER.app` from releases
 2. Move to `/Applications/`
 3. Install the wrapper script (see below)
 
-### Building from Source
+#### Building from Source
 
 ```bash
-# Clone and install dependencies
 git clone <repo-url>
 cd md_render
 npm install
-
-# Build
 npm run tauri:build
 
 # Install (replace any existing copy)
@@ -59,14 +72,44 @@ rm -rf /Applications/MD_RENDER.app
 cp -R src-tauri/target/release/bundle/macos/MD_RENDER.app /Applications/
 ```
 
-Or use the Makefile:
+### Linux
+
+Build prerequisites (Debian/Ubuntu — package names differ on other distros):
 
 ```bash
-make build          # build the macOS app bundle
-make install        # build and install to /Applications plus ~/bin/mdrender
-make install-clean  # install, then remove dist/ and src-tauri/target/
-make clean          # remove local build artifacts
+sudo apt install build-essential curl wget file pkg-config \
+  libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+  libayatana-appindicator3-dev librsvg2-dev libgtk-3-dev
 ```
+
+Rust and Node are also required; install Rust with
+[rustup](https://rustup.rs) as your normal user.
+
+```bash
+git clone <repo-url>
+cd md_render
+npm install
+make install-linux
+```
+
+`make install-linux` installs entirely under your home directory — no root
+required:
+
+| Path | Contents |
+|------|----------|
+| `~/.local/bin/md-render` | the application binary |
+| `~/bin/mdrender` | command-line wrapper |
+| `~/.local/share/applications/md-render.desktop` | desktop entry and `.md` association |
+| `~/.local/share/icons/hicolor/*/apps/md-render.png` | icons |
+
+Set `PREFIX` to install elsewhere, e.g. `make install-linux PREFIX=/usr/local`
+(that location needs write access). Make sure `~/.local/bin` and `~/bin` are on
+your `PATH`.
+
+`npm run tauri:build` also produces distributable bundles under
+`src-tauri/target/release/bundle/` — `.deb`, `.rpm`, and `.AppImage`. Install
+the `.deb` with `sudo apt install ./MD_RENDER_0.1.0_amd64.deb`, or run the
+AppImage directly with no installation at all.
 
 ## Wrapper Script
 

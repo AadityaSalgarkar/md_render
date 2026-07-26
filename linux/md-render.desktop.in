@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=MD_RENDER
+GenericName=Markdown Viewer
+Comment=Render Markdown with math, Mermaid diagrams and review comments
+Exec=@EXEC@ %f
+Icon=md-render
+Terminal=false
+Categories=Utility;Office;
+MimeType=text/markdown;text/x-markdown;
+StartupWMClass=md-render
+StartupNotify=true

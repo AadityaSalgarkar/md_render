@@ -1,12 +1,122 @@
-#!/bin/bash
-if [ -z "$1" ]; then
-  open -a MD_RENDER
-else
-  # Use realpath if available, otherwise use the file as-is
-  if command -v realpath &> /dev/null; then
-    FILE="$(realpath "$1")"
+#!/usr/bin/env bash
+# Cross-platform launcher for MD_RENDER.
+#   mdrender            open the app
+#   mdrender FILE.md    open the app on FILE.md
+set -euo pipefail
+
+APP_NAME="MD_RENDER"
+
+# Absolute path of this script, so the Linux lookup never re-executes the wrapper.
+self_path() {
+  local src="${BASH_SOURCE[0]}"
+  while [ -L "$src" ]; do
+    local dir
+    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" != /* ]] && src="$dir/$src"
+  done
+  printf '%s\n' "$(cd -P "$(dirname "$src")" && pwd)/$(basename "$src")"
+}
+
+abs_path() {
+  if command -v realpath >/dev/null 2>&1; then
+    realpath "$1"
+  elif [ -e "$1" ]; then
+    printf '%s\n' "$(cd -P "$(dirname "$1")" && pwd)/$(basename "$1")"
   else
-    FILE="$1"
+    case "$1" in
+      /*) printf '%s\n' "$1" ;;
+      *)  printf '%s\n' "$PWD/$1" ;;
+    esac
   fi
-  TAURI_LAUNCH_FILE="$FILE" open -a MD_RENDER
-fi
+}
+
+# Locate the installed Linux executable, skipping this wrapper itself.
+find_linux_binary() {
+  local self candidate resolved
+  self="$(self_path)"
+
+  # Deliberately excludes "mdrender": that is this wrapper's own installed name,
+  # so matching it would launch the wrapper again instead of the app.
+  for candidate in md-render "$APP_NAME"; do
+    if resolved="$(command -v "$candidate" 2>/dev/null)"; then
+      resolved="$(abs_path "$resolved")"
+      if [ "$resolved" != "$self" ]; then
+        printf '%s\n' "$resolved"
+        return 0
+      fi
+    fi
+  done
+
+  for candidate in \
+    "$HOME/.local/lib/md-render/$APP_NAME" \
+    "$HOME/.local/bin/md-render" \
+    /usr/bin/md-render \
+    /usr/local/bin/md-render \
+    "/usr/lib/md-render/$APP_NAME"; do
+    if [ -x "$candidate" ] && [ "$(abs_path "$candidate")" != "$self" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  # Fall back to a local release build when running from a checkout.
+  local repo_root
+  repo_root="$(cd -P "$(dirname "$self")/.." && pwd)"
+  for candidate in \
+    "$repo_root/src-tauri/target/release/$APP_NAME" \
+    "$repo_root/src-tauri/target/release/md-render"; do
+    if [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+main() {
+  local file=""
+  if [ "$#" -gt 0 ] && [ -n "$1" ]; then
+    file="$(abs_path "$1")"
+  fi
+
+  case "$(uname -s)" in
+    Darwin)
+      if [ -z "$file" ]; then
+        open -a "$APP_NAME"
+      else
+        TAURI_LAUNCH_FILE="$file" open -a "$APP_NAME"
+      fi
+      ;;
+    Linux)
+      local bin
+      if ! bin="$(find_linux_binary)"; then
+        echo "mdrender: MD_RENDER is not installed. Run 'make install' from the repo." >&2
+        exit 1
+      fi
+
+      # Foreground when asked, otherwise detach so the shell returns like macOS 'open'.
+      if [ -n "${MDRENDER_FOREGROUND:-}" ]; then
+        if [ -z "$file" ]; then
+          exec "$bin"
+        else
+          TAURI_LAUNCH_FILE="$file" exec "$bin" "$file"
+        fi
+      fi
+
+      if [ -z "$file" ]; then
+        nohup "$bin" >/dev/null 2>&1 &
+      else
+        TAURI_LAUNCH_FILE="$file" nohup "$bin" "$file" >/dev/null 2>&1 &
+      fi
+      disown 2>/dev/null || true
+      ;;
+    *)
+      echo "mdrender: unsupported platform '$(uname -s)'" >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
