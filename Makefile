@@ -25,13 +25,16 @@ help:
 	@printf "  make install-macos  Install MD_RENDER.app plus ~/bin/mdrender\n"
 	@printf "  make install-linux  Install into \$$PREFIX (default ~/.local), no root needed\n"
 	@printf "  make install-clean  Install, then remove local build artifacts\n"
-	@printf "  make test           Run the frontend test suite\n"
+	@printf "  make test           Run the Rust and frontend test suites\n"
 	@printf "  make clean          Remove local build artifacts\n"
 
 build:
 	npm run tauri:build
 
 test:
+	cd src-tauri && cargo test
+	@# The server-mode tests drive the real binary, so make sure it exists.
+	cd src-tauri && cargo build
 	npm test -- --run
 
 ifeq ($(UNAME_S),Darwin)

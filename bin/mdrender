@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Cross-platform launcher for MD_RENDER.
-#   mdrender            open the app
-#   mdrender FILE.md    open the app on FILE.md
+#   mdrender                          open the app
+#   mdrender FILE.md                  open the app on FILE.md
+#   mdrender --port 8080 FILE... DIR  serve rendered markdown over HTTP
 set -euo pipefail
 
 APP_NAME="MD_RENDER"
@@ -75,18 +76,83 @@ find_linux_binary() {
   return 1
 }
 
+# Rewrite the argument list: flags and their values pass through untouched,
+# bare paths are made absolute so the app resolves them from any directory.
+# Sets ARGS (rewritten argv), FIRST_FILE (first path, for macOS) and SERVE.
+parse_args() {
+  ARGS=()
+  FIRST_FILE=""
+  SERVE=""
+
+  local expect_value=""
+  local arg
+  for arg in "$@"; do
+    if [ -n "$expect_value" ]; then
+      ARGS+=("$arg")
+      expect_value=""
+      continue
+    fi
+
+    case "$arg" in
+      --port|-p|--host)
+        [ "$arg" = "--host" ] || SERVE="yes"
+        ARGS+=("$arg")
+        expect_value="yes"
+        ;;
+      --port=*|-p=*)
+        SERVE="yes"
+        ARGS+=("$arg")
+        ;;
+      -*)
+        ARGS+=("$arg")
+        ;;
+      *)
+        ARGS+=("$(abs_path "$arg")")
+        [ -n "$FIRST_FILE" ] || FIRST_FILE="$(abs_path "$arg")"
+        ;;
+    esac
+  done
+}
+
 main() {
-  local file=""
-  if [ "$#" -gt 0 ] && [ -n "$1" ]; then
-    file="$(abs_path "$1")"
+  parse_args "$@"
+
+  # Serving is a terminal task: run it in the foreground on both platforms so
+  # the banner is visible and ctrl-c stops it.
+  if [ -n "$SERVE" ]; then
+    case "$(uname -s)" in
+      Darwin)
+        local app_bin="/Applications/$APP_NAME.app/Contents/MacOS/md-render"
+        if [ ! -x "$app_bin" ]; then
+          app_bin="$(cd -P "$(dirname "$(self_path)")/.." && pwd)/src-tauri/target/release/md-render"
+        fi
+        if [ ! -x "$app_bin" ]; then
+          echo "mdrender: MD_RENDER is not installed. Run 'make install' from the repo." >&2
+          exit 1
+        fi
+        exec "$app_bin" "${ARGS[@]}"
+        ;;
+      Linux)
+        local bin
+        if ! bin="$(find_linux_binary)"; then
+          echo "mdrender: MD_RENDER is not installed. Run 'make install' from the repo." >&2
+          exit 1
+        fi
+        exec "$bin" "${ARGS[@]}"
+        ;;
+      *)
+        echo "mdrender: unsupported platform '$(uname -s)'" >&2
+        exit 1
+        ;;
+    esac
   fi
 
   case "$(uname -s)" in
     Darwin)
-      if [ -z "$file" ]; then
+      if [ -z "$FIRST_FILE" ]; then
         open -a "$APP_NAME"
       else
-        TAURI_LAUNCH_FILE="$file" open -a "$APP_NAME"
+        TAURI_LAUNCH_FILE="$FIRST_FILE" open -a "$APP_NAME"
       fi
       ;;
     Linux)
@@ -98,17 +164,17 @@ main() {
 
       # Foreground when asked, otherwise detach so the shell returns like macOS 'open'.
       if [ -n "${MDRENDER_FOREGROUND:-}" ]; then
-        if [ -z "$file" ]; then
+        if [ -z "$FIRST_FILE" ]; then
           exec "$bin"
         else
-          TAURI_LAUNCH_FILE="$file" exec "$bin" "$file"
+          TAURI_LAUNCH_FILE="$FIRST_FILE" exec "$bin" "${ARGS[@]}"
         fi
       fi
 
-      if [ -z "$file" ]; then
+      if [ -z "$FIRST_FILE" ]; then
         nohup "$bin" >/dev/null 2>&1 &
       else
-        TAURI_LAUNCH_FILE="$file" nohup "$bin" "$file" >/dev/null 2>&1 &
+        TAURI_LAUNCH_FILE="$FIRST_FILE" nohup "$bin" "${ARGS[@]}" >/dev/null 2>&1 &
       fi
       disown 2>/dev/null || true
       ;;
