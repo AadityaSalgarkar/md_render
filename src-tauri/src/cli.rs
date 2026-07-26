@@ -6,6 +6,9 @@ const MARKDOWN_EXTENSIONS: [&str; 2] = ["md", "markdown"];
 /// How deep a directory argument is scanned. Guards against pathological trees.
 const MAX_SCAN_DEPTH: usize = 16;
 
+/// Port used when `--port` is given without a number.
+pub const DEFAULT_PORT: u16 = 10000;
+
 /// A document the app was asked to open.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Document {
@@ -62,10 +65,10 @@ impl std::fmt::Display for CliError {
 pub const USAGE: &str = "\
 Usage:
   md-render [FILE]                       open the desktop app
-  md-render --port <PORT> [FILE|DIR]...  serve rendered markdown over HTTP
+  md-render --port [PORT] [FILE|DIR]...  serve rendered markdown over HTTP
 
 Options:
-  -p, --port <PORT>   port to listen on (1-65535)
+  -p, --port [PORT]   port to listen on, 1-65535 (default 10000)
       --host <ADDR>   address to bind (default 127.0.0.1)
   -h, --help          show this help";
 
@@ -81,9 +84,19 @@ pub fn parse(args: &[String]) -> Result<Mode, CliError> {
     match arg.as_str() {
       "--help" | "-h" => return Ok(Mode::Help),
       "--port" | "-p" => {
-        let value = args.get(idx + 1).ok_or(CliError::MissingValue("--port"))?;
-        port = Some(parse_port(value)?);
-        idx += 2;
+        // The value is optional: `--port 8080 a.md` picks 8080, while
+        // `--port a.md` falls back to the default rather than swallowing the
+        // path as a port.
+        match args.get(idx + 1) {
+          Some(value) if is_numeric(value) => {
+            port = Some(parse_port(value)?);
+            idx += 2;
+          }
+          _ => {
+            port = Some(DEFAULT_PORT);
+            idx += 1;
+          }
+        }
       }
       "--host" => {
         let value = args.get(idx + 1).ok_or(CliError::MissingValue("--host"))?;
@@ -134,6 +147,11 @@ pub fn parse(args: &[String]) -> Result<Mode, CliError> {
       }),
     }),
   }
+}
+
+/// Digits only — used to tell a port from a path following `--port`.
+fn is_numeric(value: &str) -> bool {
+  !value.is_empty() && value.chars().all(|c| c.is_ascii_digit())
 }
 
 fn parse_port(value: &str) -> Result<u16, CliError> {
@@ -282,22 +300,57 @@ mod tests {
   }
 
   #[test]
-  fn rejects_port_zero_and_non_numeric_ports() {
+  fn rejects_port_zero() {
+    // Binding port 0 would pick an arbitrary port the user was never told.
     assert!(matches!(
       parse(&args(&["--port", "0", "a.md"])),
-      Err(CliError::InvalidPort(_))
-    ));
-    assert!(matches!(
-      parse(&args(&["--port", "http", "a.md"])),
       Err(CliError::InvalidPort(_))
     ));
   }
 
   #[test]
-  fn rejects_port_without_a_value() {
+  fn rejects_a_non_numeric_port_given_explicitly() {
+    // With `=` the intent is unambiguous, so this is an error rather than a
+    // fallback to the default port.
+    assert!(matches!(
+      parse(&args(&["--port=http", "a.md"])),
+      Err(CliError::InvalidPort(_))
+    ));
+  }
+
+  #[test]
+  fn port_value_is_optional_and_defaults() {
+    let dir = temp_dir("default-port");
+    let file = dir.join("a.md");
+    fs::write(&file, "# a").unwrap();
+
+    let mode = parse(&args(&["--port", file.to_str().unwrap()])).unwrap();
+    match mode {
+      Mode::Serve {
+        port, documents, ..
+      } => {
+        assert_eq!(port, DEFAULT_PORT);
+        // The path must not have been swallowed as the port value.
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].label, "a.md");
+      }
+      other => panic!("expected serve mode, got {:?}", other),
+    }
+  }
+
+  #[test]
+  fn bare_port_flag_still_needs_something_to_serve() {
     assert_eq!(
       parse(&args(&["--port"])).unwrap_err(),
-      CliError::MissingValue("--port")
+      CliError::NoDocuments
+    );
+  }
+
+  #[test]
+  fn host_without_a_value_is_still_an_error() {
+    assert_eq!(
+      parse(&args(&["--host"])).unwrap_err(),
+      CliError::MissingValue("--host")
     );
   }
 

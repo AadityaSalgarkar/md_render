@@ -87,15 +87,28 @@ parse_args() {
   local expect_value=""
   local arg
   for arg in "$@"; do
-    if [ -n "$expect_value" ]; then
+    if [ "$expect_value" = "digits" ]; then
+      expect_value=""
+      if [[ "$arg" =~ ^[0-9]+$ ]]; then
+        ARGS+=("$arg")
+        continue
+      fi
+      # Not a port: fall through and handle it as a normal argument.
+    elif [ -n "$expect_value" ]; then
       ARGS+=("$arg")
       expect_value=""
       continue
     fi
 
     case "$arg" in
-      --port|-p|--host)
-        [ "$arg" = "--host" ] || SERVE="yes"
+      --port|-p)
+        # The port value is optional, so only treat a following run of digits
+        # as the value; a path after --port is a document, not a port.
+        SERVE="yes"
+        ARGS+=("$arg")
+        expect_value="digits"
+        ;;
+      --host)
         ARGS+=("$arg")
         expect_value="yes"
         ;;

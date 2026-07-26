@@ -250,6 +250,21 @@ describe('bin/mdrender argument handling for server mode', () => {
     expect(log).toContain(`ARGS=--host 127.0.0.1 --port 9000 ${a} ${b}`)
   })
 
+  it('treats a path after --port as a document, not as the port value', () => {
+    const doc = path.join(work, 'note.md')
+    writeFileSync(doc, '# hello')
+
+    execFileSync('bash', [WRAPPER, '--port', 'note.md'], {
+      cwd: work,
+      env: { ...process.env, PATH: `${stubBin}:${process.env.PATH ?? ''}` },
+      encoding: 'utf8',
+    })
+
+    // The port value is optional, so the path must still be absolutised and
+    // handed over as a document.
+    expect(recorded()).toContain(`ARGS=--port ${doc}`)
+  })
+
   it('supports the --port=N form', () => {
     const doc = path.join(work, 'note.md')
     writeFileSync(doc, '# hello')

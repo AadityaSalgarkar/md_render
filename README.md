@@ -24,8 +24,8 @@ typographic themes.
 - System color-scheme detection picks a light or dark theme on first run
 - 70% text width for comfortable reading
 - File associations for `.md` and `.markdown` files
-- Read-only server mode (`mdrender --port 8080 a.md ./docs`) that renders
-  documents as browser tabs, usable over SSH from a headless machine
+- Read-only server mode (`mdrender --port a.md ./docs`) that renders documents
+  as browser tabs on port 10000, usable over SSH from a headless machine
 
 ## Themes
 
@@ -118,16 +118,22 @@ AppImage directly with no installation at all.
 Render markdown in a browser instead of the desktop window:
 
 ```bash
-mdrender --port 8080 notes.md ./docs
+mdrender --port notes.md ./docs
 ```
 
 ```
-serving 4 files on http://127.0.0.1:8080
+serving 4 files on http://127.0.0.1:10000
   [1] notes.md
   [2] api.md
   [3] guide/setup.md
   [4] guide/usage.md
 (ctrl-c to stop)
+```
+
+The port defaults to **10000**; pass a number to override it:
+
+```bash
+mdrender --port 8080 notes.md
 ```
 
 Each file becomes a tab; directory arguments contribute every `.md` and
@@ -139,8 +145,8 @@ Running the same command again while a server is already on that port **adds
 the file as another tab** rather than failing:
 
 ```bash
-mdrender --port 8080 extra.md
-# added to http://127.0.0.1:8080
+mdrender --port extra.md
+# added to http://127.0.0.1:10000
 #   extra.md
 ```
 
@@ -152,11 +158,11 @@ This is the main reason the mode exists — the machine rendering the markdown
 needs no display:
 
 ```bash
-ssh -L 8080:127.0.0.1:8080 my-server
-mdrender --port 8080 ~/notes.md      # on the server
+ssh -L 10000:127.0.0.1:10000 my-server
+mdrender --port ~/notes.md           # on the server
 ```
 
-Then open `http://127.0.0.1:8080` in your local browser.
+Then open `http://127.0.0.1:10000` in your local browser.
 
 ### What server mode will and will not do
 
