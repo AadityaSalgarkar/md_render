@@ -27,6 +27,8 @@ interface PreviewProps {
   tocOpen: boolean
   /** Directory of the open file — used to resolve relative image paths. */
   baseDir?: string | null
+  /** Turns an absolute image path into a loadable URL; differs per backend. */
+  assetUrl?: (path: string) => string
   onTextSelection?: (text: string) => void
 }
 
@@ -38,7 +40,7 @@ function permissiveUrlTransform(url: string): string {
 /** Levels lifted into the index. */
 const TOC_SELECTOR = 'h1[id], h2[id], h3[id]'
 
-export function Preview({ content, tocOpen, baseDir, onTextSelection }: PreviewProps) {
+export function Preview({ content, tocOpen, baseDir, assetUrl, onTextSelection }: PreviewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const articleRef = useRef<HTMLElement>(null)
   const [headings, setHeadings] = useState<Heading[]>([])
@@ -55,7 +57,12 @@ export function Preview({ content, tocOpen, baseDir, onTextSelection }: PreviewP
     // Resolve local/relative image paths against the open file's directory.
     img: ({ node, src, ...props }) => {
       void node
-      return <img src={resolveImageSrc(typeof src === 'string' ? src : '', baseDir)} {...props} />
+      return (
+        <img
+          src={resolveImageSrc(typeof src === 'string' ? src : '', baseDir, assetUrl)}
+          {...props}
+        />
+      )
     },
     // Render task-list checkboxes as read-only.
     input: ({ type, checked, ...props }) => {
@@ -64,7 +71,7 @@ export function Preview({ content, tocOpen, baseDir, onTextSelection }: PreviewP
       }
       return <input type={type} {...props} />
     },
-  }), [baseDir])
+  }), [assetUrl, baseDir])
 
   // Lift headings out of the rendered article so the index can mirror them.
   useEffect(() => {

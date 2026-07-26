@@ -4,6 +4,7 @@ import { Editor } from './components/Editor'
 import { Preview } from './components/Preview'
 import { ThemePicker } from './components/ThemePicker'
 import { CommentPane } from './components/CommentPane'
+import { TabBar } from './components/Header'
 import { useTheme } from './hooks/useTheme'
 import { sampleMarkdown } from './lib/sampleMarkdown'
 import { dirname } from './lib/resolveImageSrc'
@@ -12,7 +13,7 @@ import {
   parseChatThreads,
   stripCommentThreads,
 } from './lib/comments'
-import { invoke } from '@tauri-apps/api/core'
+import { detectBackend, type Backend, type DocumentMeta } from './lib/backend'
 import { listen } from '@tauri-apps/api/event'
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -20,6 +21,9 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 const MIN_PANE_WIDTH = 280
 const DEFAULT_SPLIT = 0.45
 const FILE_SYNC_INTERVAL_MS = 30_000
+/** How often server mode re-checks the tab list, so tabs added by a second
+ *  `md-render --port` invocation show up without a reload. */
+const DOCUMENT_POLL_INTERVAL_MS = 3_000
 
 function readStoredToc(): boolean {
   if (typeof window === 'undefined') return true
@@ -28,6 +32,10 @@ function readStoredToc(): boolean {
 
 export default function App() {
   const { themeId, setTheme, themes } = useTheme()
+  // Desktop unless the server injected its marker into the page.
+  const [backend] = useState<Backend>(() => detectBackend())
+  const [documents, setDocuments] = useState<DocumentMeta[]>([])
+  const [activeDocId, setActiveDocId] = useState<string | null>(null)
   const [content, setContent] = useState(sampleMarkdown)
   const [filePath, setFilePath] = useState<string | null>(null)
   const [baseDir, setBaseDir] = useState<string | null>(null)
@@ -38,9 +46,17 @@ export default function App() {
   const [exportState, setExportState] = useState<string | null>(null)
   const contentRef = useRef(content)
   const filePathRef = useRef<string | null>(null)
+  const activeDocIdRef = useRef<string | null>(null)
   const fileSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve())
   const hasUnsavedChangesRef = useRef(false)
   const closeAfterSaveRef = useRef(false)
+
+  // Held in a ref so the callbacks below keep a stable identity when the
+  // backend is swapped after the server probe resolves.
+  const backendRef = useRef(backend)
+  useEffect(() => {
+    backendRef.current = backend
+  }, [backend])
 
   const updateContent = useCallback((nextContent: string) => {
     contentRef.current = nextContent
@@ -50,7 +66,7 @@ export default function App() {
   // Load file helper
   const loadFile = useCallback(async (filePath: string) => {
     try {
-      const text = await invoke<string>('read_file', { path: filePath })
+      const text = await backendRef.current.readFile(filePath)
       updateContent(text)
       filePathRef.current = filePath
       hasUnsavedChangesRef.current = false
@@ -62,12 +78,69 @@ export default function App() {
     }
   }, [updateContent])
 
+  /** Server mode: load one of the served documents into the preview. */
+  const loadDocument = useCallback(async (id: string) => {
+    try {
+      const document = await backendRef.current.readDocument(id)
+      updateContent(document.content)
+      filePathRef.current = document.path
+      hasUnsavedChangesRef.current = false
+      activeDocIdRef.current = document.id
+      setFilePath(document.path)
+      setBaseDir(document.baseDir)
+      setActiveDocId(document.id)
+      setFileLoaded(true)
+
+      // Reflect the tab in the URL so reloads and browser tabs are stable.
+      const url = new URL(window.location.href)
+      url.searchParams.set('doc', document.id)
+      window.history.replaceState(null, '', url.toString())
+    } catch (err) {
+      console.error('Failed to load document:', err)
+    }
+  }, [updateContent])
+
+  // Server mode: pull the tab list, and keep pulling so documents handed to the
+  // running server by a later `md-render --port` invocation appear on their own.
+  useEffect(() => {
+    if (backend.mode !== 'server') return
+    let cancelled = false
+
+    const refresh = async () => {
+      try {
+        const found = await backend.listDocuments()
+        if (cancelled) return
+        setDocuments(found)
+
+        const current = activeDocIdRef.current
+        if (!current || !found.some((doc) => doc.id === current)) {
+          const requested = new URLSearchParams(window.location.search).get('doc')
+          const initial = found.find((doc) => doc.id === requested) ?? found[0]
+          if (initial) await loadDocument(initial.id)
+        }
+      } catch (err) {
+        console.error('Failed to list documents:', err)
+      }
+    }
+
+    void refresh()
+    const interval = window.setInterval(() => void refresh(), DOCUMENT_POLL_INTERVAL_MS)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [backend, loadDocument])
+
   // Load file on startup and persist content to localStorage
   useEffect(() => {
     const initializeFile = async () => {
+      // Server mode gets its content from the document list instead.
+      if (backendRef.current.mode === 'server') return
+
       // Check for launch file from Tauri
       try {
-        const launchFile = await invoke<string | null>('get_launch_file')
+        const launchFile = await backendRef.current.getLaunchFile()
         if (launchFile) {
           loadFile(launchFile)
           return
@@ -133,12 +206,13 @@ export default function App() {
     }
   }, [loadFile])
 
-  // Persist content to localStorage when changed (but not on first load)
+  // Persist content to localStorage when changed (but not on first load).
+  // Server mode is a viewer, so it must not overwrite the desktop draft.
   useEffect(() => {
-    if (fileLoaded) {
+    if (fileLoaded && backend.mode !== 'server') {
       localStorage.setItem('md-render-content', content)
     }
-  }, [content, fileLoaded])
+  }, [backend, content, fileLoaded])
 
   const renderedContent = useMemo(() => stripCommentThreads(content), [content])
   const commentThreads = useMemo(() => parseChatThreads(content), [content])
@@ -171,7 +245,7 @@ export default function App() {
     const save = fileSaveQueueRef.current
       .catch(() => undefined)
       .then(async () => {
-        await invoke('write_file', { path, content: nextContent })
+        await backendRef.current.writeFile(path, nextContent)
         if (filePathRef.current === path && contentRef.current === nextContent) {
           hasUnsavedChangesRef.current = false
         }
@@ -189,6 +263,14 @@ export default function App() {
   }, [updateContent])
 
   const syncOpenFile = useCallback(async (status: 'manual' | 'periodic' | 'close') => {
+    // Server mode is read-only: re-read the active document so edits made on
+    // disk show up, and never attempt a write.
+    if (backendRef.current.mode === 'server') {
+      const id = activeDocIdRef.current
+      if (id) await loadDocument(id)
+      return
+    }
+
     const path = filePathRef.current
     if (!path) {
       if (status === 'manual') {
@@ -215,7 +297,7 @@ export default function App() {
     }
 
     try {
-      const text = await invoke<string>('read_file', { path })
+      const text = await backendRef.current.readFile(path)
       if (text !== contentRef.current) {
         updateContent(text)
         setSaveState('Refreshed from markdown file.')
@@ -229,7 +311,7 @@ export default function App() {
       }
       throw err
     }
-  }, [updateContent, writeOpenFile])
+  }, [loadDocument, updateContent, writeOpenFile])
 
   const saveContentToFile = useCallback(async (nextContent: string) => {
     updateContent(nextContent)
@@ -331,10 +413,7 @@ export default function App() {
     }
 
     try {
-      const outputPath = await invoke<string>('export_markdown', {
-        path: filePath,
-        content: cleanContent,
-      })
+      const outputPath = await backendRef.current.exportMarkdown(filePath, cleanContent)
       setExportState(`Exported ${basename(outputPath)}`)
     } catch (err) {
       setExportState('Could not export clean markdown.')
@@ -386,8 +465,12 @@ export default function App() {
     }
   }, [isDragging, handleMouseMove, handleMouseUp])
 
+  const readOnly = !backend.writable
+
   return (
-    <div className="h-screen flex overflow-hidden relative">
+    <div className="h-screen flex flex-col overflow-hidden relative">
+      <TabBar documents={documents} activeId={activeDocId} onSelect={loadDocument} />
+      <div className="flex-1 flex overflow-hidden relative">
       {/* Floating Controls */}
       <div className={`floating-controls ${commentsOpen ? 'comments-open' : ''}`}>
         <motion.button
@@ -401,25 +484,29 @@ export default function App() {
           <IndexIcon />
         </motion.button>
 
-        <motion.button
-          className="floating-btn"
-          onClick={toggleEditor}
-          whileTap={{ scale: 0.95 }}
-          aria-label={isEditorCollapsed ? 'Show editor' : 'Hide editor'}
-          title={isEditorCollapsed ? 'Edit' : 'Read'}
-        >
-          {isEditorCollapsed ? <EditIcon /> : <EyeIcon />}
-        </motion.button>
+        {!readOnly && (
+          <motion.button
+            className="floating-btn"
+            onClick={toggleEditor}
+            whileTap={{ scale: 0.95 }}
+            aria-label={isEditorCollapsed ? 'Show editor' : 'Hide editor'}
+            title={isEditorCollapsed ? 'Edit' : 'Read'}
+          >
+            {isEditorCollapsed ? <EditIcon /> : <EyeIcon />}
+          </motion.button>
+        )}
 
-        <motion.button
-          className="floating-btn"
-          onClick={handleSaveNow}
-          whileTap={{ scale: 0.95 }}
-          aria-label="Save markdown"
-          title="Save"
-        >
-          <SaveIcon />
-        </motion.button>
+        {!readOnly && (
+          <motion.button
+            className="floating-btn"
+            onClick={handleSaveNow}
+            whileTap={{ scale: 0.95 }}
+            aria-label="Save markdown"
+            title="Save"
+          >
+            <SaveIcon />
+          </motion.button>
+        )}
 
         <motion.button
           className={`floating-btn ${commentsOpen ? 'is-on' : ''}`}
@@ -477,6 +564,7 @@ export default function App() {
             content={renderedContent}
             tocOpen={isTocOpen}
             baseDir={baseDir}
+            assetUrl={backend.assetUrl}
             onTextSelection={handleTextSelection}
           />
         </motion.div>
@@ -490,7 +578,9 @@ export default function App() {
           onRefresh={handleRefreshComments}
           onExport={handleExportCleanMarkdown}
           onClose={() => setCommentsOpen(false)}
+          readOnly={readOnly}
         />
+      </div>
       </div>
     </div>
   )

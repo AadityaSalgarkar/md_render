@@ -13,6 +13,8 @@ interface CommentPaneProps {
   onRefresh: () => Promise<void> | void
   onExport: () => Promise<void> | void
   onClose: () => void
+  /** Server mode cannot write to disk, so composing and exporting are hidden. */
+  readOnly?: boolean
 }
 
 export function CommentPane({
@@ -25,6 +27,7 @@ export function CommentPane({
   onRefresh,
   onExport,
   onClose,
+  readOnly = false,
 }: CommentPaneProps) {
   const [draft, setDraft] = useState('')
 
@@ -59,38 +62,42 @@ export function CommentPane({
         </button>
       </header>
 
-      <section className="comment-composer" aria-label="Add comment">
-        <div className="comment-target-label">Selection</div>
-        {selectedText ? (
-          <blockquote className="comment-target">{selectedText}</blockquote>
-        ) : (
-          <p className="comment-empty">Highlight text in the rendered document to attach a comment.</p>
-        )}
+      {!readOnly && (
+        <section className="comment-composer" aria-label="Add comment">
+          <div className="comment-target-label">Selection</div>
+          {selectedText ? (
+            <blockquote className="comment-target">{selectedText}</blockquote>
+          ) : (
+            <p className="comment-empty">Highlight text in the rendered document to attach a comment.</p>
+          )}
 
-        <textarea
-          className="comment-textarea"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder="Write a comment for the selected passage..."
-          aria-label="Comment text"
-          disabled={!selectedText}
-        />
-        <button
-          className="comment-primary-button"
-          type="button"
-          onClick={handleSave}
-          disabled={!canSave}
-        >
-          Save comment
-        </button>
-        {saveState && <p className="comment-status">{saveState}</p>}
-      </section>
+          <textarea
+            className="comment-textarea"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="Write a comment for the selected passage..."
+            aria-label="Comment text"
+            disabled={!selectedText}
+          />
+          <button
+            className="comment-primary-button"
+            type="button"
+            onClick={handleSave}
+            disabled={!canSave}
+          >
+            Save comment
+          </button>
+          {saveState && <p className="comment-status">{saveState}</p>}
+        </section>
+      )}
 
-      <section className="comment-toolbar" aria-label="Comment actions">
-        <button type="button" onClick={onRefresh}>Refresh</button>
-        <button type="button" onClick={onExport}>Export clean .md</button>
-      </section>
-      {exportState && <p className="comment-status">{exportState}</p>}
+      {!readOnly && (
+        <section className="comment-toolbar" aria-label="Comment actions">
+          <button type="button" onClick={onRefresh}>Refresh</button>
+          <button type="button" onClick={onExport}>Export clean .md</button>
+        </section>
+      )}
+      {!readOnly && exportState && <p className="comment-status">{exportState}</p>}
 
       <section className="comment-thread-list" aria-label="Saved comments">
         {threads.length === 0 ? (
