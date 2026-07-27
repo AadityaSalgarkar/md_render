@@ -124,6 +124,7 @@ $$
 <option>Newsprint, always</option>
 <option>Whichever was installed last</option>
 </enumerate>
+<answer>**A** — the app follows your system color scheme on first run, then remembers your pick.</answer>
 </quiz>
 
 ---

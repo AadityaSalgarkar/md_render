@@ -66,8 +66,12 @@ whose options stay hidden until the reader clicks the eye button:
 <option>Mars</option>
 <option>Jupiter</option>
 </enumerate>
+<answer>Jupiter — by a wide margin.</answer>
 </quiz>
 ```
+
+The `<answer>` stays hidden until the reader clicks "Show answer" —
+independently of the options — and also works standalone outside a quiz.
 
 ## Review comments
 

@@ -32,7 +32,8 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
 - Review comments attached to selected passages, stored in the markdown
   itself, with clean export (`notes.md` → `notes.clean.md`)
 - Quiz blocks: `<quiz>question <enumerate><option>…</option></enumerate></quiz>`
-  renders a card whose options stay hidden until the eye button reveals them
+  renders a card whose options stay hidden until the eye button reveals them;
+  an `<answer>…</answer>` inside (or anywhere) stays hidden until clicked
 - Server mode with full parity: editing and saving work in the browser too
 
 ## Install

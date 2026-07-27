@@ -24,7 +24,7 @@ import type { Components } from 'react-markdown'
 import { TableOfContents } from './TableOfContents'
 import { ReadingProgress } from './ReadingProgress'
 import { MermaidDiagram } from './MermaidDiagram'
-import { Quiz, Enumerate, Option } from './Quiz'
+import { Quiz, Enumerate, Option, Answer } from './Quiz'
 import { resolveImageSrc } from '../lib/resolveImageSrc'
 import { prepareQuizBlocks } from '../lib/quiz'
 import type { Heading } from '../types'
@@ -129,8 +129,14 @@ export function Preview({
       return <input type={type} {...props} />
     },
     // Quiz blocks — authored as <quiz>/<enumerate>/<option>, rewritten to
-    // these internal names by prepareQuizBlocks.
-    ...({ 'md-quiz': Quiz, 'md-enumerate': Enumerate, 'md-option': Option } as Components),
+    // internal names by prepareQuizBlocks. <answer> is parser-neutral and
+    // registers directly; it also works standalone outside a quiz.
+    ...({
+      'md-quiz': Quiz,
+      'md-enumerate': Enumerate,
+      'md-option': Option,
+      answer: Answer,
+    } as Components),
   }), [assetUrl, baseDir])
 
   // Lift headings out of the rendered article so the index can mirror them.

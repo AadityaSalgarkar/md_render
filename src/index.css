@@ -506,6 +506,77 @@ body {
   color: var(--accent-secondary);
 }
 
+/* <answer> — hidden until explicitly opened */
+.answer-toggle {
+  display: inline-block;
+  margin: 0.6rem 0 0;
+  padding: 0.35rem 0.9rem;
+  border: 1px dashed var(--accent-secondary);
+  border-radius: 7px;
+  background: none;
+  color: var(--accent-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.answer-toggle:hover,
+.answer-toggle:focus-visible {
+  background: var(--selection);
+}
+
+.answer-toggle:focus-visible,
+.answer-label:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.answer-card {
+  margin: 0.6rem 0 0;
+  padding: 0.55rem 0.9rem 0.6rem;
+  border-left: 3px solid var(--accent-secondary);
+  border-radius: 0 7px 7px 0;
+  background: var(--bg-primary);
+}
+
+.answer-label {
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.answer-label::after {
+  content: ' — hide';
+  text-transform: none;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.answer-label:hover::after,
+.answer-label:focus-visible::after {
+  opacity: 1;
+}
+
+.answer-body > p:last-child {
+  margin-bottom: 0;
+}
+
+.answer-body > p:first-child {
+  margin-top: 0.35rem;
+}
+
 /* Collapsible sections: the chevron owns the left gutter (Jupyter-style). */
 .section-toggle {
   position: absolute;

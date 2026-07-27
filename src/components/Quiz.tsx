@@ -65,6 +65,43 @@ export function Option({ children, node }: TagProps) {
   return <li className="quiz-option">{children}</li>
 }
 
+/**
+ * <answer> — hidden until explicitly opened, independently of the quiz's
+ * option reveal. Works inside a quiz card or standalone in any document.
+ */
+export function Answer({ children, node }: TagProps) {
+  void node
+  const [open, setOpen] = useState(false)
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="answer-toggle"
+        aria-expanded={false}
+        onClick={() => setOpen(true)}
+      >
+        Show answer
+      </button>
+    )
+  }
+
+  return (
+    <div className="answer-card">
+      <button
+        type="button"
+        className="answer-label"
+        aria-expanded={true}
+        aria-label="Hide answer"
+        onClick={() => setOpen(false)}
+      >
+        Answer
+      </button>
+      <div className="answer-body">{children}</div>
+    </div>
+  )
+}
+
 /** Count md-option children, ignoring whitespace text between tags. */
 function countOptions(children: React.ReactNode): number {
   return Children.toArray(children).filter(

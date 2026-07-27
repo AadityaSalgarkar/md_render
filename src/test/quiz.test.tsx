@@ -102,6 +102,49 @@ describe('quiz rendering', () => {
     expect(article().queryByText('Mars')).toBeNull()
   })
 
+  it('hides the answer until explicitly opened, independent of the options', async () => {
+    const doc = `<quiz>Question?
+<enumerate>
+<option>A</option>
+</enumerate>
+<answer>Because **reasons**.</answer>
+</quiz>
+`
+    render(<Preview content={doc} tocOpen={false} />)
+    await article().findByText('Question?')
+
+    // Hidden by default.
+    expect(article().queryByText(/reasons/)).toBeNull()
+    const show = article().getByRole('button', { name: 'Show answer' })
+    expect(show).toHaveAttribute('aria-expanded', 'false')
+
+    // Revealing the options does NOT reveal the answer.
+    fireEvent.click(article().getByRole('button', { name: 'Reveal options' }))
+    expect(article().queryByText(/reasons/)).toBeNull()
+
+    // Explicit click opens it, with the markdown inside rendered.
+    fireEvent.click(show)
+    expect(article().getByText('reasons')).toBeInTheDocument()
+
+    // And it closes again.
+    fireEvent.click(article().getByRole('button', { name: 'Hide answer' }))
+    expect(article().queryByText(/reasons/)).toBeNull()
+  })
+
+  it('works standalone outside any quiz', async () => {
+    render(
+      <Preview
+        content={'A worked example.\n\n<answer>The answer is 42.</answer>\n'}
+        tocOpen={false}
+      />,
+    )
+    await article().findByText('A worked example.')
+
+    expect(article().queryByText(/42/)).toBeNull()
+    fireEvent.click(article().getByRole('button', { name: 'Show answer' }))
+    expect(article().getByText(/42/)).toBeInTheDocument()
+  })
+
   it('does not disturb an <option> outside any quiz', async () => {
     render(
       <Preview
