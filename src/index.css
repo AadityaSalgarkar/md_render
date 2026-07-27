@@ -541,6 +541,12 @@ body {
   background: var(--bg-primary);
 }
 
+.answer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .answer-label {
   display: block;
   padding: 0;
@@ -555,18 +561,33 @@ body {
   cursor: pointer;
 }
 
-.answer-label::after {
-  content: ' — hide';
-  text-transform: none;
-  letter-spacing: 0.06em;
+/* Always-visible close control, so hiding the answer is discoverable. */
+.answer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0 0.1rem;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: none;
   color: var(--text-muted);
-  opacity: 0;
-  transition: opacity 0.15s ease;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 
-.answer-label:hover::after,
-.answer-label:focus-visible::after {
-  opacity: 1;
+.answer-close:hover,
+.answer-close:focus-visible {
+  color: var(--accent);
+  border-color: var(--border-strong);
+}
+
+.answer-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .answer-body > p:last-child {

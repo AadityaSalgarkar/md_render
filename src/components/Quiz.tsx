@@ -88,15 +88,25 @@ export function Answer({ children, node }: TagProps) {
 
   return (
     <div className="answer-card">
-      <button
-        type="button"
-        className="answer-label"
-        aria-expanded={true}
-        aria-label="Hide answer"
-        onClick={() => setOpen(false)}
-      >
-        Answer
-      </button>
+      <div className="answer-head">
+        <button
+          type="button"
+          className="answer-label"
+          aria-expanded={true}
+          onClick={() => setOpen(false)}
+        >
+          Answer
+        </button>
+        <button
+          type="button"
+          className="answer-close"
+          aria-label="Hide answer"
+          title="Hide answer"
+          onClick={() => setOpen(false)}
+        >
+          ×
+        </button>
+      </div>
       <div className="answer-body">{children}</div>
     </div>
   )
