@@ -21,6 +21,7 @@ Key facts:
 ## Source
 
 - [Repository](https://github.com/AadityaSalgarkar/md_render): MIT licensed
+- [Releases](https://github.com/AadityaSalgarkar/md_render/releases): semver-tagged builds (dmg, deb, rpm, AppImage) with changelog; versions are cut automatically from conventional commits
 - [src/App.tsx](https://github.com/AadityaSalgarkar/md_render/blob/main/src/App.tsx): layout, panes, document loading, autosave
 - [src/lib/backend.ts](https://github.com/AadityaSalgarkar/md_render/blob/main/src/lib/backend.ts): the desktop/server backend abstraction
 - [src/lib/themes.ts](https://github.com/AadityaSalgarkar/md_render/blob/main/src/lib/themes.ts): theme registry, single source of visual truth

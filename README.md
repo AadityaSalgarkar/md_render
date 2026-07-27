@@ -1,5 +1,8 @@
 # MD_RENDER
 
+[![ci](https://github.com/AadityaSalgarkar/md_render/actions/workflows/ci.yml/badge.svg)](https://github.com/AadityaSalgarkar/md_render/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/AadityaSalgarkar/md_render?sort=semver)](https://github.com/AadityaSalgarkar/md_render/releases/latest)
+
 Markdown, set like a book. A renderer for macOS and Linux built on Tauri 2 —
 six typographic themes, a document index, math, Mermaid, review comments, and
 a server mode that puts the same app in your browser over SSH.
@@ -39,6 +42,12 @@ missing):
 ```bash
 curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
 ```
+
+Or grab a build from
+[Releases](https://github.com/AadityaSalgarkar/md_render/releases/latest) —
+dmg for macOS; deb, rpm or AppImage for Linux. The macOS builds are unsigned:
+right-click → Open the first time (or
+`xattr -d com.apple.quarantine /Applications/MD_RENDER.app`).
 
 Or by hand:
 
@@ -121,6 +130,10 @@ npm run lint
 React 18 + TypeScript + Vite; react-markdown with remark-gfm, remark-math,
 rehype-katex, rehype-highlight, rehype-raw; Tauri 2 with an axum server for
 `--port`. Tests drive the real binary over real HTTP.
+
+Commits follow [Conventional Commits](CONTRIBUTING.md); releases are cut
+automatically by release-please, which keeps the three version files and
+[CHANGELOG.md](CHANGELOG.md) in sync.
 
 ```
 src/                 # React frontend
