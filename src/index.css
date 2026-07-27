@@ -1320,6 +1320,24 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
+/* Badge dot: highlight-to-comment mode is armed (toggled by double click or
+   long press on the comments button). */
+.floating-btn.mode-on::after {
+  content: '';
+  position: absolute;
+  top: 0.15rem;
+  right: 0.15rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-secondary);
+}
+
+.floating-btn.mode-on {
+  position: relative;
+}
+
 .floating-btn:hover {
   border-color: var(--accent);
   color: var(--accent);

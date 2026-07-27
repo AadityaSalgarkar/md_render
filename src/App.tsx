@@ -44,6 +44,9 @@ export default function App() {
   const [fileLoaded, setFileLoaded] = useState(false)
   const [selectedText, setSelectedText] = useState<string | null>(null)
   const [commentsOpen, setCommentsOpen] = useState(false)
+  // Highlight-to-comment only reacts to selections while enabled; off by
+  // default so reading and copying never pop the pane open.
+  const [commentModeEnabled, setCommentModeEnabled] = useState(false)
   const [saveState, setSaveState] = useState<string | null>(null)
   const [exportState, setExportState] = useState<string | null>(null)
   const contentRef = useRef(content)
@@ -290,10 +293,63 @@ export default function App() {
     }
   }, [loadDocument])
 
+  const commentModeEnabledRef = useRef(commentModeEnabled)
+  useEffect(() => {
+    commentModeEnabledRef.current = commentModeEnabled
+  }, [commentModeEnabled])
+
   const handleTextSelection = useCallback((text: string) => {
+    if (!commentModeEnabledRef.current) return
     setSelectedText(text)
     setCommentsOpen(true)
     setSaveState(null)
+  }, [])
+
+  // Comments button: single click toggles the pane; double click or a long
+  // press (touch) toggles highlight-to-comment mode. The single-click action
+  // is deferred briefly so a double click does not also flip the pane.
+
+  const commentClickTimerRef = useRef<number | null>(null)
+  const longPressTimerRef = useRef<number | null>(null)
+  const suppressClickRef = useRef(false)
+
+  const toggleCommentMode = useCallback(() => {
+    setCommentModeEnabled((prev) => !prev)
+  }, [])
+
+  const handleCommentsClick = useCallback(() => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false
+      return
+    }
+    if (commentClickTimerRef.current) window.clearTimeout(commentClickTimerRef.current)
+    commentClickTimerRef.current = window.setTimeout(() => {
+      commentClickTimerRef.current = null
+      setCommentsOpen((prev) => !prev)
+    }, 250)
+  }, [])
+
+  const handleCommentsDoubleClick = useCallback(() => {
+    if (commentClickTimerRef.current) {
+      window.clearTimeout(commentClickTimerRef.current)
+      commentClickTimerRef.current = null
+    }
+    toggleCommentMode()
+  }, [toggleCommentMode])
+
+  const handleCommentsPointerDown = useCallback(() => {
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTimerRef.current = null
+      suppressClickRef.current = true
+      toggleCommentMode()
+    }, 500)
+  }, [toggleCommentMode])
+
+  const cancelCommentsLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
   }, [])
 
   const writeOpenFile = useCallback((path: string, nextContent: string) => {
@@ -566,12 +622,21 @@ export default function App() {
         </motion.button>
 
         <motion.button
-          className={`floating-btn ${commentsOpen ? 'is-on' : ''}`}
-          onClick={() => setCommentsOpen((prev) => !prev)}
+          className={`floating-btn ${commentsOpen ? 'is-on' : ''} ${commentModeEnabled ? 'mode-on' : ''}`}
+          onClick={handleCommentsClick}
+          onDoubleClick={handleCommentsDoubleClick}
+          onPointerDown={handleCommentsPointerDown}
+          onPointerUp={cancelCommentsLongPress}
+          onPointerLeave={cancelCommentsLongPress}
           whileTap={{ scale: 0.95 }}
           aria-pressed={commentsOpen}
           aria-label={commentsOpen ? 'Hide comments' : 'Show comments'}
-          title="Comments"
+          data-comment-mode={commentModeEnabled ? 'on' : 'off'}
+          title={
+            commentModeEnabled
+              ? 'Comments — highlight-to-comment on (double-click to turn off)'
+              : 'Comments — double-click to turn on highlight-to-comment'
+          }
         >
           <CommentIcon />
         </motion.button>
