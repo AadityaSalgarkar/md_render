@@ -51,7 +51,7 @@ fi
 
 if [ -d "$SRC/.git" ]; then
   say "updating existing checkout at $SRC"
-  git -C "$SRC" pull --ff-only
+  git -C "$SRC" fetch --tags origin
 else
   say "cloning $REPO"
   say "     into $SRC"
@@ -60,6 +60,20 @@ else
 fi
 
 cd "$SRC"
+
+# Build the latest release by default; MDRENDER_REF=main (or any ref) overrides.
+if [ -n "${MDRENDER_REF:-}" ]; then
+  REF="$MDRENDER_REF"
+else
+  REF=$(git tag --list 'v*' --sort=-version:refname | head -n 1)
+  [ -n "$REF" ] || REF=main
+fi
+say "building $REF"
+git checkout --quiet "$REF"
+# A branch ref should carry its latest commits; tags are fixed points.
+if git show-ref --verify --quiet "refs/heads/$REF"; then
+  git merge --ff-only --quiet "origin/$REF" 2>/dev/null || true
+fi
 npm install --no-audit --no-fund
 make install
 

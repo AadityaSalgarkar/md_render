@@ -374,10 +374,7 @@ function PreWithCopy({ children, className }: PreWithCopyProps) {
   const [copied, setCopied] = useState(false)
   const codeBlock = getCodeBlockChild(children)
 
-  if (codeBlock && isMermaidLanguage(codeBlock.props.className)) {
-    return <MermaidDiagram chart={getTextContent(codeBlock.props.children).trim()} />
-  }
-
+  // Hooks must run unconditionally, so this sits before the Mermaid branch.
   const handleCopy = useCallback(async () => {
     const text = getTextContent(children)
 
@@ -389,6 +386,10 @@ function PreWithCopy({ children, className }: PreWithCopyProps) {
       console.error('Failed to copy:', err)
     }
   }, [children])
+
+  if (codeBlock && isMermaidLanguage(codeBlock.props.className)) {
+    return <MermaidDiagram chart={getTextContent(codeBlock.props.children).trim()} />
+  }
 
   return (
     <div className="code-block-wrapper">
