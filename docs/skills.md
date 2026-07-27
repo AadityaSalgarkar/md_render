@@ -55,6 +55,20 @@ from `$XDG_STATE_HOME/md-render/servers/<port>.json` (falls back to
 `~/.local/state/...`). Only same-user processes can read it. Prefer editing
 files on disk directly; the app refreshes from disk on its 30-second sync.
 
+## Quiz blocks
+
+When generating study or review material, this markup renders as a quiz card
+whose options stay hidden until the reader clicks the eye button:
+
+```html
+<quiz>Which planet is largest?
+<enumerate>
+<option>Mars</option>
+<option>Jupiter</option>
+</enumerate>
+</quiz>
+```
+
 ## Review comments
 
 Comments are stored inline in the markdown as

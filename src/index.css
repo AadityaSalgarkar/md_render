@@ -402,6 +402,110 @@ body {
   letter-spacing: 0.05em;
 }
 
+/* ===================================================================
+   Quiz cards (<quiz> tag)
+   =================================================================== */
+.quiz-card {
+  margin: 1.25em 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--code-bg);
+  padding: 0.9rem 1.2rem 1rem;
+}
+
+.quiz-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+}
+
+.quiz-kicker {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.quiz-eye {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.quiz-eye:hover,
+.quiz-eye:focus-visible {
+  color: var(--accent);
+  border-color: var(--border-strong);
+}
+
+.quiz-eye:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.quiz-body > p:last-child {
+  margin-bottom: 0;
+}
+
+.quiz-hidden-row {
+  display: block;
+  width: 100%;
+  margin: 0.6rem 0 0;
+  padding: 0.55rem 0.9rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: 7px;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-align: center;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.quiz-hidden-row:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.quiz-options {
+  list-style: none;
+  counter-reset: quiz-option;
+  margin: 0.6rem 0 0;
+  padding: 0;
+}
+
+.quiz-option {
+  counter-increment: quiz-option;
+  display: flex;
+  gap: 0.7rem;
+  align-items: baseline;
+  padding: 0.4rem 0.2rem;
+  border-top: 1px solid var(--border);
+}
+
+.quiz-option::before {
+  content: counter(quiz-option, upper-alpha) '.';
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--accent-secondary);
+}
+
 /* Collapsible sections: the chevron owns the left gutter (Jupyter-style). */
 .section-toggle {
   position: absolute;

@@ -116,5 +116,17 @@ $$
 
 ---
 
+## Quiz Yourself
+
+<quiz>Which theme is the default on first launch?
+<enumerate>
+<option>Warm Paper (light) or Midnight Ink (dark), following your system</option>
+<option>Newsprint, always</option>
+<option>Whichever was installed last</option>
+</enumerate>
+</quiz>
+
+---
+
 *Start writing in the editor on the left, and watch your prose transform into beautifully typeset text on the right.*
 `
