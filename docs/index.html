@@ -353,9 +353,13 @@ serving 4 files on <span class="s">http://127.0.0.1:10000</span>
 
 <section id="install">
   <h2><a class="anchor" href="#install">Install</a></h2>
-  <p><code>make install</code> detects the platform and installs the right
-  thing. Both installs also place the <code>mdrender</code> wrapper at
-  <code>~/bin/mdrender</code>.</p>
+  <p>One line — detects the platform, checks prerequisites, clones and runs
+  <code>make install</code>. No sudo; if build tools are missing it says
+  which ones and stops.</p>
+<pre><code>curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh</code></pre>
+  <p>Or by hand: <code>make install</code> detects the platform and installs
+  the right thing. Both installs also place the <code>mdrender</code> wrapper
+  at <code>~/bin/mdrender</code>.</p>
 
   <h3 id="install-macos"><a class="anchor" href="#install-macos">macOS</a></h3>
 <pre><code>git clone https://github.com/AadityaSalgarkar/md_render
