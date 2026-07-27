@@ -16,7 +16,7 @@ DESKTOP_TEMPLATE := linux/$(BIN_NAME).desktop.in
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build install install-macos install-linux install-clean test clean
+.PHONY: help build build-app-macos build-binary-linux install install-macos install-linux install-clean test clean
 
 help:
 	@printf "Targets:\n"
@@ -31,6 +31,15 @@ help:
 build:
 	npm run tauri:build
 
+# Install-only builds: skip the distribution bundles. dmg creation can fail on
+# a stale mount and AppImage on linuxdeploy quirks, and neither is needed to
+# install locally — macOS needs only the .app, Linux only the binary.
+build-app-macos:
+	npm run tauri:build -- --bundles app
+
+build-binary-linux:
+	npm run tauri:build -- --no-bundle
+
 test:
 	cd src-tauri && cargo test
 	@# The server-mode tests drive the real binary, so make sure it exists.
@@ -43,7 +52,7 @@ else
 install: install-linux
 endif
 
-install-macos: build
+install-macos: build-app-macos
 	test -d "$(APP_BUNDLE)"
 	rm -rf "$(APPLICATIONS_DIR)/$(APP_NAME).app"
 	cp -R "$(APP_BUNDLE)" "$(APPLICATIONS_DIR)/"
@@ -53,7 +62,7 @@ install-macos: build
 	@echo "Installed $(APP_NAME).app to $(APPLICATIONS_DIR)"
 	@echo "Installed mdrender wrapper to $(BIN_DIR)/mdrender"
 
-install-linux: build
+install-linux: build-binary-linux
 	test -x "$(LINUX_BIN)"
 	mkdir -p "$(PREFIX)/bin" "$(BIN_DIR)" "$(DESKTOP_DIR)"
 	install -m 755 "$(LINUX_BIN)" "$(PREFIX)/bin/$(BIN_NAME)"

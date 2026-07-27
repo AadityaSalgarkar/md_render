@@ -4,6 +4,10 @@ Markdown, set like a book. A renderer for macOS and Linux built on Tauri 2 —
 six typographic themes, a document index, math, Mermaid, review comments, and
 a server mode that puts the same app in your browser over SSH.
 
+```bash
+curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
+```
+
 **[Documentation](https://aadityasalgarkar.github.io/md_render/)** ·
 [llms.txt](https://aadityasalgarkar.github.io/md_render/llms.txt) ·
 [skills.md](https://aadityasalgarkar.github.io/md_render/skills.md)
@@ -27,6 +31,16 @@ a server mode that puts the same app in your browser over SSH.
 - Server mode with full parity: editing and saving work in the browser too
 
 ## Install
+
+One line — detects the platform, checks prerequisites, clones and runs
+`make install` (no sudo; it stops with instructions if build tools are
+missing):
+
+```bash
+curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
+```
+
+Or by hand:
 
 ```bash
 git clone https://github.com/AadityaSalgarkar/md_render

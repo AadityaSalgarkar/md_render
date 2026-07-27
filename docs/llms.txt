@@ -9,7 +9,7 @@ Key facts:
 - Server HTTP API: `GET /api/health` (identifies the app), `GET /api/files` (tab list; `?refresh=true` rescans directory arguments), `GET /api/file?id=N` (content by opaque id), `GET /api/read?path=` and `PUT /api/file` (read/write an open document by path), `POST /api/export` (write comment-stripped copy), `GET /api/asset?path=` (images beside open documents only), `POST /api/documents` (add tabs).
 - Writes require a bearer token the server injects into the served page and records in `$XDG_STATE_HOME/md-render/servers/<port>.json` (mode 0600). Reads and writes are limited to documents named at launch or added later; images only from those documents' directories; binds 127.0.0.1 unless `--host` is passed.
 - Review comments are `<chat><comment>...</comment></chat>` blocks stored inline in the markdown after the passage they discuss; "Export clean .md" writes `NAME.clean.md` with the blocks stripped.
-- Install: `make install` (auto-detects platform). macOS: `MD_RENDER.app` + `~/bin/mdrender`. Linux: user-local under `~/.local` and `~/bin`, no root; `npm run tauri:build` also emits deb/rpm/AppImage.
+- Install: `curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh` (detects platform, clones, runs `make install`; no sudo), or clone and `make install` by hand. macOS: `MD_RENDER.app` + `~/bin/mdrender`. Linux: user-local under `~/.local` and `~/bin`, no root; `npm run tauri:build` also emits deb/rpm/AppImage.
 - Build caveat: plain `cargo build --release` emits `target/release/app`, which expects a dev server and shows a blank window; the usable binary is `target/release/md-render` from `npm run tauri:build`.
 
 ## Docs
