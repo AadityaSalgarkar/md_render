@@ -1,0 +1,98 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+  # Manual artifact build for an existing tag (used for the initial v0.1.0,
+  # or to rebuild a release's assets).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build artifacts for (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: rp
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # release-please's node type bumps Cargo.toml via extra-files but does
+      # not touch Cargo.lock; refresh it on the release PR so the tree builds
+      # clean with --locked.
+      - uses: actions/checkout@v4
+        if: ${{ steps.rp.outputs.prs_created == 'true' }}
+        with:
+          ref: ${{ fromJSON(steps.rp.outputs.pr).headBranchName }}
+      - name: Sync Cargo.lock on the release PR
+        if: ${{ steps.rp.outputs.prs_created == 'true' }}
+        working-directory: src-tauri
+        run: |
+          cargo update --workspace
+          if ! git diff --quiet Cargo.lock; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add Cargo.lock
+            git commit -m "chore: sync Cargo.lock"
+            git push
+          fi
+
+  build-artifacts:
+    needs: release-please
+    if: |
+      always() &&
+      (needs.release-please.outputs.release_created == 'true' ||
+       github.event_name == 'workflow_dispatch')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install webkit2gtk build deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl wget file pkg-config \
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev libgtk-3-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Build bundles and upload to the release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: ${{ env.RELEASE_TAG }}
