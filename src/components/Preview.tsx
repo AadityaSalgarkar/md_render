@@ -1,12 +1,16 @@
 import {
   Children,
+  createContext,
   isValidElement,
+  useContext,
   useMemo,
   useState,
   useCallback,
   useRef,
   useEffect,
 } from 'react'
+import { flushSync } from 'react-dom'
+import { motion } from 'framer-motion'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -14,6 +18,7 @@ import rehypeHighlight from 'rehype-highlight'
 import rehypeKatex from 'rehype-katex'
 import rehypeSlug from 'rehype-slug'
 import rehypeRaw from 'rehype-raw'
+import rehypeSections from '../lib/rehypeSections'
 import 'katex/dist/katex.min.css'
 import type { Components } from 'react-markdown'
 import { TableOfContents } from './TableOfContents'
@@ -30,7 +35,20 @@ interface PreviewProps {
   /** Turns an absolute image path into a loadable URL; differs per backend. */
   assetUrl?: (path: string) => string
   onTextSelection?: (text: string) => void
+  /** Identity of the open document; collapse state resets when it changes. */
+  documentKey?: string | null
 }
+
+/** Collapse state shared with the heading and section renderers. */
+interface CollapseState {
+  collapsed: Set<string>
+  toggle: (id: string) => void
+}
+
+const CollapseContext = createContext<CollapseState>({
+  collapsed: new Set(),
+  toggle: () => {},
+})
 
 /** Block script-bearing URLs; let everything else (file:, data:, …) through. */
 function permissiveUrlTransform(url: string): string {
@@ -40,11 +58,44 @@ function permissiveUrlTransform(url: string): string {
 /** Levels lifted into the index. */
 const TOC_SELECTOR = 'h1[id], h2[id], h3[id]'
 
-export function Preview({ content, tocOpen, baseDir, assetUrl, onTextSelection }: PreviewProps) {
+export function Preview({
+  content,
+  tocOpen,
+  baseDir,
+  assetUrl,
+  onTextSelection,
+  documentKey,
+}: PreviewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const articleRef = useRef<HTMLElement>(null)
   const [headings, setHeadings] = useState<Heading[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+
+  // Collapsed section ids. Kept across content refreshes (autosave, the
+  // 30-second sync) because the component stays mounted; reset when a
+  // different document is opened.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  const previousKeyRef = useRef(documentKey)
+  useEffect(() => {
+    if (previousKeyRef.current !== documentKey) {
+      previousKeyRef.current = documentKey
+      setCollapsed(new Set())
+    }
+  }, [documentKey])
+
+  const toggleSection = useCallback((id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const collapseState = useMemo<CollapseState>(
+    () => ({ collapsed, toggle: toggleSection }),
+    [collapsed, toggleSection],
+  )
 
   const components: Components = useMemo(() => ({
     pre: ({ children, ...props }) => <PreWithCopy {...props}>{children}</PreWithCopy>,
@@ -52,6 +103,7 @@ export function Preview({ content, tocOpen, baseDir, assetUrl, onTextSelection }
     h2: makeHeading('h2'),
     h3: makeHeading('h3'),
     h4: makeHeading('h4'),
+    section: CollapsibleSection,
     // Decorative horizontal rule.
     hr: () => <div className="hr-ornament">◆  ◆  ◆</div>,
     // Resolve local/relative image paths against the open file's directory.
@@ -125,10 +177,35 @@ export function Preview({ content, tocOpen, baseDir, assetUrl, onTextSelection }
 
   const handleNavigate = useCallback((id: string) => {
     const el = document.getElementById(id)
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      setActiveId(id)
+    if (!el) return
+
+    // The target may sit inside collapsed sections; expand every collapsed
+    // ancestor synchronously so the scroll lands on a visible element.
+    const ancestors: string[] = []
+    for (
+      let parent = el.closest('section.md-section')?.parentElement ?? null;
+      parent;
+      parent = parent.parentElement
+    ) {
+      if (parent.matches?.('section.md-section')) {
+        const sectionId = parent.getAttribute('data-heading-id')
+        if (sectionId) ancestors.push(sectionId)
+      }
     }
+
+    // Expand synchronously before scrolling — scrollIntoView on an element
+    // inside a display:none body does nothing.
+    flushSync(() => {
+      setCollapsed((prev) => {
+        const toExpand = ancestors.filter((sectionId) => prev.has(sectionId))
+        if (toExpand.length === 0) return prev
+        const next = new Set(prev)
+        for (const sectionId of toExpand) next.delete(sectionId)
+        return next
+      })
+    })
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setActiveId(id)
   }, [])
 
   const handleSelection = useCallback(() => {
@@ -165,14 +242,16 @@ export function Preview({ content, tocOpen, baseDir, assetUrl, onTextSelection }
           onMouseUp={handleSelection}
           onKeyUp={handleSelection}
         >
-          <Markdown
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[rehypeRaw, rehypeSlug, rehypeHighlight, rehypeKatex]}
-            components={components}
-            urlTransform={permissiveUrlTransform}
-          >
-            {content}
-          </Markdown>
+          <CollapseContext.Provider value={collapseState}>
+            <Markdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeRaw, rehypeSlug, rehypeSections, rehypeHighlight, rehypeKatex]}
+              components={components}
+              urlTransform={permissiveUrlTransform}
+            >
+              {content}
+            </Markdown>
+          </CollapseContext.Provider>
         </article>
       </div>
     </div>
@@ -181,15 +260,80 @@ export function Preview({ content, tocOpen, baseDir, assetUrl, onTextSelection }
 
 type HeadingTag = 'h1' | 'h2' | 'h3' | 'h4'
 
-type HeadingProps = React.ComponentPropsWithoutRef<HeadingTag> & { node?: unknown }
+type HeadingProps = React.ComponentPropsWithoutRef<HeadingTag> & {
+  node?: unknown
+  'data-collapsible'?: string
+}
 
-/** Heading renderer that keeps rehype-slug's `id` and adds a hover anchor. */
+type SectionProps = React.ComponentPropsWithoutRef<'section'> & {
+  node?: unknown
+  'data-heading-id'?: string
+}
+
+/**
+ * Section wrapper produced by rehypeSections. Applies the collapsed class so
+ * CSS hides the body; the chevron lives on the heading inside.
+ */
+function CollapsibleSection({ children, node, className, ...props }: SectionProps) {
+  void node
+  const { collapsed } = useContext(CollapseContext)
+  const id = props['data-heading-id']
+  const isCollapsed = id ? collapsed.has(id) : false
+
+  return (
+    <section
+      {...props}
+      className={`${className ?? ''}${isCollapsed ? ' is-collapsed' : ''}`}
+    >
+      {children}
+    </section>
+  )
+}
+
+/**
+ * Heading renderer: keeps rehype-slug's `id`, adds the hover anchor, and — for
+ * section headings — the collapse chevron in the left gutter plus a `⋯` chip
+ * while the section's body is hidden.
+ */
 function makeHeading(Tag: HeadingTag) {
   return function HeadingWithAnchor({ children, id, node, ...props }: HeadingProps) {
     void node // hast metadata from react-markdown — kept out of the DOM
+    const { collapsed, toggle } = useContext(CollapseContext)
+    const collapsible = props['data-collapsible'] === 'true' && Boolean(id)
+    const isCollapsed = collapsible && id ? collapsed.has(id) : false
+
     return (
       <Tag id={id} {...props}>
+        {collapsible && id && (
+          <button
+            type="button"
+            className="section-toggle"
+            aria-expanded={!isCollapsed}
+            aria-label={isCollapsed ? 'Expand section' : 'Collapse section'}
+            onClick={() => toggle(id)}
+          >
+            <motion.span
+              className="section-chevron"
+              initial={false}
+              animate={{ rotate: isCollapsed ? -90 : 0 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+            >
+              <SectionChevronIcon />
+            </motion.span>
+          </button>
+        )}
         {children}
+        {isCollapsed && id && (
+          <button
+            type="button"
+            className="section-ellipsis"
+            aria-hidden="true"
+            tabIndex={-1}
+            onClick={() => toggle(id)}
+          >
+            ⋯
+          </button>
+        )}
         {id && (
           <a
             className="heading-anchor"
@@ -201,6 +345,24 @@ function makeHeading(Tag: HeadingTag) {
       </Tag>
     )
   }
+}
+
+function SectionChevronIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  )
 }
 
 interface PreWithCopyProps {
