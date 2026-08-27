@@ -24,8 +24,9 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
   and code palette
 - Collapsible document index built from headings, with scroll-spy and a
   reading-progress bar
-- Several files open as tabs, in the window or in the browser; a refresh
-  control picks up markdown added to a directory after launch
+- Several files open as tabs, in the window or in the browser, each closable
+  from the strip; a refresh control picks up markdown added to a directory
+  after launch, and a closed tab stays closed until the file is opened again
 - GitHub-flavored markdown, KaTeX math, Mermaid diagrams, highlighted code,
   local images resolved relative to the file
 - Split-pane editor with save, 30-second autosave, and save-on-close

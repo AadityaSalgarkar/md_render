@@ -40,6 +40,10 @@ ssh -L 10000:127.0.0.1:10000 host   # run on the human's machine
 holds the port does not fail — it hands `extra.md` to the running server as a
 new tab and exits. Open browsers pick it up within a few seconds.
 
+**Closing tabs:** every tab has a ✕ in the strip (window and browser alike).
+A closed file does not come back on refresh; re-open it by naming it again
+(`mdrender --port extra.md`, or `mdrender extra.md` for the window).
+
 ## Reading served documents programmatically
 
 The server exposes a small JSON API on its port:
@@ -50,7 +54,8 @@ curl http://127.0.0.1:10000/api/files         # tab list with ids
 curl http://127.0.0.1:10000/api/file?id=0     # one document's content
 ```
 
-Writing (`PUT /api/file`, `POST /api/documents`) requires the bearer token
+Writing (`PUT /api/file`, `POST /api/documents`, and `DELETE /api/file?id=N`
+to close a tab) requires the bearer token
 from `$XDG_STATE_HOME/md-render/servers/<port>.json` (falls back to
 `~/.local/state/...`). Only same-user processes can read it. Prefer editing
 files on disk directly; the app refreshes from disk on its 30-second sync.
