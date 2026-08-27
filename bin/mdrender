@@ -165,7 +165,10 @@ main() {
       if [ -z "$FIRST_FILE" ]; then
         open -a "$APP_NAME"
       else
-        TAURI_LAUNCH_FILE="$FIRST_FILE" open -a "$APP_NAME"
+        # Every path goes through as argv so several files open as tabs, same
+        # as on Linux. TAURI_LAUNCH_FILE stays for older installed builds that
+        # only read the env var.
+        TAURI_LAUNCH_FILE="$FIRST_FILE" open -a "$APP_NAME" --args "${ARGS[@]}"
       fi
       ;;
     Linux)

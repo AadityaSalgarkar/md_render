@@ -185,15 +185,28 @@ describe('bin/mdrender on macOS', () => {
     expect(log).toContain('TAURI_LAUNCH_FILE=')
   })
 
-  it('passes the file through TAURI_LAUNCH_FILE, not as an open argument', () => {
+  it('passes the file as an open --args argument and keeps the env var', () => {
     const doc = path.join(work, 'note.md')
     writeFileSync(doc, '# hello')
 
     runWrapper([doc])
 
     const log = recorded()
-    expect(log).toContain('ARGS=-a MD_RENDER')
+    expect(log).toContain(`ARGS=-a MD_RENDER --args ${doc}`)
     expect(log).toContain(`TAURI_LAUNCH_FILE=${doc}`)
+  })
+
+  it('passes several files through so they open as tabs', () => {
+    const a = path.join(work, 'a.md')
+    const b = path.join(work, 'b.md')
+    writeFileSync(a, '# a')
+    writeFileSync(b, '# b')
+
+    runWrapper([a, b])
+
+    const log = recorded()
+    expect(log).toContain(`ARGS=-a MD_RENDER --args ${a} ${b}`)
+    expect(log).toContain(`TAURI_LAUNCH_FILE=${a}`)
   })
 })
 
