@@ -27,8 +27,19 @@ const ASSET_EXTENSIONS: [&str; 9] = [
   "png", "jpg", "jpeg", "gif", "svg", "webp", "avif", "bmp", "ico",
 ];
 
+/// One open document plus the id the frontend addresses it by. Ids are handed
+/// out once and never reused, so closing a tab never renumbers the others.
+struct OpenDocument {
+  id: u64,
+  document: Document,
+}
+
 pub struct ServerState {
-  documents: Vec<Document>,
+  documents: Vec<OpenDocument>,
+  next_id: u64,
+  /// Paths the user closed. A rescan (refresh) leaves these closed; only an
+  /// explicit re-add opens them again.
+  closed: HashSet<PathBuf>,
   /// Directories under which `/api/asset` may read. One per document parent.
   roots: HashSet<PathBuf>,
   /// The path arguments as given, rescanned when a refresh is requested.
@@ -40,39 +51,68 @@ impl ServerState {
   pub fn new(documents: Vec<Document>, sources: Vec<String>, token: String) -> Self {
     let mut state = ServerState {
       documents: Vec::new(),
+      next_id: 0,
+      closed: HashSet::new(),
       roots: HashSet::new(),
       sources,
       token,
     };
-    state.add_documents(documents);
+    state.add_documents(documents, true);
     state
   }
 
   /// Add documents, ignoring ones already open, and widen the asset roots to
-  /// cover their directories.
-  fn add_documents(&mut self, documents: Vec<Document>) -> Vec<Document> {
-    let existing: HashSet<PathBuf> = self.documents.iter().map(|d| d.path.clone()).collect();
+  /// cover their directories. `explicit` marks paths the user named just now,
+  /// which re-opens a previously closed document; a rescan leaves closed
+  /// documents closed.
+  fn add_documents(&mut self, documents: Vec<Document>, explicit: bool) -> Vec<Document> {
     let mut added = Vec::new();
 
     for document in documents {
-      if existing.contains(&document.path) {
+      if explicit {
+        self.closed.remove(&document.path);
+      } else if self.closed.contains(&document.path) {
+        continue;
+      }
+      if self.documents.iter().any(|d| d.document.path == document.path) {
         continue;
       }
       if let Some(parent) = document.path.parent() {
         self.roots.insert(parent.to_path_buf());
       }
       added.push(document.clone());
-      self.documents.push(document);
+      self.documents.push(OpenDocument {
+        id: self.next_id,
+        document,
+      });
+      self.next_id += 1;
     }
 
     added
+  }
+
+  /// Close a tab. The path is remembered so a refresh does not bring it back,
+  /// and the asset roots shrink to what the remaining documents need — a
+  /// directory shared with a still-open document stays served.
+  fn remove_document(&mut self, id: u64) -> Option<Document> {
+    let index = self.documents.iter().position(|d| d.id == id)?;
+    let removed = self.documents.remove(index);
+    self.closed.insert(removed.document.path.clone());
+
+    self.roots = self
+      .documents
+      .iter()
+      .filter_map(|d| d.document.path.parent().map(|p| p.to_path_buf()))
+      .collect();
+
+    Some(removed.document)
   }
 
   /// Whether `path` is one of the documents this server was asked to open.
   /// Reads and writes are limited to exactly these files — being inside a
   /// served directory is not enough.
   fn is_open_document(&self, path: &Path) -> bool {
-    self.documents.iter().any(|doc| doc.path == path)
+    self.documents.iter().any(|doc| doc.document.path == path)
   }
 
   /// Whether `path` may be served as an asset: it must sit under a known root
@@ -92,14 +132,14 @@ type Shared = Arc<RwLock<ServerState>>;
 
 #[derive(Serialize)]
 struct DocumentMeta {
-  id: usize,
+  id: u64,
   label: String,
   path: String,
 }
 
 #[derive(Serialize)]
 struct DocumentBody {
-  id: usize,
+  id: u64,
   label: String,
   path: String,
   base_dir: String,
@@ -108,7 +148,7 @@ struct DocumentBody {
 
 #[derive(Deserialize)]
 struct IdQuery {
-  id: usize,
+  id: u64,
 }
 
 #[derive(Deserialize)]
@@ -165,11 +205,10 @@ fn documents_of(state: &Shared) -> Vec<DocumentMeta> {
     .unwrap()
     .documents
     .iter()
-    .enumerate()
-    .map(|(id, doc)| DocumentMeta {
-      id,
-      label: doc.label.clone(),
-      path: doc.path.to_string_lossy().to_string(),
+    .map(|doc| DocumentMeta {
+      id: doc.id,
+      label: doc.document.label.clone(),
+      path: doc.document.path.to_string_lossy().to_string(),
     })
     .collect()
 }
@@ -193,7 +232,8 @@ async fn list_files(State(state): State<Shared>, Query(query): Query<ListQuery>)
   if query.refresh {
     let sources = state.read().unwrap().sources.clone();
     if let Ok(found) = crate::cli::collect_documents(&sources) {
-      state.write().unwrap().add_documents(found);
+      // A rescan, not an explicit ask: closed tabs stay closed.
+      state.write().unwrap().add_documents(found, false);
     }
   }
 
@@ -203,7 +243,11 @@ async fn list_files(State(state): State<Shared>, Query(query): Query<ListQuery>)
 async fn read_file(State(state): State<Shared>, Query(query): Query<IdQuery>) -> Response {
   let document = {
     let guard = state.read().unwrap();
-    guard.documents.get(query.id).cloned()
+    guard
+      .documents
+      .iter()
+      .find(|doc| doc.id == query.id)
+      .map(|doc| doc.document.clone())
   };
 
   let Some(document) = document else {
@@ -339,10 +383,29 @@ async fn add_documents(
     Err(err) => return (StatusCode::BAD_REQUEST, err.to_string()).into_response(),
   };
 
-  let added = state.write().unwrap().add_documents(documents);
+  let added = state.write().unwrap().add_documents(documents, true);
   let labels: Vec<String> = added.into_iter().map(|doc| doc.label).collect();
 
   Json(serde_json::json!({ "added": labels })).into_response()
+}
+
+/// Close a tab. Token-guarded like every other mutation; the updated tab list
+/// comes back so the caller need not re-fetch, and the next poll from any
+/// other browser window converges on the same list.
+async fn remove_document(
+  State(state): State<Shared>,
+  headers: HeaderMap,
+  Query(query): Query<IdQuery>,
+) -> Response {
+  if !authorised(&headers, &state) {
+    return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
+  }
+
+  if state.write().unwrap().remove_document(query.id).is_none() {
+    return (StatusCode::NOT_FOUND, "no such document").into_response();
+  }
+
+  Json(documents_of(&state)).into_response()
 }
 
 /// Marker the frontend reads to know it is running against this server rather
@@ -399,7 +462,10 @@ pub fn router(state: Shared) -> Router {
   Router::new()
     .route("/api/health", get(health))
     .route("/api/files", get(list_files))
-    .route("/api/file", get(read_file).put(write_by_path))
+    .route(
+      "/api/file",
+      get(read_file).put(write_by_path).delete(remove_document),
+    )
     .route("/api/read", get(read_by_path))
     .route("/api/export", post(export_by_path))
     .route("/api/asset", get(read_asset))
@@ -846,10 +912,13 @@ mod tests {
     let other = other_dir.join("b.md");
     fs::write(&other, "# b").unwrap();
 
-    let added = state.add_documents(vec![Document {
-      path: other.clone(),
-      label: "b.md".to_string(),
-    }]);
+    let added = state.add_documents(
+      vec![Document {
+        path: other.clone(),
+        label: "b.md".to_string(),
+      }],
+      true,
+    );
     assert_eq!(added.len(), 1);
     assert_eq!(state.documents.len(), 2);
 
@@ -858,11 +927,101 @@ mod tests {
     assert!(state.allows_asset(&image));
 
     // Adding the same path again is a no-op.
-    let repeat = state.add_documents(vec![Document {
-      path: other,
-      label: "b.md".to_string(),
-    }]);
+    let repeat = state.add_documents(
+      vec![Document {
+        path: other,
+        label: "b.md".to_string(),
+      }],
+      true,
+    );
     assert!(repeat.is_empty());
     assert_eq!(state.documents.len(), 2);
+  }
+
+  #[test]
+  fn removing_a_document_keeps_the_other_ids_stable() {
+    let dir = temp_dir("remove-ids");
+    for name in ["a.md", "b.md", "c.md"] {
+      fs::write(dir.join(name), "# doc").unwrap();
+    }
+    let documents = crate::cli::collect_documents(&[dir.to_string_lossy().to_string()]).unwrap();
+    let mut state = ServerState::new(documents, vec![], "token".to_string());
+
+    let ids: Vec<u64> = state.documents.iter().map(|d| d.id).collect();
+    assert_eq!(ids, vec![0, 1, 2]);
+
+    assert!(state.remove_document(1).is_some());
+
+    let after: Vec<u64> = state.documents.iter().map(|d| d.id).collect();
+    // No renumbering: the frontend's active id and ?doc= URL stay valid.
+    assert_eq!(after, vec![0, 2]);
+    assert!(state.remove_document(1).is_none());
+  }
+
+  #[test]
+  fn removing_a_document_closes_writes_but_keeps_a_shared_root_served() {
+    let dir = temp_dir("remove-roots");
+    let a = dir.join("a.md");
+    let b = dir.join("b.md");
+    fs::write(&a, "# a").unwrap();
+    fs::write(&b, "# b").unwrap();
+
+    let lone_dir = temp_dir("remove-roots-lone");
+    let lone = lone_dir.join("c.md");
+    fs::write(&lone, "# c").unwrap();
+
+    let image = dir.join("pic.png");
+    let lone_image = lone_dir.join("pic.png");
+    fs::write(&image, [0u8; 4]).unwrap();
+    fs::write(&lone_image, [0u8; 4]).unwrap();
+
+    let documents = vec![
+      Document { path: a.clone(), label: "a.md".into() },
+      Document { path: b.clone(), label: "b.md".into() },
+      Document { path: lone.clone(), label: "c.md".into() },
+    ];
+    let mut state = ServerState::new(documents, vec![], "token".to_string());
+    assert!(state.allows_asset(&lone_image));
+
+    // Closing a.md: its file is no longer writable, but b.md still lives in
+    // the same directory, so images beside it stay served.
+    assert!(state.remove_document(0).is_some());
+    assert!(!state.is_open_document(&a));
+    assert!(state.is_open_document(&b));
+    assert!(state.allows_asset(&image));
+
+    // Closing c.md: nothing else lives in its directory, so the asset root
+    // goes away with it.
+    assert!(state.remove_document(2).is_some());
+    assert!(!state.allows_asset(&lone_image));
+    assert!(state.allows_asset(&image));
+  }
+
+  #[test]
+  fn a_rescan_does_not_resurrect_a_closed_document_but_an_explicit_add_does() {
+    let dir = temp_dir("remove-rescan");
+    fs::write(dir.join("a.md"), "# a").unwrap();
+    fs::write(dir.join("b.md"), "# b").unwrap();
+
+    let sources = vec![dir.to_string_lossy().to_string()];
+    let documents = crate::cli::collect_documents(&sources).unwrap();
+    let closed_path = documents[0].path.clone();
+    let mut state = ServerState::new(documents, sources.clone(), "token".to_string());
+
+    assert!(state.remove_document(0).is_some());
+
+    // The refresh path finds the same files on disk again.
+    let rescan = crate::cli::collect_documents(&sources).unwrap();
+    let added = state.add_documents(rescan, false);
+    assert!(added.is_empty());
+    assert_eq!(state.documents.len(), 1);
+
+    // Naming the file again (a new `mdrender --port a.md`) re-opens it under
+    // a fresh id — never a recycled one.
+    let again = crate::cli::collect_documents(&[closed_path.to_string_lossy().to_string()]).unwrap();
+    let reopened = state.add_documents(again, true);
+    assert_eq!(reopened.len(), 1);
+    assert_eq!(state.documents.len(), 2);
+    assert_eq!(state.documents.last().unwrap().id, 2);
   }
 }

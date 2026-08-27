@@ -9,18 +9,26 @@ const documents: DocumentMeta[] = [
   { id: '2', label: 'third.md', path: '/docs/third.md' },
 ]
 
+const noop = () => {}
+
 describe('TabBar', () => {
   it('stays hidden when only one document is open', () => {
-    // The desktop app opens one document at a time; a lone tab is just noise.
+    // A lone tab is just noise — and it means the last document cannot be
+    // closed away from under the user.
     const { container } = render(
-      <TabBar documents={documents.slice(0, 1)} activeId="0" onSelect={() => {}} />,
+      <TabBar
+        documents={documents.slice(0, 1)}
+        activeId="0"
+        onSelect={noop}
+        onClose={noop}
+      />,
     )
 
     expect(container).toBeEmptyDOMElement()
   })
 
   it('renders one tab per document once there is more than one', () => {
-    render(<TabBar documents={documents} activeId="0" onSelect={() => {}} />)
+    render(<TabBar documents={documents} activeId="0" onSelect={noop} onClose={noop} />)
 
     expect(screen.getAllByRole('tab')).toHaveLength(3)
     expect(screen.getByRole('tab', { name: 'first.md' })).toBeInTheDocument()
@@ -28,7 +36,7 @@ describe('TabBar', () => {
   })
 
   it('marks the active document and only that one', () => {
-    render(<TabBar documents={documents} activeId="1" onSelect={() => {}} />)
+    render(<TabBar documents={documents} activeId="1" onSelect={noop} onClose={noop} />)
 
     expect(screen.getByRole('tab', { name: 'nested/second.md' })).toHaveAttribute(
       'aria-selected',
@@ -42,7 +50,7 @@ describe('TabBar', () => {
 
   it('reports the id of a clicked tab', () => {
     const onSelect = vi.fn()
-    render(<TabBar documents={documents} activeId="0" onSelect={onSelect} />)
+    render(<TabBar documents={documents} activeId="0" onSelect={onSelect} onClose={noop} />)
 
     fireEvent.click(screen.getByRole('tab', { name: 'third.md' }))
 
@@ -50,11 +58,34 @@ describe('TabBar', () => {
   })
 
   it('shows the full path as a tooltip, since labels can collide', () => {
-    render(<TabBar documents={documents} activeId="0" onSelect={() => {}} />)
+    render(<TabBar documents={documents} activeId="0" onSelect={noop} onClose={noop} />)
 
     expect(screen.getByRole('tab', { name: 'first.md' })).toHaveAttribute(
       'title',
       '/docs/first.md',
     )
+  })
+
+  it('offers a close control on every tab', () => {
+    render(<TabBar documents={documents} activeId="0" onSelect={noop} onClose={noop} />)
+
+    for (const document of documents) {
+      expect(
+        screen.getByRole('button', { name: `Close ${document.label}` }),
+      ).toBeInTheDocument()
+    }
+  })
+
+  it('closing a tab reports its id without also selecting it', () => {
+    const onSelect = vi.fn()
+    const onClose = vi.fn()
+    render(
+      <TabBar documents={documents} activeId="0" onSelect={onSelect} onClose={onClose} />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close nested/second.md' }))
+
+    expect(onClose).toHaveBeenCalledWith('1')
+    expect(onSelect).not.toHaveBeenCalled()
   })
 })

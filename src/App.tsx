@@ -107,8 +107,9 @@ export default function App() {
 
   // Both modes build their tabs from the same document list. Server mode keeps
   // polling so documents handed to the running server by a later
-  // `md-render --port` invocation appear on their own; the desktop list is
-  // fixed at launch, so one pass is enough.
+  // `md-render --port` invocation appear on their own; the desktop list only
+  // changes through explicit actions (add, refresh, close), so one pass is
+  // enough there.
   useEffect(() => {
     let cancelled = false
 
@@ -416,6 +417,46 @@ export default function App() {
     }
   }, [updateContent, writeOpenFile])
 
+  /**
+   * Close a tab. Closing the active tab first settles any pending save, so a
+   * late autosave cannot land after the document is gone; then a neighbouring
+   * tab takes over — the one that slides into the closed tab's spot, or the
+   * previous one when the rightmost tab closes.
+   */
+  const handleCloseDocument = useCallback(async (id: string) => {
+    const index = documents.findIndex((doc) => doc.id === id)
+    const wasActive = activeDocIdRef.current === id
+
+    if (wasActive) {
+      try {
+        await syncOpenFile('close')
+        await fileSaveQueueRef.current
+      } catch {
+        // Closing regardless; the save error was already surfaced.
+      }
+    }
+
+    try {
+      const remaining = await backendRef.current.closeDocument(id)
+      setDocuments(remaining)
+
+      if (remaining.length === 0) {
+        activeDocIdRef.current = null
+        setActiveDocId(null)
+        const url = new URL(window.location.href)
+        url.searchParams.delete('doc')
+        window.history.replaceState(null, '', url.toString())
+        return
+      }
+      if (wasActive) {
+        const neighbour = remaining[Math.min(Math.max(index, 0), remaining.length - 1)]
+        await loadDocument(neighbour.id)
+      }
+    } catch (err) {
+      console.error('Failed to close document:', err)
+    }
+  }, [documents, loadDocument, syncOpenFile])
+
   const saveContentToFile = useCallback(async (nextContent: string) => {
     updateContent(nextContent)
     if (filePath) {
@@ -572,7 +613,12 @@ export default function App() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden relative">
-      <TabBar documents={documents} activeId={activeDocId} onSelect={loadDocument} />
+      <TabBar
+        documents={documents}
+        activeId={activeDocId}
+        onSelect={loadDocument}
+        onClose={handleCloseDocument}
+      />
       <div className="flex-1 flex overflow-hidden relative">
       {/* Floating Controls */}
       <div className={`floating-controls ${commentsOpen ? 'comments-open' : ''}`}>
