@@ -79,13 +79,14 @@ pub fn probe(host: &str, port: u16) -> Probe {
   }
 }
 
-/// Hand new documents to a running server. Returns the labels it added.
+/// Hand new documents to a running server. Returns the labels it added and
+/// the workspace names they landed in, so the caller can print the URLs.
 pub fn add_documents(
   host: &str,
   port: u16,
   token: &str,
   paths: &[String],
-) -> Result<Vec<String>, String> {
+) -> Result<(Vec<String>, Vec<String>), String> {
   let body = serde_json::json!({ "paths": paths }).to_string();
   let raw = format!(
     "POST /api/documents HTTP/1.1\r\n\
@@ -114,9 +115,10 @@ pub fn add_documents(
 
   let parsed: serde_json::Value =
     serde_json::from_str(&response).map_err(|err| format!("unexpected response: {}", err))?;
-  Ok(
+
+  let strings = |key: &str| -> Vec<String> {
     parsed
-      .get("added")
+      .get(key)
       .and_then(|value| value.as_array())
       .map(|items| {
         items
@@ -124,8 +126,10 @@ pub fn add_documents(
           .filter_map(|item| item.as_str().map(|s| s.to_string()))
           .collect()
       })
-      .unwrap_or_default(),
-  )
+      .unwrap_or_default()
+  };
+
+  Ok((strings("added"), strings("workspaces")))
 }
 
 #[cfg(test)]

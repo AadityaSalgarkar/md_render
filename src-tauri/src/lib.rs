@@ -192,14 +192,33 @@ fn get_launch_file() -> Option<String> {
   std::env::var("TAURI_LAUNCH_FILE").ok()
 }
 
+/// First port from `start` that is free or already an md-render server —
+/// anything held by another program is skipped.
+fn pick_port(host: &str, start: u16, attempts: u16) -> Result<u16, String> {
+  for offset in 0..attempts {
+    let Some(candidate) = start.checked_add(offset) else {
+      break;
+    };
+    if attach::probe(host, candidate) != attach::Probe::Occupied {
+      return Ok(candidate);
+    }
+  }
+  Err(format!(
+    "no usable port between {} and {}; pass --port to pick one explicitly",
+    start,
+    start.saturating_add(attempts.saturating_sub(1))
+  ))
+}
+
 /// Serve mode: either start a server, or hand the documents to one that is
-/// already holding the port.
-fn run_server(
-  host: String,
-  port: u16,
-  documents: Vec<cli::Document>,
-  sources: Vec<String>,
-) -> Result<(), String> {
+/// already holding the port. Without an explicit port, scan forward from the
+/// default so the user never has to pick one.
+fn run_server(host: String, port: Option<u16>, sources: Vec<String>) -> Result<(), String> {
+  let port = match port {
+    Some(explicit) => explicit,
+    None => pick_port(&host, cli::DEFAULT_PORT, cli::PORT_SCAN_ATTEMPTS)?,
+  };
+
   match attach::probe(&host, port) {
     attach::Probe::MdRender => {
       let record = state::read(port).ok_or_else(|| {
@@ -210,12 +229,7 @@ fn run_server(
         )
       })?;
 
-      let paths: Vec<String> = documents
-        .iter()
-        .map(|doc| doc.path.to_string_lossy().to_string())
-        .collect();
-
-      let added = attach::add_documents(&host, port, &record.token, &paths)?;
+      let (added, workspaces) = attach::add_documents(&host, port, &record.token, &sources)?;
       if added.is_empty() {
         println!("already open on http://{}:{}", host, port);
       } else {
@@ -224,13 +238,19 @@ fn run_server(
           println!("  {}", label);
         }
       }
+      for workspace in workspaces {
+        println!("open: http://{}:{}/{}/", host, port, workspace);
+      }
       Ok(())
     }
     attach::Probe::Occupied => Err(format!(
       "port {} is in use by another program",
       port
     )),
-    attach::Probe::Free => server::run(&host, port, documents, sources),
+    attach::Probe::Free => {
+      let specs = cli::group_workspaces(&sources).map_err(|err| err.to_string())?;
+      server::run(&host, port, specs)
+    }
   }
 }
 
@@ -255,10 +275,10 @@ pub fn run() {
     cli::Mode::Serve {
       host,
       port,
-      documents,
       sources,
+      ..
     } => {
-      if let Err(err) = run_server(host, port, documents, sources) {
+      if let Err(err) = run_server(host, port, sources) {
         eprintln!("md-render: {}", err);
         std::process::exit(1);
       }
@@ -384,5 +404,27 @@ mod tests {
     let meta = open.as_meta();
     assert_eq!(meta.len(), 2);
     assert_eq!(meta[1].id, 1);
+  }
+
+  #[test]
+  fn pick_port_skips_a_port_held_by_another_program() {
+    use std::io::{Read, Write};
+
+    // A non-mdrender HTTP server squats on the first candidate port.
+    let blocker = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let held = blocker.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+      for stream in blocker.incoming() {
+        let Ok(mut stream) = stream else { continue };
+        let mut buffer = [0u8; 512];
+        let _ = stream.read(&mut buffer);
+        let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nsomething else");
+        let _ = stream.shutdown(std::net::Shutdown::Both);
+      }
+    });
+
+    let picked = pick_port("127.0.0.1", held, 5).unwrap();
+    assert_ne!(picked, held);
+    assert!(picked > held && picked < held + 5);
   }
 }
