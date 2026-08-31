@@ -308,7 +308,7 @@ footer .mono, .mono { font-family: "IBM Plex Mono", monospace; font-size: 0.8rem
 
   <div class="frame">
     <div class="terminal"><span class="p">$</span> mdrender --port notes.md ./docs
-serving 4 files on <span class="s">http://127.0.0.1:10000</span>
+serving 4 files on <span class="s">http://127.0.0.1:9999</span>
   <span class="d">[1]</span> notes.md
   <span class="d">[2]</span> api.md
   <span class="d">[3]</span> guide/setup.md
@@ -319,7 +319,7 @@ serving 4 files on <span class="s">http://127.0.0.1:10000</span>
   <div class="duo">
     <figure>
       <div class="frame">
-        <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="addr">127.0.0.1:10000</span></div>
+        <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="addr">127.0.0.1:9999</span></div>
         <img src="assets/browser.png" alt="MD_RENDER serving three documents as browser tabs, with the index, math, highlighted code and a Mermaid diagram" width="1280" height="900">
       </div>
       <figcaption>server mode in a browser — same app, same tabs</figcaption>
@@ -400,7 +400,7 @@ make install        <span class="c"># everything under ~/.local and ~/bin — no
 <pre><code>mdrender                    <span class="c"># open the app</span>
 mdrender notes.md           <span class="c"># open one file</span>
 mdrender a.md b.md ./docs   <span class="c"># several files and a directory — tabs</span>
-mdrender --port notes.md    <span class="c"># serve to a browser instead (port 10000)</span></code></pre>
+mdrender --port notes.md    <span class="c"># serve to a browser instead (port 9999)</span></code></pre>
   <p>Directory arguments contribute every markdown file beneath them,
   recursively, in stable sorted order. The window and the server build their
   tabs from the same list, so the same arguments produce the same result in
@@ -413,23 +413,23 @@ mdrender --port notes.md    <span class="c"># serve to a browser instead (port 1
 <section id="server">
   <h2><a class="anchor" href="#server">Server mode</a></h2>
   <p><code>--port</code> serves the app over HTTP instead of opening a window.
-  The port defaults to <strong>10000</strong>; pass a number to override:
+  The port defaults to <strong>9999</strong>, falling forward to the next free port; pass a number to pin one. Each directory becomes a workspace at <code>/&lt;dirname&gt;/</code>:
   <code>mdrender --port 8080 notes.md</code>. Everything works as it does in
   the window — tabs, index, themes, math, diagrams, images, and editing and
   saving back to disk.</p>
   <p>Running the command again while a server already holds the port
   <strong>adds the file as another tab</strong> rather than failing:</p>
 <pre><code><span class="k">$</span> mdrender --port extra.md
-added to http://127.0.0.1:10000
+added to http://127.0.0.1:9999
   extra.md</code></pre>
   <p>An open browser picks the new tab up within a few seconds, no reload.</p>
 
   <h3 id="remote"><a class="anchor" href="#remote">Reading over SSH</a></h3>
   <p>The main reason the mode exists: the machine rendering the markdown needs
   no display.</p>
-<pre><code>ssh -L 10000:127.0.0.1:10000 my-server
+<pre><code>ssh -L 9999:127.0.0.1:9999 my-server
 mdrender --port ~/notes.md          <span class="c"># on the server</span></code></pre>
-  <p>Then open <code>http://127.0.0.1:10000</code> in your local browser.</p>
+  <p>Then open <code>http://127.0.0.1:9999</code> in your local browser.</p>
 
   <h3 id="security"><a class="anchor" href="#security">What the server touches</a></h3>
   <p>Server mode can edit and save, so its reach is bounded deliberately:</p>

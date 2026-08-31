@@ -88,23 +88,29 @@ and the server take the same arguments and open the same tabs.
 
 ```
 $ mdrender --port notes.md ./docs
-serving 4 files on http://127.0.0.1:10000
-  [1] notes.md
-  [2] api.md
-  [3] guide/setup.md
-  [4] guide/usage.md
+serving 4 files on http://127.0.0.1:9999
+  http://127.0.0.1:9999/project/
+    notes.md
+  http://127.0.0.1:9999/docs/
+    api.md
+    guide/setup.md
+    guide/usage.md
 (ctrl-c to stop)
 ```
 
-The port defaults to 10000 (`--port 8080` overrides). Everything works as in
-the window, including editing and saving back to disk. Running the command
-again while a server holds the port adds the file as another tab instead of
-failing.
+The port defaults to 9999, falling forward to the next free port when
+another program holds it (`--port 8080` pins one). Each directory — or a
+file's parent directory — becomes a workspace at
+`http://127.0.0.1:9999/<dirname>/` with its own tabs; the root URL redirects
+to the only workspace, or lists them all. Everything works as in the window,
+including editing and saving back to disk. Running the command again while a
+server holds the port adds the files as tabs (and new directories as
+workspaces) instead of failing.
 
 Reading a document on a headless machine — the reason the mode exists:
 
 ```bash
-ssh -L 10000:127.0.0.1:10000 my-server
+ssh -L 9999:127.0.0.1:9999 my-server
 mdrender --port ~/notes.md           # on the server
 ```
 
