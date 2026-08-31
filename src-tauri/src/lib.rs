@@ -214,6 +214,19 @@ fn pick_port(host: &str, start: u16, attempts: u16) -> Result<u16, String> {
 /// already holding the port. Without an explicit port, scan forward from the
 /// default so the user never has to pick one.
 fn run_server(host: String, port: Option<u16>, sources: Vec<String>) -> Result<(), String> {
+  // Absolutise the path arguments up front: an attach hands them to a server
+  // process with a different working directory, where a relative path would
+  // mean nothing. Unreadable paths stay as given so the error names them.
+  let sources: Vec<String> = sources
+    .iter()
+    .map(|raw| {
+      Path::new(raw)
+        .canonicalize()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| raw.clone())
+    })
+    .collect();
+
   let port = match port {
     Some(explicit) => explicit,
     None => pick_port(&host, cli::DEFAULT_PORT, cli::PORT_SCAN_ATTEMPTS)?,

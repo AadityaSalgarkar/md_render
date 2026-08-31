@@ -348,4 +348,23 @@ describe.skipIf(!binary)('md-render --port', () => {
     const response = await fetch(`${origin}/definitely-not-a-workspace/`)
     expect(response.status).toBe(404)
   })
+
+  it('attaches with a relative path from another working directory', async () => {
+    const extraDir = path.join(work, 'relative-ws')
+    mkdirSync(extraDir)
+    writeFileSync(path.join(extraDir, 'rel.md'), '# Relative\n')
+
+    // The server process has a different cwd, so the CLI must absolutise
+    // before handing the path over.
+    const output = execFileSync(binary!, ['--port', String(port), 'relative-ws'], {
+      cwd: work,
+      encoding: 'utf8',
+      env: { ...process.env, XDG_STATE_HOME: path.join(work, 'state') },
+      timeout: 20_000,
+    })
+    expect(output).toContain('rel.md')
+
+    const labels = (await serverBackend(origin).listDocuments()).map((doc) => doc.label)
+    expect(labels).toContain('rel.md')
+  }, 30_000)
 })
