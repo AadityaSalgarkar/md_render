@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.2.0...v0.3.0) (2026-09-02)
+
+
+### Features
+
+* **cli:** mdrender -h prints usage without launching anything ([c4ace47](https://github.com/AadityaSalgarkar/md_render/commit/c4ace47a4d625feff989d000f08d68a48a018834))
+* closable tabs with stable document ids in both modes ([9883890](https://github.com/AadityaSalgarkar/md_render/commit/9883890311e99ff2ae12c366938c830259a26c4b))
+* desktop multi-file tabs on macOS and closable tabs in both modes ([ba8c902](https://github.com/AadityaSalgarkar/md_render/commit/ba8c902fa261ce02ad6b0aeacbf38fde9f6ad405))
+* **desktop:** open every file argument as a tab on macOS ([f08eb74](https://github.com/AadityaSalgarkar/md_render/commit/f08eb7458bd70112cb9e9e766825132352f9741a))
+* workspace URLs on a fixed default port ([b5008dc](https://github.com/AadityaSalgarkar/md_render/commit/b5008dc73d62fbfc4f31ff55a300c439e32e30af))
+* workspace URLs on a fixed default port (9999) and mdrender -h ([49ae7b8](https://github.com/AadityaSalgarkar/md_render/commit/49ae7b85c302bc478670e1ef4534effb5296371c))
+
+
+### Bug Fixes
+
+* absolutise source paths before attaching to a running server ([dcaff44](https://github.com/AadityaSalgarkar/md_render/commit/dcaff44f19c540277274eda47f1269696dcfdb83))
+
 ## [0.2.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.1.0...v0.2.0) (2026-07-27)
 
 
