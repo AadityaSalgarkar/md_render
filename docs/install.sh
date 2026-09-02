@@ -80,4 +80,4 @@ make install
 say ""
 say "installed. make sure ~/bin is on your PATH, then:"
 say "  mdrender README.md            # desktop window"
-say "  mdrender --port README.md     # served to your browser on :10000"
+say "  mdrender --port README.md     # served at http://127.0.0.1:9999/<dirname>/"
