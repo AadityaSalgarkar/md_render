@@ -24,16 +24,18 @@ command returns immediately; the window opens detached.
 ## Serve to a browser (works headless)
 
 ```bash
-mdrender --port notes.md ./docs     # default port 10000
+mdrender --port notes.md ./docs     # default port 9999 (auto-falls forward)
 mdrender --port 8080 notes.md       # explicit port (1-65535)
 ```
 
-This prints the URL and blocks until ctrl-c — run it in the background if you
+Each directory (or a file's parent directory) becomes a workspace at
+`http://127.0.0.1:9999/<dirname>/` with its own tab set. This prints the
+workspace URLs and blocks until ctrl-c — run it in the background if you
 need your shell back. No display is required, so it works on servers; the
 human reads it through an SSH forward:
 
 ```bash
-ssh -L 10000:127.0.0.1:10000 host   # run on the human's machine
+ssh -L 9999:127.0.0.1:9999 host   # run on the human's machine
 ```
 
 **Adding tabs:** running `mdrender --port extra.md` while a server already
@@ -49,9 +51,10 @@ A closed file does not come back on refresh; re-open it by naming it again
 The server exposes a small JSON API on its port:
 
 ```bash
-curl http://127.0.0.1:10000/api/health        # {"app":"md-render",...}
-curl http://127.0.0.1:10000/api/files         # tab list with ids
-curl http://127.0.0.1:10000/api/file?id=0     # one document's content
+curl http://127.0.0.1:9999/api/health         # {"app":"md-render",...}
+curl http://127.0.0.1:9999/api/workspaces     # workspace names and dirs
+curl http://127.0.0.1:9999/api/files          # tab list with ids (?ws= scopes)
+curl http://127.0.0.1:9999/api/file?id=0      # one document's content
 ```
 
 Writing (`PUT /api/file`, `POST /api/documents`, and `DELETE /api/file?id=N`

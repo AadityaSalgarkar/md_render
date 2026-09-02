@@ -51,6 +51,15 @@ function serverToken(): string {
   return (window as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ ?? ''
 }
 
+/**
+ * Workspace this page is scoped to, injected by the server alongside the
+ * token. Empty when absent (older pages, tests), which means "everything".
+ */
+function serverWorkspace(): string {
+  if (typeof window === 'undefined') return ''
+  return (window as { __MD_RENDER_WORKSPACE__?: string }).__MD_RENDER_WORKSPACE__ ?? ''
+}
+
 /** Tauri shell. */
 export function desktopBackend(): Backend {
   const asMeta = (documents: Array<{ id: number; label: string; path: string }>) =>
@@ -112,7 +121,12 @@ export function desktopBackend(): Backend {
  */
 export function serverBackend(base = ''): Backend {
   const fetchDocuments = async (refresh: boolean): Promise<DocumentMeta[]> => {
-    const response = await fetch(`${base}/api/files${refresh ? '?refresh=true' : ''}`)
+    const params = new URLSearchParams()
+    if (refresh) params.set('refresh', 'true')
+    const workspace = serverWorkspace()
+    if (workspace) params.set('ws', workspace)
+    const query = params.toString()
+    const response = await fetch(`${base}/api/files${query ? `?${query}` : ''}`)
     if (!response.ok) throw new Error(`could not list documents (${response.status})`)
     const documents = (await response.json()) as Array<{
       id: number
@@ -135,7 +149,9 @@ export function serverBackend(base = ''): Backend {
     listDocuments: () => fetchDocuments(false),
     refreshDocuments: () => fetchDocuments(true),
     closeDocument: async (id) => {
-      const response = await fetch(`${base}/api/file?id=${encodeURIComponent(id)}`, {
+      const workspace = serverWorkspace()
+      const ws = workspace ? `&ws=${encodeURIComponent(workspace)}` : ''
+      const response = await fetch(`${base}/api/file?id=${encodeURIComponent(id)}${ws}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${serverToken()}` },
       })

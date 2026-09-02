@@ -14,7 +14,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use crate::cli::Document;
+use crate::cli::{Document, WorkspaceSpec};
 use crate::state::{self, ServerRecord};
 
 #[derive(RustEmbed)]
@@ -34,85 +34,176 @@ struct OpenDocument {
   document: Document,
 }
 
-pub struct ServerState {
+/// One URL namespace: `/<name>/` serves the SPA scoped to these documents.
+struct Workspace {
+  /// Unique URL segment, derived from the directory's name.
+  name: String,
+  /// Canonical directory this workspace represents.
+  dir: PathBuf,
+  /// The path arguments feeding this workspace, rescanned on refresh.
+  sources: Vec<String>,
   documents: Vec<OpenDocument>,
-  next_id: u64,
   /// Paths the user closed. A rescan (refresh) leaves these closed; only an
   /// explicit re-add opens them again.
   closed: HashSet<PathBuf>,
-  /// Directories under which `/api/asset` may read. One per document parent.
+}
+
+pub struct ServerState {
+  workspaces: Vec<Workspace>,
+  next_id: u64,
+  /// Directories under which `/api/asset` may read: the union of every open
+  /// document's parent, recomputed when a document closes.
   roots: HashSet<PathBuf>,
-  /// The path arguments as given, rescanned when a refresh is requested.
-  sources: Vec<String>,
   token: String,
 }
 
 impl ServerState {
-  pub fn new(documents: Vec<Document>, sources: Vec<String>, token: String) -> Self {
+  pub fn new(specs: Vec<WorkspaceSpec>, token: String) -> Self {
     let mut state = ServerState {
-      documents: Vec::new(),
+      workspaces: Vec::new(),
       next_id: 0,
-      closed: HashSet::new(),
       roots: HashSet::new(),
-      sources,
       token,
     };
-    state.add_documents(documents, true);
+    state.add_workspaces(specs, true);
     state
   }
 
-  /// Add documents, ignoring ones already open, and widen the asset roots to
-  /// cover their directories. `explicit` marks paths the user named just now,
-  /// which re-opens a previously closed document; a rescan leaves closed
-  /// documents closed.
-  fn add_documents(&mut self, documents: Vec<Document>, explicit: bool) -> Vec<Document> {
-    let mut added = Vec::new();
+  /// A URL segment not yet taken by another workspace, an API route, or a
+  /// file bundled into the frontend. Collisions get a numeric suffix.
+  fn unique_name(&self, hint: &str) -> String {
+    let taken = |name: &str| {
+      name == "api"
+        || self.workspaces.iter().any(|ws| ws.name == name)
+        || Assets::iter().any(|path| path.split('/').next().unwrap_or("") == name)
+    };
 
-    for document in documents {
-      if explicit {
-        self.closed.remove(&document.path);
-      } else if self.closed.contains(&document.path) {
-        continue;
-      }
-      if self.documents.iter().any(|d| d.document.path == document.path) {
-        continue;
-      }
-      if let Some(parent) = document.path.parent() {
-        self.roots.insert(parent.to_path_buf());
-      }
-      added.push(document.clone());
-      self.documents.push(OpenDocument {
-        id: self.next_id,
-        document,
-      });
-      self.next_id += 1;
+    if !taken(hint) {
+      return hint.to_string();
     }
-
-    added
+    let mut n = 2;
+    loop {
+      let candidate = format!("{}-{}", hint, n);
+      if !taken(&candidate) {
+        return candidate;
+      }
+      n += 1;
+    }
   }
 
-  /// Close a tab. The path is remembered so a refresh does not bring it back,
-  /// and the asset roots shrink to what the remaining documents need — a
-  /// directory shared with a still-open document stays served.
+  /// Merge workspace specs in: a spec whose canonical directory is already
+  /// served joins that workspace, anything else becomes a new one. `explicit`
+  /// marks paths the user named just now, which re-opens previously closed
+  /// documents; a rescan leaves closed documents closed. Returns the
+  /// documents actually added and the names of the workspaces touched.
+  fn add_workspaces(
+    &mut self,
+    specs: Vec<WorkspaceSpec>,
+    explicit: bool,
+  ) -> (Vec<Document>, Vec<String>) {
+    let mut added = Vec::new();
+    let mut touched = Vec::new();
+
+    for spec in specs {
+      let index = match self.workspaces.iter().position(|ws| ws.dir == spec.dir) {
+        Some(index) => index,
+        None => {
+          let name = self.unique_name(&spec.name_hint);
+          self.workspaces.push(Workspace {
+            name,
+            dir: spec.dir.clone(),
+            sources: Vec::new(),
+            documents: Vec::new(),
+            closed: HashSet::new(),
+          });
+          self.workspaces.len() - 1
+        }
+      };
+
+      touched.push(self.workspaces[index].name.clone());
+      for source in spec.sources {
+        if !self.workspaces[index].sources.contains(&source) {
+          self.workspaces[index].sources.push(source);
+        }
+      }
+
+      for document in spec.documents {
+        let workspace = &mut self.workspaces[index];
+        if explicit {
+          workspace.closed.remove(&document.path);
+        } else if workspace.closed.contains(&document.path) {
+          continue;
+        }
+        if workspace
+          .documents
+          .iter()
+          .any(|d| d.document.path == document.path)
+        {
+          continue;
+        }
+        if let Some(parent) = document.path.parent() {
+          self.roots.insert(parent.to_path_buf());
+        }
+        added.push(document.clone());
+        workspace.documents.push(OpenDocument {
+          id: self.next_id,
+          document,
+        });
+        self.next_id += 1;
+      }
+    }
+
+    (added, touched)
+  }
+
+  /// Close a tab wherever it lives. The path is tombstoned in its workspace
+  /// so a refresh does not bring it back, and the asset roots shrink to what
+  /// the remaining documents need — a directory shared with a still-open
+  /// document stays served.
   fn remove_document(&mut self, id: u64) -> Option<Document> {
-    let index = self.documents.iter().position(|d| d.id == id)?;
-    let removed = self.documents.remove(index);
-    self.closed.insert(removed.document.path.clone());
+    let (ws_index, doc_index) = self.workspaces.iter().enumerate().find_map(|(w, ws)| {
+      ws.documents
+        .iter()
+        .position(|d| d.id == id)
+        .map(|i| (w, i))
+    })?;
+
+    let removed = self.workspaces[ws_index].documents.remove(doc_index);
+    self.workspaces[ws_index]
+      .closed
+      .insert(removed.document.path.clone());
 
     self.roots = self
-      .documents
+      .workspaces
       .iter()
+      .flat_map(|ws| ws.documents.iter())
       .filter_map(|d| d.document.path.parent().map(|p| p.to_path_buf()))
       .collect();
 
     Some(removed.document)
   }
 
+  fn workspace(&self, name: &str) -> Option<&Workspace> {
+    self.workspaces.iter().find(|ws| ws.name == name)
+  }
+
+  fn find_document(&self, id: u64) -> Option<Document> {
+    self
+      .workspaces
+      .iter()
+      .flat_map(|ws| ws.documents.iter())
+      .find(|d| d.id == id)
+      .map(|d| d.document.clone())
+  }
+
   /// Whether `path` is one of the documents this server was asked to open.
   /// Reads and writes are limited to exactly these files — being inside a
   /// served directory is not enough.
   fn is_open_document(&self, path: &Path) -> bool {
-    self.documents.iter().any(|doc| doc.document.path == path)
+    self
+      .workspaces
+      .iter()
+      .any(|ws| ws.documents.iter().any(|doc| doc.document.path == path))
   }
 
   /// Whether `path` may be served as an asset: it must sit under a known root
@@ -149,6 +240,10 @@ struct DocumentBody {
 #[derive(Deserialize)]
 struct IdQuery {
   id: u64,
+  /// Workspace the caller is looking at, so responses that return the tab
+  /// list stay scoped to that page.
+  #[serde(default)]
+  ws: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -199,18 +294,42 @@ fn resolve_open_document(state: &Shared, raw: &str) -> Result<PathBuf, Response>
   Ok(path)
 }
 
-fn documents_of(state: &Shared) -> Vec<DocumentMeta> {
+/// The tab list, scoped to one workspace when a name is given.
+fn documents_of(state: &Shared, workspace: Option<&str>) -> Vec<DocumentMeta> {
   state
     .read()
     .unwrap()
-    .documents
+    .workspaces
     .iter()
+    .filter(|ws| workspace.map(|name| ws.name == name).unwrap_or(true))
+    .flat_map(|ws| ws.documents.iter())
     .map(|doc| DocumentMeta {
       id: doc.id,
       label: doc.document.label.clone(),
       path: doc.document.path.to_string_lossy().to_string(),
     })
     .collect()
+}
+
+/// Rescan the sources feeding one workspace (or all of them) for markdown
+/// added since. The disk walk happens outside the write lock.
+fn rescan(state: &Shared, workspace: Option<&str>) {
+  let sources: Vec<String> = {
+    let guard = state.read().unwrap();
+    guard
+      .workspaces
+      .iter()
+      .filter(|ws| workspace.map(|name| ws.name == name).unwrap_or(true))
+      .flat_map(|ws| ws.sources.iter().cloned())
+      .collect()
+  };
+
+  if sources.is_empty() {
+    return;
+  }
+  if let Ok(specs) = crate::cli::group_workspaces(&sources) {
+    state.write().unwrap().add_workspaces(specs, false);
+  }
 }
 
 async fn health() -> impl IntoResponse {
@@ -226,29 +345,22 @@ struct ListQuery {
   /// directory tree every few seconds for no reason.
   #[serde(default)]
   refresh: bool,
+  /// Workspace the caller is looking at; absent means everything.
+  #[serde(default)]
+  ws: Option<String>,
 }
 
 async fn list_files(State(state): State<Shared>, Query(query): Query<ListQuery>) -> impl IntoResponse {
   if query.refresh {
-    let sources = state.read().unwrap().sources.clone();
-    if let Ok(found) = crate::cli::collect_documents(&sources) {
-      // A rescan, not an explicit ask: closed tabs stay closed.
-      state.write().unwrap().add_documents(found, false);
-    }
+    // A rescan, not an explicit ask: closed tabs stay closed.
+    rescan(&state, query.ws.as_deref());
   }
 
-  Json(documents_of(&state))
+  Json(documents_of(&state, query.ws.as_deref()))
 }
 
 async fn read_file(State(state): State<Shared>, Query(query): Query<IdQuery>) -> Response {
-  let document = {
-    let guard = state.read().unwrap();
-    guard
-      .documents
-      .iter()
-      .find(|doc| doc.id == query.id)
-      .map(|doc| doc.document.clone())
-  };
+  let document = state.read().unwrap().find_document(query.id);
 
   let Some(document) = document else {
     return (StatusCode::NOT_FOUND, "no such document").into_response();
@@ -378,15 +490,33 @@ async fn add_documents(
     return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
   }
 
-  let documents = match crate::cli::collect_documents(&body.paths) {
-    Ok(documents) => documents,
+  let specs = match crate::cli::group_workspaces(&body.paths) {
+    Ok(specs) => specs,
     Err(err) => return (StatusCode::BAD_REQUEST, err.to_string()).into_response(),
   };
 
-  let added = state.write().unwrap().add_documents(documents, true);
+  let (added, workspaces) = state.write().unwrap().add_workspaces(specs, true);
   let labels: Vec<String> = added.into_iter().map(|doc| doc.label).collect();
 
-  Json(serde_json::json!({ "added": labels })).into_response()
+  Json(serde_json::json!({ "added": labels, "workspaces": workspaces })).into_response()
+}
+
+/// The workspaces this server hosts — what the root listing shows, and what
+/// tooling can use to find its URL.
+async fn list_workspaces(State(state): State<Shared>) -> impl IntoResponse {
+  let guard = state.read().unwrap();
+  let workspaces: Vec<serde_json::Value> = guard
+    .workspaces
+    .iter()
+    .map(|ws| {
+      serde_json::json!({
+        "name": ws.name,
+        "dir": ws.dir.to_string_lossy(),
+        "documents": ws.documents.len(),
+      })
+    })
+    .collect();
+  Json(workspaces)
 }
 
 /// Close a tab. Token-guarded like every other mutation; the updated tab list
@@ -405,7 +535,7 @@ async fn remove_document(
     return (StatusCode::NOT_FOUND, "no such document").into_response();
   }
 
-  Json(documents_of(&state)).into_response()
+  Json(documents_of(&state, query.ws.as_deref())).into_response()
 }
 
 /// Marker the frontend reads to know it is running against this server rather
@@ -416,10 +546,11 @@ async fn remove_document(
 /// Handing the token to the page gives it exactly the trust already implied by
 /// being able to reach the port. What it buys is that a page on another origin
 /// cannot read the token, so it cannot forge a write.
-pub fn inject_marker(html: &str, token: &str) -> String {
+pub fn inject_marker(html: &str, token: &str, workspace: &str) -> String {
   let marker = format!(
-    "<script>window.__MD_RENDER_SERVER__=true;window.__MD_RENDER_TOKEN__={}</script>",
-    serde_json::to_string(token).unwrap_or_else(|_| "\"\"".to_string())
+    "<script>window.__MD_RENDER_SERVER__=true;window.__MD_RENDER_TOKEN__={};window.__MD_RENDER_WORKSPACE__={}</script>",
+    serde_json::to_string(token).unwrap_or_else(|_| "\"\"".to_string()),
+    serde_json::to_string(workspace).unwrap_or_else(|_| "\"\"".to_string())
   );
 
   match html.find("</head>") {
@@ -429,33 +560,82 @@ pub fn inject_marker(html: &str, token: &str) -> String {
   }
 }
 
-/// Serve the built frontend out of the binary, falling back to `index.html` so
-/// client-side routing works.
+/// The root: one workspace redirects straight to it; several list themselves.
+fn root_page(state: &Shared) -> Response {
+  let guard = state.read().unwrap();
+  match guard.workspaces.len() {
+    0 => (StatusCode::NOT_FOUND, "nothing is being served").into_response(),
+    1 => {
+      let location = format!("/{}/", guard.workspaces[0].name);
+      (StatusCode::FOUND, [(header::LOCATION, location)]).into_response()
+    }
+    _ => {
+      // Workspace names are restricted to [A-Za-z0-9._-], so plain
+      // interpolation cannot break out of the markup.
+      let items: String = guard
+        .workspaces
+        .iter()
+        .map(|ws| {
+          format!(
+            "<li><a href=\"/{name}/\">{name}/</a> — {n} file{s}</li>",
+            name = ws.name,
+            n = ws.documents.len(),
+            s = if ws.documents.len() == 1 { "" } else { "s" }
+          )
+        })
+        .collect();
+      let html = format!(
+        "<!doctype html><meta charset=\"utf-8\"><title>md-render</title>\
+         <h1>md-render</h1><ul>{}</ul>",
+        items
+      );
+      ([(header::CONTENT_TYPE, "text/html")], html).into_response()
+    }
+  }
+}
+
+/// Serve the built frontend out of the binary. `/<workspace>/…` serves the
+/// SPA scoped to that workspace; exact bundled files (the JS/CSS under
+/// `/assets/`, icons) are served as themselves; the root redirects or lists.
 async fn static_handler(State(state): State<Shared>, uri: Uri) -> Response {
   let path = uri.path().trim_start_matches('/');
-  let path = if path.is_empty() { "index.html" } else { path };
 
-  let (asset, is_index) = match Assets::get(path) {
-    Some(asset) => (Some(asset), path == "index.html"),
-    None => (Assets::get("index.html"), true),
-  };
-
-  match asset {
-    Some(file) => {
-      if is_index {
-        let token = state.read().unwrap().token.clone();
-        let html = inject_marker(&String::from_utf8_lossy(&file.data), &token);
-        return ([(header::CONTENT_TYPE, "text/html")], html).into_response();
-      }
-      let mime = mime_guess::from_path(path).first_or_octet_stream();
-      ([(header::CONTENT_TYPE, mime.to_string())], file.data).into_response()
-    }
-    None => (
-      StatusCode::NOT_FOUND,
-      "frontend assets are missing from this build",
-    )
-      .into_response(),
+  if path.is_empty() || path == "index.html" {
+    return root_page(&state);
   }
+
+  if let Some(file) = Assets::get(path) {
+    let mime = mime_guess::from_path(path).first_or_octet_stream();
+    return ([(header::CONTENT_TYPE, mime.to_string())], file.data).into_response();
+  }
+
+  let first = path.split('/').next().unwrap_or("");
+  let known = state.read().unwrap().workspace(first).is_some();
+  if known {
+    let Some(file) = Assets::get("index.html") else {
+      return (
+        StatusCode::NOT_FOUND,
+        "frontend assets are missing from this build",
+      )
+        .into_response();
+    };
+    let token = state.read().unwrap().token.clone();
+    let html = inject_marker(&String::from_utf8_lossy(&file.data), &token, first);
+    return ([(header::CONTENT_TYPE, "text/html")], html).into_response();
+  }
+
+  let names: Vec<String> = state
+    .read()
+    .unwrap()
+    .workspaces
+    .iter()
+    .map(|ws| format!("/{}/", ws.name))
+    .collect();
+  (
+    StatusCode::NOT_FOUND,
+    format!("no such workspace; open one of: {}", names.join(" ")),
+  )
+    .into_response()
 }
 
 pub fn router(state: Shared) -> Router {
@@ -470,23 +650,15 @@ pub fn router(state: Shared) -> Router {
     .route("/api/export", post(export_by_path))
     .route("/api/asset", get(read_asset))
     .route("/api/documents", post(add_documents))
+    .route("/api/workspaces", get(list_workspaces))
     .fallback(static_handler)
     .with_state(state)
 }
 
 /// Run the server until Ctrl-C.
-pub fn run(
-  host: &str,
-  port: u16,
-  documents: Vec<Document>,
-  sources: Vec<String>,
-) -> Result<(), String> {
+pub fn run(host: &str, port: u16, specs: Vec<WorkspaceSpec>) -> Result<(), String> {
   let token = uuid::Uuid::new_v4().to_string();
-  let shared: Shared = Arc::new(RwLock::new(ServerState::new(
-    documents,
-    sources,
-    token.clone(),
-  )));
+  let shared: Shared = Arc::new(RwLock::new(ServerState::new(specs, token.clone())));
 
   let runtime = tokio::runtime::Builder::new_multi_thread()
     .enable_all()
@@ -522,16 +694,20 @@ pub fn run(
 }
 
 fn print_banner(host: &str, port: u16, shared: &Shared) {
-  let documents = documents_of(shared);
+  let guard = shared.read().unwrap();
+  let total: usize = guard.workspaces.iter().map(|ws| ws.documents.len()).sum();
   println!(
     "serving {} file{} on http://{}:{}",
-    documents.len(),
-    if documents.len() == 1 { "" } else { "s" },
+    total,
+    if total == 1 { "" } else { "s" },
     host,
     port
   );
-  for document in &documents {
-    println!("  [{}] {}", document.id + 1, document.label);
+  for workspace in &guard.workspaces {
+    println!("  http://{}:{}/{}/", host, port, workspace.name);
+    for document in &workspace.documents {
+      println!("    {}", document.document.label);
+    }
   }
   if host != "127.0.0.1" && host != "localhost" {
     println!("warning: bound to {} — file contents are reachable from the network", host);
@@ -551,23 +727,32 @@ mod tests {
     dir.canonicalize().unwrap()
   }
 
+  fn specs_for(paths: &[PathBuf]) -> Vec<WorkspaceSpec> {
+    let raw: Vec<String> = paths
+      .iter()
+      .map(|p| p.to_string_lossy().to_string())
+      .collect();
+    crate::cli::group_workspaces(&raw).unwrap()
+  }
+
+  fn all_ids(state: &ServerState) -> Vec<u64> {
+    state
+      .workspaces
+      .iter()
+      .flat_map(|ws| ws.documents.iter().map(|d| d.id))
+      .collect()
+  }
+
   fn state_with(dir: &Path) -> ServerState {
     let doc = dir.join("a.md");
     fs::write(&doc, "# a").unwrap();
-    ServerState::new(
-      vec![Document {
-        path: doc,
-        label: "a.md".to_string(),
-      }],
-      vec![],
-      "token".to_string(),
-    )
+    ServerState::new(specs_for(&[doc]), "token".to_string())
   }
 
   #[test]
   fn marker_goes_into_the_head_before_the_app_bundle() {
     let html = "<html><head><title>MD</title></head><body><script src=\"/app.js\"></script></body></html>";
-    let injected = inject_marker(html, "tok");
+    let injected = inject_marker(html, "tok", "notes");
 
     assert!(injected.contains("__MD_RENDER_SERVER__"));
     assert!(injected.find("__MD_RENDER_SERVER__").unwrap() < injected.find("/app.js").unwrap());
@@ -576,23 +761,31 @@ mod tests {
 
   #[test]
   fn marker_carries_the_token_the_page_needs_for_saving() {
-    let injected = inject_marker("<html><head></head></html>", "s3cret");
+    let injected = inject_marker("<html><head></head></html>", "s3cret", "notes");
 
     assert!(injected.contains("__MD_RENDER_TOKEN__"));
     assert!(injected.contains("\"s3cret\""));
   }
 
   #[test]
+  fn marker_carries_the_workspace_the_page_is_scoped_to() {
+    let injected = inject_marker("<html><head></head></html>", "tok", "notes");
+
+    assert!(injected.contains("__MD_RENDER_WORKSPACE__"));
+    assert!(injected.contains("\"notes\""));
+  }
+
+  #[test]
   fn marker_escapes_a_token_containing_quotes() {
     // Serialised as JSON so an awkward token cannot break out of the script.
-    let injected = inject_marker("<html><head></head></html>", "a\"b");
+    let injected = inject_marker("<html><head></head></html>", "a\"b", "notes");
 
     assert!(injected.contains("\"a\\\"b\""));
   }
 
   #[test]
   fn marker_still_injected_without_a_head_tag() {
-    assert!(inject_marker("<div>bare</div>", "tok").contains("__MD_RENDER_SERVER__"));
+    assert!(inject_marker("<div>bare</div>", "tok", "ws").contains("__MD_RENDER_SERVER__"));
   }
 
   #[test]
@@ -675,11 +868,7 @@ mod tests {
     fs::write(&second, "# second").unwrap();
 
     let shared: Shared = Arc::new(RwLock::new(ServerState::new(
-      vec![Document {
-        path: dir.join("a.md"),
-        label: "a.md".to_string(),
-      }],
-      vec![],
+      specs_for(&[dir.join("a.md")]),
       "test-token".to_string(),
     )));
 
@@ -766,10 +955,8 @@ mod tests {
     fs::write(dir.join("first.md"), "# first").unwrap();
 
     let sources = vec![dir.to_string_lossy().to_string()];
-    let initial = crate::cli::collect_documents(&sources).unwrap();
     let shared: Shared = Arc::new(RwLock::new(ServerState::new(
-      initial,
-      sources,
+      crate::cli::group_workspaces(&sources).unwrap(),
       "refresh-token".to_string(),
     )));
 
@@ -814,11 +1001,7 @@ mod tests {
     fs::write(&outsider, "# untouched").unwrap();
 
     let shared: Shared = Arc::new(RwLock::new(ServerState::new(
-      vec![Document {
-        path: doc.clone(),
-        label: "a.md".to_string(),
-      }],
-      vec![],
+      specs_for(&[doc.clone()]),
       "write-token".to_string(),
     )));
 
@@ -912,30 +1095,19 @@ mod tests {
     let other = other_dir.join("b.md");
     fs::write(&other, "# b").unwrap();
 
-    let added = state.add_documents(
-      vec![Document {
-        path: other.clone(),
-        label: "b.md".to_string(),
-      }],
-      true,
-    );
+    let (added, touched) = state.add_workspaces(specs_for(&[other.clone()]), true);
     assert_eq!(added.len(), 1);
-    assert_eq!(state.documents.len(), 2);
+    assert_eq!(touched.len(), 1);
+    assert_eq!(state.workspaces.len(), 2);
 
     let image = other_dir.join("shot.png");
     fs::write(&image, [0u8; 4]).unwrap();
     assert!(state.allows_asset(&image));
 
-    // Adding the same path again is a no-op.
-    let repeat = state.add_documents(
-      vec![Document {
-        path: other,
-        label: "b.md".to_string(),
-      }],
-      true,
-    );
+    // Adding the same path again is a no-op for documents.
+    let (repeat, _) = state.add_workspaces(specs_for(&[other]), true);
     assert!(repeat.is_empty());
-    assert_eq!(state.documents.len(), 2);
+    assert_eq!(all_ids(&state).len(), 2);
   }
 
   #[test]
@@ -944,17 +1116,14 @@ mod tests {
     for name in ["a.md", "b.md", "c.md"] {
       fs::write(dir.join(name), "# doc").unwrap();
     }
-    let documents = crate::cli::collect_documents(&[dir.to_string_lossy().to_string()]).unwrap();
-    let mut state = ServerState::new(documents, vec![], "token".to_string());
+    let mut state = ServerState::new(specs_for(&[dir]), "token".to_string());
 
-    let ids: Vec<u64> = state.documents.iter().map(|d| d.id).collect();
-    assert_eq!(ids, vec![0, 1, 2]);
+    assert_eq!(all_ids(&state), vec![0, 1, 2]);
 
     assert!(state.remove_document(1).is_some());
 
-    let after: Vec<u64> = state.documents.iter().map(|d| d.id).collect();
     // No renumbering: the frontend's active id and ?doc= URL stay valid.
-    assert_eq!(after, vec![0, 2]);
+    assert_eq!(all_ids(&state), vec![0, 2]);
     assert!(state.remove_document(1).is_none());
   }
 
@@ -975,12 +1144,10 @@ mod tests {
     fs::write(&image, [0u8; 4]).unwrap();
     fs::write(&lone_image, [0u8; 4]).unwrap();
 
-    let documents = vec![
-      Document { path: a.clone(), label: "a.md".into() },
-      Document { path: b.clone(), label: "b.md".into() },
-      Document { path: lone.clone(), label: "c.md".into() },
-    ];
-    let mut state = ServerState::new(documents, vec![], "token".to_string());
+    let mut state = ServerState::new(
+      specs_for(&[a.clone(), b.clone(), lone.clone()]),
+      "token".to_string(),
+    );
     assert!(state.allows_asset(&lone_image));
 
     // Closing a.md: its file is no longer writable, but b.md still lives in
@@ -1000,28 +1167,134 @@ mod tests {
   #[test]
   fn a_rescan_does_not_resurrect_a_closed_document_but_an_explicit_add_does() {
     let dir = temp_dir("remove-rescan");
-    fs::write(dir.join("a.md"), "# a").unwrap();
+    let closed_path = dir.join("a.md");
+    fs::write(&closed_path, "# a").unwrap();
     fs::write(dir.join("b.md"), "# b").unwrap();
 
-    let sources = vec![dir.to_string_lossy().to_string()];
-    let documents = crate::cli::collect_documents(&sources).unwrap();
-    let closed_path = documents[0].path.clone();
-    let mut state = ServerState::new(documents, sources.clone(), "token".to_string());
+    let mut state = ServerState::new(specs_for(&[dir.clone()]), "token".to_string());
 
+    // a.md sorts first, so it holds id 0.
     assert!(state.remove_document(0).is_some());
 
     // The refresh path finds the same files on disk again.
-    let rescan = crate::cli::collect_documents(&sources).unwrap();
-    let added = state.add_documents(rescan, false);
+    let (added, _) = state.add_workspaces(specs_for(&[dir]), false);
     assert!(added.is_empty());
-    assert_eq!(state.documents.len(), 1);
+    assert_eq!(all_ids(&state), vec![1]);
 
     // Naming the file again (a new `mdrender --port a.md`) re-opens it under
-    // a fresh id — never a recycled one.
-    let again = crate::cli::collect_documents(&[closed_path.to_string_lossy().to_string()]).unwrap();
-    let reopened = state.add_documents(again, true);
+    // a fresh id — never a recycled one — in the same workspace.
+    let (reopened, _) = state.add_workspaces(specs_for(&[closed_path]), true);
     assert_eq!(reopened.len(), 1);
-    assert_eq!(state.documents.len(), 2);
-    assert_eq!(state.documents.last().unwrap().id, 2);
+    assert_eq!(state.workspaces.len(), 1);
+    assert_eq!(all_ids(&state), vec![1, 2]);
+  }
+
+  #[test]
+  fn workspace_names_dedupe_against_reserved_and_existing_names() {
+    let api_a = temp_dir("reserved-a").join("api");
+    let api_b = temp_dir("reserved-b").join("api");
+    for dir in [&api_a, &api_b] {
+      fs::create_dir_all(dir).unwrap();
+      fs::write(dir.join("x.md"), "# x").unwrap();
+    }
+
+    let state = ServerState::new(specs_for(&[api_a, api_b]), "token".to_string());
+
+    let names: Vec<&str> = state.workspaces.iter().map(|ws| ws.name.as_str()).collect();
+    // Neither may shadow the API prefix, and they may not shadow each other.
+    assert_eq!(names.len(), 2);
+    assert!(!names.contains(&"api"));
+    assert!(names[0].starts_with("api-"));
+    assert_ne!(names[0], names[1]);
+  }
+
+  #[test]
+  fn workspaces_get_their_own_urls_and_scoped_tab_lists() {
+    let dir_a = temp_dir("ws-http-a");
+    let dir_b = temp_dir("ws-http-b");
+    fs::write(dir_a.join("a.md"), "# a").unwrap();
+    fs::write(dir_b.join("b.md"), "# b").unwrap();
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[dir_a, dir_b]),
+      "ws-token".to_string(),
+    )));
+    let name_a = shared.read().unwrap().workspaces[0].name.clone();
+    let name_b = shared.read().unwrap().workspaces[1].name.clone();
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      tokio::spawn(async move {
+        let _ = axum::serve(listener, router(shared)).await;
+      });
+
+      // Each workspace page carries its own scoped marker.
+      let (status, body) = http(addr, get(addr, &format!("/{}/", name_a))).await;
+      assert_eq!(status, 200);
+      assert!(body.contains("__MD_RENDER_WORKSPACE__"));
+      assert!(body.contains(&format!("\"{}\"", name_a)));
+
+      // The tab list scopes to the workspace the page asks for.
+      let (_, files_a) = http(addr, get(addr, &format!("/api/files?ws={}", name_a))).await;
+      assert!(files_a.contains("a.md"));
+      assert!(!files_a.contains("b.md"));
+
+      // No workspace parameter lists everything.
+      let (_, all) = http(addr, get(addr, "/api/files")).await;
+      assert!(all.contains("a.md") && all.contains("b.md"));
+
+      // The root lists both workspaces when there are several.
+      let (status, listing) = http(addr, get(addr, "/")).await;
+      assert_eq!(status, 200);
+      assert!(listing.contains(&format!("/{}/", name_a)));
+      assert!(listing.contains(&format!("/{}/", name_b)));
+
+      // /api/workspaces names them for tooling.
+      let (_, workspaces) = http(addr, get(addr, "/api/workspaces")).await;
+      assert!(workspaces.contains(&name_a) && workspaces.contains(&name_b));
+
+      // An unknown prefix is a 404, not a silent SPA page.
+      let (status, _) = http(addr, get(addr, "/definitely-not/")).await;
+      assert_eq!(status, 404);
+    });
+  }
+
+  #[test]
+  fn the_root_redirects_when_only_one_workspace_is_served() {
+    let dir = temp_dir("ws-redirect");
+    fs::write(dir.join("a.md"), "# a").unwrap();
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[dir]),
+      "token".to_string(),
+    )));
+    let name = shared.read().unwrap().workspaces[0].name.clone();
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      tokio::spawn(async move {
+        let _ = axum::serve(listener, router(shared)).await;
+      });
+
+      let (status, _) = http(addr, get(addr, "/")).await;
+      assert_eq!(status, 302);
+
+      // Following the redirect lands on the workspace page.
+      let (status, body) = http(addr, get(addr, &format!("/{}/", name))).await;
+      assert_eq!(status, 200);
+      assert!(body.contains("__MD_RENDER_WORKSPACE__"));
+    });
   }
 }

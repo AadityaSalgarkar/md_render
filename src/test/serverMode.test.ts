@@ -42,7 +42,12 @@ let injectedToken = ''
 const token = () => injectedToken
 
 async function readInjectedToken(url: string): Promise<string> {
-  const html = await (await fetch(`${url}/`)).text()
+  // The marker lives on workspace pages; the root only redirects or lists.
+  const workspaces = (await (await fetch(`${url}/api/workspaces`)).json()) as Array<{
+    name: string
+  }>
+  const page = workspaces[0] ? `${url}/${workspaces[0].name}/` : `${url}/`
+  const html = await (await fetch(page)).text()
   return html.match(/__MD_RENDER_TOKEN__=("(?:[^"\\]|\\.)*")/)?.[1]
     ? (JSON.parse(html.match(/__MD_RENDER_TOKEN__=("(?:[^"\\]|\\.)*")/)![1]) as string)
     : ''
@@ -103,12 +108,14 @@ afterAll(() => {
 
 describe.skipIf(!binary)('md-render --port', () => {
   it('serves the SPA with the marker that puts the frontend into server mode', async () => {
-    const html = await (await fetch(`${origin}/`)).text()
+    const html = await (await fetch(`${origin}/nested/`)).text()
 
     // Without this the app would start in desktop mode and try Tauri calls.
     expect(html).toContain('__MD_RENDER_SERVER__')
     // And the token the page needs in order to save.
     expect(html).toContain('__MD_RENDER_TOKEN__')
+    // Plus the workspace this page is scoped to.
+    expect(html).toContain('__MD_RENDER_WORKSPACE__')
   })
 
   it('lists an explicit file and the markdown found under a directory', async () => {
@@ -290,11 +297,13 @@ describe.skipIf(!binary)('md-render --port', () => {
     expect(closed.map((doc) => doc.label)).not.toContain('second.md')
 
     // Exactly what a user would type to open it again.
-    execFileSync(binary!, ['--port', String(port), secondDoc], {
+    const output = execFileSync(binary!, ['--port', String(port), secondDoc], {
       encoding: 'utf8',
       env: { ...process.env, XDG_STATE_HOME: path.join(work, 'state') },
       timeout: 20_000,
     })
+    // The attach output tells the user where to look.
+    expect(output).toContain('open: http://')
 
     const after = await backend.listDocuments()
     const reopened = after.find((doc) => doc.label === 'second.md')
@@ -304,5 +313,58 @@ describe.skipIf(!binary)('md-render --port', () => {
 
     const document = await backend.readDocument(reopened!.id)
     expect(document.content).toContain('Second document')
+  }, 30_000)
+
+  it('serves each directory as its own workspace URL', async () => {
+    const response = await fetch(`${origin}/api/workspaces`)
+    expect(response.status).toBe(200)
+    const workspaces = (await response.json()) as Array<{ name: string; documents: number }>
+    expect(workspaces).toHaveLength(2)
+    expect(workspaces.map((ws) => ws.name)).toContain('nested')
+
+    // The workspace page is scoped by name.
+    const html = await (await fetch(`${origin}/nested/`)).text()
+    expect(html).toContain('"nested"')
+  })
+
+  it('scopes the tab list to the workspace the page belongs to', async () => {
+    ;(globalThis as { __MD_RENDER_WORKSPACE__?: string }).__MD_RENDER_WORKSPACE__ = 'nested'
+    try {
+      const labels = (await serverBackend(origin).listDocuments()).map((doc) => doc.label)
+      expect(labels).toContain('third.md')
+      expect(labels).not.toContain('first.md')
+    } finally {
+      delete (globalThis as { __MD_RENDER_WORKSPACE__?: string }).__MD_RENDER_WORKSPACE__
+    }
+  })
+
+  it('lists the workspaces at the root when several are served', async () => {
+    const response = await fetch(`${origin}/`)
+    expect(response.status).toBe(200)
+    expect(await response.text()).toContain('/nested/')
+  })
+
+  it('rejects an unknown workspace path', async () => {
+    const response = await fetch(`${origin}/definitely-not-a-workspace/`)
+    expect(response.status).toBe(404)
+  })
+
+  it('attaches with a relative path from another working directory', async () => {
+    const extraDir = path.join(work, 'relative-ws')
+    mkdirSync(extraDir)
+    writeFileSync(path.join(extraDir, 'rel.md'), '# Relative\n')
+
+    // The server process has a different cwd, so the CLI must absolutise
+    // before handing the path over.
+    const output = execFileSync(binary!, ['--port', String(port), 'relative-ws'], {
+      cwd: work,
+      encoding: 'utf8',
+      env: { ...process.env, XDG_STATE_HOME: path.join(work, 'state') },
+      timeout: 20_000,
+    })
+    expect(output).toContain('rel.md')
+
+    const labels = (await serverBackend(origin).listDocuments()).map((doc) => doc.label)
+    expect(labels).toContain('rel.md')
   }, 30_000)
 })

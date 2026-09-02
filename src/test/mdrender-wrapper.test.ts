@@ -292,6 +292,33 @@ describe('bin/mdrender argument handling for server mode', () => {
   })
 })
 
+describe('bin/mdrender --help', () => {
+  beforeEach(() => {
+    stubUname('Linux')
+    writeStub('md-render', recordingStub())
+  })
+
+  it('prints a short usage and exits without launching anything', () => {
+    const output = runWrapper(['-h'])
+
+    expect(output).toContain('mdrender')
+    expect(output).toContain('--port')
+    expect(output).toContain('9999')
+    // Neither the app nor the server was started.
+    expect(recorded()).toBe('')
+  })
+
+  it('honours --help even after other arguments', () => {
+    const doc = path.join(work, 'note.md')
+    writeFileSync(doc, '# hello')
+
+    const output = runWrapper([doc, '--help'])
+
+    expect(output).toContain('mdrender')
+    expect(recorded()).toBe('')
+  })
+})
+
 describe('bin/mdrender on an unsupported platform', () => {
   it('exits with an error', () => {
     stubUname('SunOS')

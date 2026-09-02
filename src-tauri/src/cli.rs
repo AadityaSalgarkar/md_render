@@ -6,8 +6,12 @@ const MARKDOWN_EXTENSIONS: [&str; 2] = ["md", "markdown"];
 /// How deep a directory argument is scanned. Guards against pathological trees.
 const MAX_SCAN_DEPTH: usize = 16;
 
-/// Port used when `--port` is given without a number.
-pub const DEFAULT_PORT: u16 = 10000;
+/// First port tried when `--port` is given without a number.
+pub const DEFAULT_PORT: u16 = 9999;
+
+/// How many consecutive ports to try when none is given explicitly and the
+/// default is held by another program.
+pub const PORT_SCAN_ATTEMPTS: u16 = 50;
 
 /// A document the app was asked to open.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,10 +39,27 @@ pub enum Mode {
   /// Headless HTTP server.
   Serve {
     host: String,
-    port: u16,
+    /// `None` means no port was named: start at [`DEFAULT_PORT`] and fall
+    /// forward to the next usable one. An explicit port is used exactly.
+    port: Option<u16>,
     documents: Vec<Document>,
     sources: Vec<String>,
   },
+}
+
+/// One URL namespace on the server: a directory and the documents under it.
+/// Every directory argument is (or joins) the workspace of its canonical
+/// path; every file joins the workspace of its parent directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceSpec {
+  /// Canonical directory this workspace represents.
+  pub dir: PathBuf,
+  /// Suggested URL segment: the directory's last component, sanitised.
+  /// Uniqueness across workspaces is the server's job.
+  pub name_hint: String,
+  pub documents: Vec<Document>,
+  /// The path arguments feeding this workspace, rescanned on refresh.
+  pub sources: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,16 +92,23 @@ impl std::fmt::Display for CliError {
 
 pub const USAGE: &str = "\
 Usage:
-  md-render [FILE]                       open the desktop app
+  md-render [FILE|DIR]...                open the desktop app (several files: tabs)
   md-render --port [PORT] [FILE|DIR]...  serve rendered markdown over HTTP
 
+Serving:
+  Without a PORT the server takes 9999, or the next free port when another
+  program holds it. Each directory (or a file's parent directory) becomes a
+  workspace at http://127.0.0.1:PORT/<dirname>/ with one tab per markdown
+  file. Re-running the command against a live server adds to it.
+
 Options:
-  -p, --port [PORT]   port to listen on, 1-65535 (default 10000)
+  -p, --port [PORT]   port to listen on, 1-65535 (default 9999, auto-fallback)
       --host <ADDR>   address to bind (default 127.0.0.1)
   -h, --help          show this help";
 
 /// Parse argv (already stripped of the binary name).
 pub fn parse(args: &[String]) -> Result<Mode, CliError> {
+  let mut serve = false;
   let mut port: Option<u16> = None;
   let mut host: Option<String> = None;
   let mut paths: Vec<String> = Vec::new();
@@ -92,15 +120,15 @@ pub fn parse(args: &[String]) -> Result<Mode, CliError> {
       "--help" | "-h" => return Ok(Mode::Help),
       "--port" | "-p" => {
         // The value is optional: `--port 8080 a.md` picks 8080, while
-        // `--port a.md` falls back to the default rather than swallowing the
-        // path as a port.
+        // `--port a.md` leaves the port to be chosen automatically rather
+        // than swallowing the path as a port.
+        serve = true;
         match args.get(idx + 1) {
           Some(value) if is_numeric(value) => {
             port = Some(parse_port(value)?);
             idx += 2;
           }
           _ => {
-            port = Some(DEFAULT_PORT);
             idx += 1;
           }
         }
@@ -112,13 +140,14 @@ pub fn parse(args: &[String]) -> Result<Mode, CliError> {
       }
       _ => {
         if let Some(value) = arg.strip_prefix("--port=") {
+          serve = true;
           port = Some(parse_port(value)?);
         } else if let Some(value) = arg.strip_prefix("--host=") {
           host = Some(value.to_string());
         } else if arg.starts_with('-') && arg.len() > 1 {
           // Leave unknown flags alone in desktop mode: the OS may append its
           // own (macOS passes -psn_… when launching from Finder).
-          if port.is_some() || arg.starts_with("--") {
+          if serve || arg.starts_with("--") {
             return Err(CliError::UnknownFlag(arg.clone()));
           }
         } else {
@@ -129,29 +158,98 @@ pub fn parse(args: &[String]) -> Result<Mode, CliError> {
     }
   }
 
-  match port {
-    Some(port) => {
-      let documents = collect_documents(&paths)?;
-      if documents.is_empty() {
-        return Err(CliError::NoDocuments);
-      }
-      Ok(Mode::Serve {
-        host: host.unwrap_or_else(|| "127.0.0.1".to_string()),
-        port,
-        documents,
-        sources: paths,
-      })
+  if serve {
+    let documents = collect_documents(&paths)?;
+    if documents.is_empty() {
+      return Err(CliError::NoDocuments);
     }
-    None => {
-      // Unreadable paths are not fatal here: the desktop app opens with its
-      // local draft rather than refusing to start, as it always has.
-      let documents = collect_documents(&paths).unwrap_or_default();
-      Ok(Mode::Desktop {
+    Ok(Mode::Serve {
+      host: host.unwrap_or_else(|| "127.0.0.1".to_string()),
+      port,
+      documents,
+      sources: paths,
+    })
+  } else {
+    // Unreadable paths are not fatal here: the desktop app opens with its
+    // local draft rather than refusing to start, as it always has.
+    let documents = collect_documents(&paths).unwrap_or_default();
+    Ok(Mode::Desktop {
+      documents,
+      sources: paths,
+    })
+  }
+}
+
+/// URL segment for a directory: its last component restricted to characters
+/// that need no escaping. A root path (no components) falls back to "root".
+pub fn workspace_name(dir: &Path) -> String {
+  let raw = dir
+    .file_name()
+    .and_then(|name| name.to_str())
+    .unwrap_or("root");
+
+  let cleaned: String = raw
+    .chars()
+    .map(|c| {
+      if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+        c
+      } else {
+        '-'
+      }
+    })
+    .collect();
+
+  if cleaned.is_empty() || cleaned.chars().all(|c| c == '.' || c == '-') {
+    "root".to_string()
+  } else {
+    cleaned
+  }
+}
+
+/// Group the path arguments into workspaces. Every directory argument is (or
+/// joins) the workspace of its canonical path; every file joins the workspace
+/// of its parent directory. Name collisions between *different* directories
+/// are left for the server to resolve, since it owns the URL namespace.
+pub fn group_workspaces(paths: &[String]) -> Result<Vec<WorkspaceSpec>, CliError> {
+  let mut specs: Vec<WorkspaceSpec> = Vec::new();
+
+  for raw in paths {
+    let path = Path::new(raw)
+      .canonicalize()
+      .map_err(|_| CliError::UnreadablePath(raw.clone()))?;
+
+    let dir = if path.is_dir() {
+      path.clone()
+    } else {
+      path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("/"))
+    };
+
+    let documents = collect_documents(&[raw.clone()])?;
+
+    match specs.iter_mut().find(|spec| spec.dir == dir) {
+      Some(spec) => {
+        for document in documents {
+          if !spec.documents.iter().any(|d| d.path == document.path) {
+            spec.documents.push(document);
+          }
+        }
+        if !spec.sources.contains(raw) {
+          spec.sources.push(raw.clone());
+        }
+      }
+      None => specs.push(WorkspaceSpec {
+        name_hint: workspace_name(&dir),
+        dir,
         documents,
-        sources: paths,
-      })
+        sources: vec![raw.clone()],
+      }),
     }
   }
+
+  Ok(specs)
 }
 
 /// Digits only — used to tell a port from a path following `--port`.
@@ -373,13 +471,19 @@ mod tests {
       Mode::Serve {
         port, documents, ..
       } => {
-        assert_eq!(port, DEFAULT_PORT);
+        // No port named: the server picks one, starting from DEFAULT_PORT.
+        assert_eq!(port, None);
         // The path must not have been swallowed as the port value.
         assert_eq!(documents.len(), 1);
         assert_eq!(documents[0].label, "a.md");
       }
       other => panic!("expected serve mode, got {:?}", other),
     }
+  }
+
+  #[test]
+  fn the_default_port_is_9999() {
+    assert_eq!(DEFAULT_PORT, 9999);
   }
 
   #[test]
@@ -421,7 +525,7 @@ mod tests {
         ..
       } => {
         assert_eq!(host, "127.0.0.1");
-        assert_eq!(port, 8080);
+        assert_eq!(port, Some(8080));
         assert_eq!(documents.len(), 1);
         assert_eq!(documents[0].label, "a.md");
       }
@@ -457,9 +561,80 @@ mod tests {
 
     let mode = parse(&args(&["--port=8081", file.to_str().unwrap()])).unwrap();
     match mode {
-      Mode::Serve { port, .. } => assert_eq!(port, 8081),
+      Mode::Serve { port, .. } => assert_eq!(port, Some(8081)),
       other => panic!("expected serve mode, got {:?}", other),
     }
+  }
+
+  #[test]
+  fn a_directory_groups_into_a_workspace_named_after_it() {
+    let dir = temp_dir("ws-dir");
+    fs::write(dir.join("a.md"), "# a").unwrap();
+    fs::create_dir_all(dir.join("nested")).unwrap();
+    fs::write(dir.join("nested/c.md"), "# c").unwrap();
+
+    let specs = group_workspaces(&args(&[dir.to_str().unwrap()])).unwrap();
+
+    assert_eq!(specs.len(), 1);
+    let canonical = dir.canonicalize().unwrap();
+    assert_eq!(specs[0].dir, canonical);
+    assert_eq!(specs[0].name_hint, workspace_name(&canonical));
+    assert_eq!(specs[0].documents.len(), 2);
+  }
+
+  #[test]
+  fn a_file_joins_the_workspace_of_its_parent_directory() {
+    let dir = temp_dir("ws-file");
+    let file = dir.join("a.md");
+    fs::write(&file, "# a").unwrap();
+
+    let specs = group_workspaces(&args(&[file.to_str().unwrap()])).unwrap();
+
+    assert_eq!(specs.len(), 1);
+    assert_eq!(specs[0].dir, dir.canonicalize().unwrap());
+    assert_eq!(specs[0].documents.len(), 1);
+    assert_eq!(specs[0].documents[0].label, "a.md");
+  }
+
+  #[test]
+  fn a_file_and_its_directory_share_one_workspace_without_duplicates() {
+    let dir = temp_dir("ws-both");
+    let a = dir.join("a.md");
+    fs::write(&a, "# a").unwrap();
+    fs::write(dir.join("b.md"), "# b").unwrap();
+
+    let specs =
+      group_workspaces(&args(&[a.to_str().unwrap(), dir.to_str().unwrap()])).unwrap();
+
+    assert_eq!(specs.len(), 1);
+    assert_eq!(specs[0].documents.len(), 2);
+    // Both invocation styles must rescan on refresh.
+    assert_eq!(specs[0].sources.len(), 2);
+  }
+
+  #[test]
+  fn directories_with_the_same_name_stay_separate_workspaces() {
+    let first = temp_dir("ws-same-a").join("notes");
+    let second = temp_dir("ws-same-b").join("notes");
+    for dir in [&first, &second] {
+      fs::create_dir_all(dir).unwrap();
+      fs::write(dir.join("a.md"), "# a").unwrap();
+    }
+
+    let specs =
+      group_workspaces(&args(&[first.to_str().unwrap(), second.to_str().unwrap()])).unwrap();
+
+    assert_eq!(specs.len(), 2);
+    assert_eq!(specs[0].name_hint, "notes");
+    assert_eq!(specs[1].name_hint, "notes");
+    assert_ne!(specs[0].dir, specs[1].dir);
+  }
+
+  #[test]
+  fn workspace_names_are_url_safe() {
+    assert_eq!(workspace_name(Path::new("/tmp/my notes")), "my-notes");
+    assert_eq!(workspace_name(Path::new("/tmp/a&b (final)")), "a-b--final-");
+    assert_eq!(workspace_name(Path::new("/")), "root");
   }
 
   #[test]
