@@ -3,64 +3,98 @@ mod cli;
 mod server;
 mod state;
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 // Global state to store the launch file path
 static LAUNCH_FILE: Mutex<Option<String>> = Mutex::new(None);
-
-/// Documents named on the command line, surfaced to the frontend as tabs.
-static LAUNCH_DOCUMENTS: Mutex<Vec<cli::Document>> = Mutex::new(Vec::new());
 
 /// The path arguments as given, so a refresh can rescan directories and pick
 /// up markdown added since launch.
 static LAUNCH_SOURCES: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
+/// Documents named on the command line (and added since), surfaced to the
+/// frontend as tabs.
+static DOCUMENTS: OnceLock<Mutex<DocumentStore>> = OnceLock::new();
+
+fn store() -> &'static Mutex<DocumentStore> {
+  DOCUMENTS.get_or_init(|| Mutex::new(DocumentStore::default()))
+}
+
 #[derive(serde::Serialize)]
 pub struct DocumentMeta {
-  id: usize,
+  id: u64,
   label: String,
   path: String,
 }
 
-fn documents_as_meta() -> Vec<DocumentMeta> {
-  LAUNCH_DOCUMENTS
-    .lock()
-    .map(|documents| {
-      documents
-        .iter()
-        .enumerate()
-        .map(|(id, doc)| DocumentMeta {
-          id,
-          label: doc.label.clone(),
-          path: doc.path.to_string_lossy().to_string(),
-        })
-        .collect()
-    })
-    .unwrap_or_default()
+/// One open document plus the id the frontend addresses it by.
+struct DocEntry {
+  id: u64,
+  document: cli::Document,
 }
 
-/// Add documents to the open set, skipping ones already there. Returns whether
-/// anything was added.
-fn merge_documents(found: Vec<cli::Document>) -> bool {
-  let Ok(mut open) = LAUNCH_DOCUMENTS.lock() else {
-    return false;
-  };
+/// The open-document set behind the tab strip. Ids are handed out once and
+/// never reused, so closing a tab never renumbers the others — the frontend's
+/// active id, its `?doc=` URL and any in-flight read all stay valid.
+#[derive(Default)]
+pub struct DocumentStore {
+  next_id: u64,
+  entries: Vec<DocEntry>,
+  /// Paths the user closed. A rescan (refresh) leaves these closed; only an
+  /// explicit re-add opens them again.
+  closed: HashSet<PathBuf>,
+}
 
-  let existing: std::collections::HashSet<PathBuf> =
-    open.iter().map(|doc| doc.path.clone()).collect();
-  let mut added = false;
-
-  for document in found {
-    if existing.contains(&document.path) {
-      continue;
+impl DocumentStore {
+  /// Add documents, skipping ones already open. `explicit` marks paths the
+  /// user named just now, which re-opens a previously closed document; a
+  /// background rescan leaves closed documents closed.
+  fn merge(&mut self, found: Vec<cli::Document>, explicit: bool) {
+    for document in found {
+      if explicit {
+        self.closed.remove(&document.path);
+      } else if self.closed.contains(&document.path) {
+        continue;
+      }
+      if self.entries.iter().any(|e| e.document.path == document.path) {
+        continue;
+      }
+      self.entries.push(DocEntry {
+        id: self.next_id,
+        document,
+      });
+      self.next_id += 1;
     }
-    open.push(document);
-    added = true;
   }
 
-  added
+  /// Close a tab. The path is remembered so a refresh does not bring it back.
+  fn remove(&mut self, id: u64) -> bool {
+    let Some(index) = self.entries.iter().position(|e| e.id == id) else {
+      return false;
+    };
+    let entry = self.entries.remove(index);
+    self.closed.insert(entry.document.path);
+    true
+  }
+
+  fn as_meta(&self) -> Vec<DocumentMeta> {
+    self
+      .entries
+      .iter()
+      .map(|entry| DocumentMeta {
+        id: entry.id,
+        label: entry.document.label.clone(),
+        path: entry.document.path.to_string_lossy().to_string(),
+      })
+      .collect()
+  }
+}
+
+fn documents_as_meta() -> Vec<DocumentMeta> {
+  store().lock().map(|s| s.as_meta()).unwrap_or_default()
 }
 
 /// The open documents, mirroring the server's `/api/files` so the frontend can
@@ -76,7 +110,10 @@ fn list_documents() -> Vec<DocumentMeta> {
 fn refresh_documents() -> Vec<DocumentMeta> {
   let sources = LAUNCH_SOURCES.lock().map(|s| s.clone()).unwrap_or_default();
   if let Ok(found) = cli::collect_documents(&sources) {
-    merge_documents(found);
+    if let Ok(mut open) = store().lock() {
+      // A rescan, not an explicit ask: closed tabs stay closed.
+      open.merge(found, false);
+    }
   }
   documents_as_meta()
 }
@@ -86,7 +123,21 @@ fn refresh_documents() -> Vec<DocumentMeta> {
 #[tauri::command]
 fn add_document(path: String) -> Vec<DocumentMeta> {
   if let Ok(found) = cli::collect_documents(&[path]) {
-    merge_documents(found);
+    if let Ok(mut open) = store().lock() {
+      open.merge(found, true);
+    }
+  }
+  documents_as_meta()
+}
+
+/// Close a tab. The id is the string the frontend got from `list_documents`;
+/// the updated tab list comes back so the caller need not re-fetch.
+#[tauri::command]
+fn remove_document(id: String) -> Vec<DocumentMeta> {
+  if let Ok(id) = id.parse::<u64>() {
+    if let Ok(mut open) = store().lock() {
+      open.remove(id);
+    }
   }
   documents_as_meta()
 }
@@ -222,8 +273,8 @@ pub fn run() {
       *guard = Some(first.path.to_string_lossy().to_string());
     }
   }
-  if let Ok(mut guard) = LAUNCH_DOCUMENTS.lock() {
-    *guard = documents;
+  if let Ok(mut open) = store().lock() {
+    open.merge(documents, true);
   }
   if let Ok(mut guard) = LAUNCH_SOURCES.lock() {
     *guard = sources;
@@ -237,7 +288,8 @@ pub fn run() {
       get_launch_file,
       list_documents,
       refresh_documents,
-      add_document
+      add_document,
+      remove_document
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
@@ -251,4 +303,86 @@ pub fn run() {
     })
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn doc(path: &str) -> cli::Document {
+    cli::Document {
+      path: PathBuf::from(path),
+      label: Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default(),
+    }
+  }
+
+  #[test]
+  fn ids_are_stable_across_a_removal() {
+    let mut open = DocumentStore::default();
+    open.merge(vec![doc("/tmp/a.md"), doc("/tmp/b.md"), doc("/tmp/c.md")], true);
+
+    let before = open.as_meta();
+    assert_eq!(before.iter().map(|m| m.id).collect::<Vec<_>>(), vec![0, 1, 2]);
+
+    assert!(open.remove(1));
+
+    // The neighbours keep the exact ids the frontend already holds.
+    let after = open.as_meta();
+    assert_eq!(after.len(), 2);
+    assert_eq!(after[0].id, 0);
+    assert_eq!(after[1].id, 2);
+    assert_eq!(after[1].label, "c.md");
+  }
+
+  #[test]
+  fn removing_an_unknown_id_is_a_no_op() {
+    let mut open = DocumentStore::default();
+    open.merge(vec![doc("/tmp/a.md")], true);
+
+    assert!(!open.remove(99));
+    assert_eq!(open.as_meta().len(), 1);
+  }
+
+  #[test]
+  fn a_rescan_does_not_resurrect_a_closed_document() {
+    let mut open = DocumentStore::default();
+    open.merge(vec![doc("/tmp/a.md"), doc("/tmp/b.md")], true);
+    assert!(open.remove(0));
+
+    // The refresh path finds the same files on disk again.
+    open.merge(vec![doc("/tmp/a.md"), doc("/tmp/b.md")], false);
+
+    let labels: Vec<_> = open.as_meta().into_iter().map(|m| m.label).collect();
+    assert_eq!(labels, vec!["b.md"]);
+  }
+
+  #[test]
+  fn an_explicit_add_reopens_a_closed_document_under_a_fresh_id() {
+    let mut open = DocumentStore::default();
+    open.merge(vec![doc("/tmp/a.md")], true);
+    assert!(open.remove(0));
+
+    open.merge(vec![doc("/tmp/a.md")], true);
+
+    let meta = open.as_meta();
+    assert_eq!(meta.len(), 1);
+    // Never reuse an id: anything still holding id 0 must not suddenly point
+    // at the re-opened document.
+    assert_eq!(meta[0].id, 1);
+  }
+
+  #[test]
+  fn duplicates_are_skipped_without_burning_ids() {
+    let mut open = DocumentStore::default();
+    open.merge(vec![doc("/tmp/a.md")], true);
+    open.merge(vec![doc("/tmp/a.md")], true);
+    open.merge(vec![doc("/tmp/b.md")], true);
+
+    let meta = open.as_meta();
+    assert_eq!(meta.len(), 2);
+    assert_eq!(meta[1].id, 1);
+  }
 }

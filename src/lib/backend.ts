@@ -30,6 +30,8 @@ export interface Backend {
   listDocuments(): Promise<DocumentMeta[]>
   /** Rescan the original path arguments, picking up documents added since. */
   refreshDocuments(): Promise<DocumentMeta[]>
+  /** Close a tab; resolves to the updated document list. */
+  closeDocument(id: string): Promise<DocumentMeta[]>
   readDocument(id: string): Promise<DocumentBody>
   /** Turn an absolute image path into something the page can load. */
   assetUrl(path: string): string
@@ -71,6 +73,13 @@ export function desktopBackend(): Backend {
       asMeta(
         await invoke<Array<{ id: number; label: string; path: string }>>(
           'refresh_documents',
+        ),
+      ),
+    closeDocument: async (id) =>
+      asMeta(
+        await invoke<Array<{ id: number; label: string; path: string }>>(
+          'remove_document',
+          { id },
         ),
       ),
     readDocument: async (id) => {
@@ -125,6 +134,23 @@ export function serverBackend(base = ''): Backend {
     writable: true,
     listDocuments: () => fetchDocuments(false),
     refreshDocuments: () => fetchDocuments(true),
+    closeDocument: async (id) => {
+      const response = await fetch(`${base}/api/file?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${serverToken()}` },
+      })
+      if (!response.ok) throw new Error(`could not close document (${response.status})`)
+      const documents = (await response.json()) as Array<{
+        id: number
+        label: string
+        path: string
+      }>
+      return documents.map((doc) => ({
+        id: String(doc.id),
+        label: doc.label,
+        path: doc.path,
+      }))
+    },
     readDocument: async (id) => {
       const response = await fetch(`${base}/api/file?id=${encodeURIComponent(id)}`)
       if (!response.ok) throw new Error(`could not read document (${response.status})`)

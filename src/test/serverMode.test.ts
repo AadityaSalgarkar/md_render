@@ -242,4 +242,67 @@ describe.skipIf(!binary)('md-render --port', () => {
     const document = await serverBackend(origin).readDocument(added.id)
     expect(document.content).toContain('Second document')
   }, 30_000)
+
+  it('refuses to close a tab without the token', async () => {
+    const documents = await serverBackend(origin).listDocuments()
+    const target = documents.find((doc) => doc.label === 'second.md')!
+
+    const response = await fetch(`${origin}/api/file?id=${target.id}`, {
+      method: 'DELETE',
+    })
+    expect(response.status).toBe(401)
+
+    const after = await serverBackend(origin).listDocuments()
+    expect(after.map((doc) => doc.label)).toContain('second.md')
+  })
+
+  it('closes a tab without renumbering the others, and a refresh does not bring it back', async () => {
+    ;(globalThis as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ = token()
+    const backend = serverBackend(origin)
+
+    const before = await backend.listDocuments()
+    const doomed = before.find((doc) => doc.label === 'appeared-later.md')!
+    const kept = before.find((doc) => doc.label === 'third.md')!
+
+    const after = await backend.closeDocument(doomed.id)
+    expect(after.map((doc) => doc.label)).not.toContain('appeared-later.md')
+    // The surviving tabs keep the exact ids the browser already holds.
+    expect(after.find((doc) => doc.label === 'third.md')!.id).toBe(kept.id)
+    const document = await backend.readDocument(kept.id)
+    expect(document.content).toContain('Third document')
+
+    // The closed document cannot be written any more, even with the token.
+    await expect(backend.writeFile(doomed.path, '# necromancy\n')).rejects.toThrow()
+
+    // A refresh rescans the directory the file still sits in, but the closed
+    // tab stays closed.
+    const refreshed = await backend.refreshDocuments()
+    expect(refreshed.map((doc) => doc.label)).not.toContain('appeared-later.md')
+  })
+
+  it('re-opens a closed tab when the file is explicitly added again', async () => {
+    ;(globalThis as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ = token()
+    const backend = serverBackend(origin)
+
+    const before = await backend.listDocuments()
+    const doomed = before.find((doc) => doc.label === 'second.md')!
+    const closed = await backend.closeDocument(doomed.id)
+    expect(closed.map((doc) => doc.label)).not.toContain('second.md')
+
+    // Exactly what a user would type to open it again.
+    execFileSync(binary!, ['--port', String(port), secondDoc], {
+      encoding: 'utf8',
+      env: { ...process.env, XDG_STATE_HOME: path.join(work, 'state') },
+      timeout: 20_000,
+    })
+
+    const after = await backend.listDocuments()
+    const reopened = after.find((doc) => doc.label === 'second.md')
+    expect(reopened).toBeDefined()
+    // Under a fresh id — ids are never recycled.
+    expect(reopened!.id).not.toBe(doomed.id)
+
+    const document = await backend.readDocument(reopened!.id)
+    expect(document.content).toContain('Second document')
+  }, 30_000)
 })

@@ -5,15 +5,17 @@ interface TabBarProps {
   documents: DocumentMeta[]
   activeId: string | null
   onSelect: (id: string) => void
+  onClose: (id: string) => void
 }
 
 /**
- * Tab strip across the top, shown when more than one document is open. Server
- * mode opens one tab per file (and per markdown file found under a directory
- * argument); the desktop app opens one document at a time, so this stays
- * hidden there.
+ * Tab strip across the top, shown when more than one document is open. Both
+ * modes build it the same way: every file (and every markdown file found under
+ * a directory argument) is one tab, and each tab closes individually via its
+ * own ✕. With a single document the strip stays hidden — a lone tab is noise,
+ * and it also means the last document cannot be closed from here.
  */
-export function TabBar({ documents, activeId, onSelect }: TabBarProps) {
+export function TabBar({ documents, activeId, onSelect, onClose }: TabBarProps) {
   if (documents.length < 2) return null
 
   return (
@@ -21,18 +23,28 @@ export function TabBar({ documents, activeId, onSelect }: TabBarProps) {
       {documents.map((document) => {
         const isActive = document.id === activeId
         return (
-          <motion.button
-            key={document.id}
-            role="tab"
-            type="button"
-            className={`tab ${isActive ? 'is-active' : ''}`}
-            aria-selected={isActive}
-            title={document.path}
-            onClick={() => onSelect(document.id)}
-            whileTap={{ scale: 0.98 }}
-          >
-            {document.label}
-          </motion.button>
+          <div key={document.id} className={`tab ${isActive ? 'is-active' : ''}`}>
+            <motion.button
+              role="tab"
+              type="button"
+              className="tab-select"
+              aria-selected={isActive}
+              title={document.path}
+              onClick={() => onSelect(document.id)}
+              whileTap={{ scale: 0.98 }}
+            >
+              {document.label}
+            </motion.button>
+            <button
+              type="button"
+              className="tab-close"
+              aria-label={`Close ${document.label}`}
+              title={`Close ${document.label}`}
+              onClick={() => onClose(document.id)}
+            >
+              ×
+            </button>
+          </div>
         )
       })}
     </nav>
