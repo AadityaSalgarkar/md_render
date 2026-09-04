@@ -13,7 +13,13 @@ import {
   parseChatThreads,
   stripCommentThreads,
 } from './lib/comments'
-import { detectBackend, type Backend, type DocumentMeta } from './lib/backend'
+import {
+  detectBackend,
+  serverWorkspace,
+  type Backend,
+  type DocumentMeta,
+} from './lib/backend'
+import { pendingViewCommand, readAppliedSeq, writeAppliedSeq } from './lib/viewState'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link'
@@ -55,6 +61,8 @@ export default function App() {
   const fileSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve())
   const hasUnsavedChangesRef = useRef(false)
   const closeAfterSaveRef = useRef(false)
+  // The last server view command this page acted on (server mode only).
+  const appliedViewSeqRef = useRef(readAppliedSeq(serverWorkspace()))
 
   // Held in a ref so the callbacks below keep a stable identity when the
   // backend is swapped after the server probe resolves.
@@ -115,7 +123,10 @@ export default function App() {
 
     const refresh = async () => {
       try {
-        const found = await backend.listDocuments()
+        const [found, view] = await Promise.all([
+          backend.listDocuments(),
+          backend.getViewState(),
+        ])
         if (cancelled) return
         setDocuments(found)
         if (found.length > 0) setDocumentsChecked(true)
@@ -125,6 +136,18 @@ export default function App() {
           const requested = new URLSearchParams(window.location.search).get('doc')
           const initial = found.find((doc) => doc.id === requested) ?? found[0]
           if (initial) await loadDocument(initial.id)
+        }
+
+        // Something outside the browser asked this workspace's pages to
+        // focus a tab or change theme. Each command applies exactly once;
+        // focusing re-reads the document from disk, which is also how a
+        // fresh write gets shown without waiting for the sync.
+        const command = pendingViewCommand(view, appliedViewSeqRef.current, found)
+        if (command && !cancelled) {
+          appliedViewSeqRef.current = command.seq
+          writeAppliedSeq(serverWorkspace(), command.seq)
+          if (command.theme) setTheme(command.theme)
+          if (command.doc) await loadDocument(command.doc)
         }
       } catch {
         // No document list available (plain browser, or the desktop command is
@@ -144,7 +167,7 @@ export default function App() {
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [backend, loadDocument])
+  }, [backend, loadDocument, setTheme])
 
   // Load file on startup and persist content to localStorage
   useEffect(() => {
