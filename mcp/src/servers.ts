@@ -11,7 +11,14 @@ import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, sta
 import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { MdRenderClient, ToolError, baseUrl, workspaceUrl, type WorkspaceEntry } from './client.ts'
+import {
+  MdRenderClient,
+  ToolError,
+  baseUrl,
+  isRemote,
+  workspaceUrl,
+  type WorkspaceEntry,
+} from './client.ts'
 
 export interface ServerRecord {
   port: number
@@ -257,9 +264,12 @@ export async function startServer(options: {
   port?: number
   host?: string
 }): Promise<StartResult> {
-  const paths = options.paths.map((raw) => path.resolve(raw))
+  // URLs go through as they are; the server downloads them.
+  const paths = options.paths.map((raw) => (isRemote(raw) ? raw : path.resolve(raw)))
   for (const candidate of paths) {
-    if (!existsSync(candidate)) throw new ToolError(`cannot read '${candidate}'`)
+    if (!isRemote(candidate) && !existsSync(candidate)) {
+      throw new ToolError(`cannot read '${candidate}'`)
+    }
   }
 
   const port = options.port ?? (await pickPort())

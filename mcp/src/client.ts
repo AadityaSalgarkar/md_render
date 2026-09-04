@@ -28,10 +28,16 @@ export interface ViewState {
 export interface AddResult {
   added: string[]
   workspaces: string[]
-  documents: DocumentEntry[]
+  /** Every document the request named: just opened, or open already. */
+  documents: Array<DocumentEntry & { added: boolean }>
 }
 
 export const HOST = '127.0.0.1'
+
+/** A document on the internet rather than on disk; the server downloads it. */
+export function isRemote(source: string): boolean {
+  return source.startsWith('http://') || source.startsWith('https://')
+}
 
 export function baseUrl(port: number): string {
   return `http://${HOST}:${port}`
