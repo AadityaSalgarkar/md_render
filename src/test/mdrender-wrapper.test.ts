@@ -319,6 +319,92 @@ describe('bin/mdrender --help', () => {
   })
 })
 
+describe('bin/mdrender --mcp', () => {
+  beforeEach(() => {
+    stubUname('Linux')
+    writeStub('md-render', recordingStub())
+    writeStub('node', recordingStub())
+  })
+
+  it('execs node on the bundle named by MDRENDER_MCP_DIR and passes arguments through', () => {
+    const mcpDir = path.join(work, 'mcp-install')
+    mkdirSync(mcpDir)
+    const bundle = path.join(mcpDir, 'index.js')
+    writeFileSync(bundle, '// bundle')
+
+    runWrapper(['--mcp', '--extra', 'flag'], { MDRENDER_MCP_DIR: mcpDir })
+
+    const log = recorded()
+    expect(log).toContain(`ARGS=${bundle} --extra flag`)
+    expect(log).toContain(`SELF=${path.join(stubBin, 'node')}`)
+    // The app itself was not launched.
+    expect(log).not.toContain('md-render')
+  })
+
+  it('falls back to the bundle installed under the home directory', () => {
+    const home = path.join(work, 'home')
+    const installed = path.join(home, '.local', 'share', 'md-render', 'mcp')
+    mkdirSync(installed, { recursive: true })
+    writeFileSync(path.join(installed, 'index.js'), '// bundle')
+
+    runWrapper(['--mcp'], { HOME: home })
+
+    expect(recorded()).toContain(`ARGS=${path.join(installed, 'index.js')}`)
+  })
+
+  it('fails helpfully when no bundle exists', () => {
+    // A copy outside the repo so the checkout build cannot be found, and a
+    // home directory with nothing installed.
+    const isolated = path.join(work, 'isolated')
+    mkdirSync(isolated)
+    const wrapperCopy = path.join(isolated, 'mdrender')
+    writeFileSync(wrapperCopy, readFileSync(WRAPPER, 'utf8'))
+    chmodSync(wrapperCopy, 0o755)
+
+    let stderr = ''
+    let threw = false
+    try {
+      execFileSync('bash', [wrapperCopy, '--mcp'], {
+        env: { PATH: `${stubBin}:/usr/bin:/bin`, HOME: work },
+        encoding: 'utf8',
+      })
+    } catch (error) {
+      threw = true
+      stderr = String((error as { stderr?: Buffer | string }).stderr ?? '')
+    }
+
+    expect(threw).toBe(true)
+    expect(stderr).toContain('not built')
+    expect(recorded()).toBe('')
+  })
+
+  it('fails helpfully when node is missing', () => {
+    rmSync(path.join(stubBin, 'node'))
+    const mcpDir = path.join(work, 'mcp-install')
+    mkdirSync(mcpDir)
+    writeFileSync(path.join(mcpDir, 'index.js'), '// bundle')
+
+    let stderr = ''
+    let threw = false
+    try {
+      execFileSync('bash', [WRAPPER, '--mcp'], {
+        env: { PATH: `${stubBin}:/usr/bin:/bin`, HOME: work, MDRENDER_MCP_DIR: mcpDir },
+        encoding: 'utf8',
+      })
+    } catch (error) {
+      threw = true
+      stderr = String((error as { stderr?: Buffer | string }).stderr ?? '')
+    }
+
+    expect(threw).toBe(true)
+    expect(stderr).toContain('needs node')
+  })
+
+  it('mentions --mcp in the usage text', () => {
+    expect(runWrapper(['-h'])).toContain('--mcp')
+  })
+})
+
 describe('bin/mdrender on an unsupported platform', () => {
   it('exits with an error', () => {
     stubUname('SunOS')
