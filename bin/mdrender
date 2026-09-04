@@ -2,6 +2,7 @@
 # Cross-platform launcher for MD_RENDER.
 #   mdrender                          open the app
 #   mdrender FILE.md                  open the app on FILE.md
+#   mdrender https://.../README.md    download a document and open it
 #   mdrender --port 8080 FILE... DIR  serve rendered markdown over HTTP
 #   mdrender --mcp                    run the MCP server over stdio (for agents)
 set -euo pipefail
@@ -120,6 +121,11 @@ parse_args() {
       -*)
         ARGS+=("$arg")
         ;;
+      http://*|https://*)
+        # A document on the internet: the app downloads it. Passed through
+        # as is, and never the launch file (that is a local path).
+        ARGS+=("$arg")
+        ;;
       *)
         ARGS+=("$(abs_path "$arg")")
         [ -n "$FIRST_FILE" ] || FIRST_FILE="$(abs_path "$arg")"
@@ -159,7 +165,7 @@ usage() {
   cat <<'EOF'
 mdrender — MD_RENDER markdown renderer
 
-  mdrender FILE|DIR...            open in the desktop app; several files -> tabs
+  mdrender FILE|DIR|URL...        open in the desktop app; several files -> tabs
   mdrender --port [PORT] PATH...  serve over HTTP instead (headless-friendly)
   mdrender --mcp                  MCP server over stdio, driving the --port mode
 
@@ -168,6 +174,9 @@ another program holds it. Each directory (or a file's parent directory)
 becomes a workspace at http://127.0.0.1:9999/<dirname>/ with one tab per
 markdown file. Re-running the command against a live server adds to it.
 JSON API on the port: /api/health, /api/files, /api/workspaces.
+
+A URL (https://...) is downloaded under /tmp/md-render/remote and opened from
+there, in the window or the browser; GitHub file pages fetch as raw content.
 
 MCP: register with `claude mcp add mdrender -- mdrender --mcp`. Tools cover
 servers, workspaces, tabs, documents, comments and the open browser's view.

@@ -278,6 +278,26 @@ describe('bin/mdrender argument handling for server mode', () => {
     expect(recorded()).toContain(`ARGS=--port ${doc}`)
   })
 
+  it('passes a URL through untouched and does not treat it as the launch file', () => {
+    const doc = path.join(work, 'local.md')
+    writeFileSync(doc, '# local')
+
+    runWrapper(['https://github.com/anthropics/skills/blob/main/README.md', doc])
+
+    const log = recorded()
+    // Not absolutised against the working directory.
+    expect(log).toContain('ARGS=https://github.com/anthropics/skills/blob/main/README.md ' + doc)
+    expect(log).not.toContain('/https:')
+    // The launch file is the first local path, not the URL.
+    expect(log).toContain(`TAURI_LAUNCH_FILE=${doc}`)
+  })
+
+  it('passes a URL through in server mode too', () => {
+    runWrapper(['--port', '8080', 'http://127.0.0.1:9000/notes.md'])
+
+    expect(recorded()).toContain('ARGS=--port 8080 http://127.0.0.1:9000/notes.md')
+  })
+
   it('supports the --port=N form', () => {
     const doc = path.join(work, 'note.md')
     writeFileSync(doc, '# hello')
