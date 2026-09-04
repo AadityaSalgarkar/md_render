@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.4.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.3.0...v0.4.0) (2026-09-04)
+
+
+### Features
+
+* **app:** apply view state pushed by the server ([fa74b4d](https://github.com/AadityaSalgarkar/md_render/commit/fa74b4da46732b3ad9d09b41afec5f569a473d5e))
+* keep edits to remote documents outside /tmp ([ba16335](https://github.com/AadityaSalgarkar/md_render/commit/ba16335c215e3ed37de05f12546796cac91ef84f))
+* MCP server for the --port web mode ([38cb6e4](https://github.com/AadityaSalgarkar/md_render/commit/38cb6e4ae5bba8cc1e9065d4e4ad22004aa8bf90))
+* **mcp:** focus a tab and set the theme in an open browser ([3bd536b](https://github.com/AadityaSalgarkar/md_render/commit/3bd536bf8eb7d4fb92430f5ae9dfe0e7df7648de))
+* **mcp:** open URLs with open_tab and start_server ([f191798](https://github.com/AadityaSalgarkar/md_render/commit/f1917987eabb8dc7e2f9d46acb00cdfc87d19216))
+* **mcp:** read, write, comment on and export documents ([a7e93a7](https://github.com/AadityaSalgarkar/md_render/commit/a7e93a7b8370b87a0a7abd9ebbc3d1c2b073d041))
+* **mcp:** report the saved copy from write_document and add_comment ([c570f0b](https://github.com/AadityaSalgarkar/md_render/commit/c570f0b0f69c718fd6b2abd26c3f5a206e90c569))
+* **mcp:** scaffold the MCP package with server discovery ([0023366](https://github.com/AadityaSalgarkar/md_render/commit/002336674e051aa71adaf9a3ac6bc7fa62ac0f38))
+* **mcp:** start and stop servers ([3f88279](https://github.com/AadityaSalgarkar/md_render/commit/3f88279437ee313b244f897b3e60ae257b5a57f2))
+* **mcp:** workspace and tab tools ([c094ad8](https://github.com/AadityaSalgarkar/md_render/commit/c094ad80fab6fa9cd58e28e412a6b07016121df8))
+* open markdown from a URL, and a styled root listing ([573cce0](https://github.com/AadityaSalgarkar/md_render/commit/573cce05a91a53dd566692bc025a38b77e7efe05))
+* open markdown from a URL, in the window and over --port ([95a59f4](https://github.com/AadityaSalgarkar/md_render/commit/95a59f4c198c732dc786ebea0da88370416d7fa9))
+* **server:** a root listing in the documentation site's style ([acc16bb](https://github.com/AadityaSalgarkar/md_render/commit/acc16bbd58c1c078236c162cae47249b95a622cc))
+* **server:** close a whole workspace over HTTP ([69d9c45](https://github.com/AadityaSalgarkar/md_render/commit/69d9c45d8c1fb9082bed8bd7eb6a4b619790ccf6))
+* **server:** let POST /api/documents target a workspace by name ([a365ea2](https://github.com/AadityaSalgarkar/md_render/commit/a365ea213980b058996e2ff29789654f5952db4e))
+* **server:** name the workspace on each entry of the tab list ([e65e205](https://github.com/AadityaSalgarkar/md_render/commit/e65e205714203defafa8c75b95997e21dbb442c2))
+* **server:** per-workspace view state for remote focus and theme ([57b7d45](https://github.com/AadityaSalgarkar/md_render/commit/57b7d45727bd31bf69ea2612cbccef9191c1e304))
+* **server:** stop the server over HTTP ([83d759b](https://github.com/AadityaSalgarkar/md_render/commit/83d759b47540117158e6eff93e49d0aa90d6b0e1))
+* **wrapper:** add --mcp and install the MCP bundle ([39da9d9](https://github.com/AadityaSalgarkar/md_render/commit/39da9d99fb5358642553e25b4975eb9995585971))
+* **wrapper:** pass URLs through to the app ([c3ae1e8](https://github.com/AadityaSalgarkar/md_render/commit/c3ae1e883154aada4bcda934c75248f17d29b495))
+
 ## [0.3.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.2.0...v0.3.0) (2026-09-02)
 
 
