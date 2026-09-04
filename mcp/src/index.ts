@@ -8,6 +8,7 @@
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { registerDocumentTools } from './tools/documents.ts'
 import { registerServerTools } from './tools/servers.ts'
 import { registerTabTools } from './tools/tabs.ts'
 import { registerWorkspaceTools } from './tools/workspaces.ts'
@@ -20,6 +21,7 @@ const server = new McpServer({ name: 'mdrender', version })
 registerServerTools(server)
 registerWorkspaceTools(server)
 registerTabTools(server)
+registerDocumentTools(server)
 
 const transport = new StdioServerTransport()
 await server.connect(transport)
