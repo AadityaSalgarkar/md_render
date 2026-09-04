@@ -172,15 +172,31 @@ impl ServerState {
     self.workspaces[ws_index]
       .closed
       .insert(removed.document.path.clone());
+    self.recompute_roots();
 
+    Some(removed.document)
+  }
+
+  /// Drop a whole workspace: its tabs, its tombstones and its URL. The name
+  /// is free again afterwards, so opening the same directory later gets the
+  /// plain name back rather than a `-2` suffix.
+  fn remove_workspace(&mut self, name: &str) -> bool {
+    let Some(index) = self.workspaces.iter().position(|ws| ws.name == name) else {
+      return false;
+    };
+    self.workspaces.remove(index);
+    self.recompute_roots();
+    true
+  }
+
+  /// The asset roots are exactly the parents of the documents still open.
+  fn recompute_roots(&mut self) {
     self.roots = self
       .workspaces
       .iter()
       .flat_map(|ws| ws.documents.iter())
       .filter_map(|d| d.document.path.parent().map(|p| p.to_path_buf()))
       .collect();
-
-    Some(removed.document)
   }
 
   fn workspace(&self, name: &str) -> Option<&Workspace> {
@@ -505,11 +521,11 @@ async fn add_documents(
   Json(serde_json::json!({ "added": labels, "workspaces": workspaces })).into_response()
 }
 
-/// The workspaces this server hosts — what the root listing shows, and what
-/// tooling can use to find its URL.
-async fn list_workspaces(State(state): State<Shared>) -> impl IntoResponse {
-  let guard = state.read().unwrap();
-  let workspaces: Vec<serde_json::Value> = guard
+/// The workspace list as the API reports it: name, directory, tab count.
+fn workspaces_of(state: &Shared) -> Vec<serde_json::Value> {
+  state
+    .read()
+    .unwrap()
     .workspaces
     .iter()
     .map(|ws| {
@@ -519,8 +535,37 @@ async fn list_workspaces(State(state): State<Shared>) -> impl IntoResponse {
         "documents": ws.documents.len(),
       })
     })
-    .collect();
-  Json(workspaces)
+    .collect()
+}
+
+/// The workspaces this server hosts — what the root listing shows, and what
+/// tooling can use to find its URL.
+async fn list_workspaces(State(state): State<Shared>) -> impl IntoResponse {
+  Json(workspaces_of(&state))
+}
+
+#[derive(Deserialize)]
+struct NameQuery {
+  name: String,
+}
+
+/// Close a workspace and every tab in it. Token-guarded like the other
+/// mutations; the remaining workspaces come back so the caller need not
+/// re-fetch.
+async fn remove_workspace(
+  State(state): State<Shared>,
+  headers: HeaderMap,
+  Query(query): Query<NameQuery>,
+) -> Response {
+  if !authorised(&headers, &state) {
+    return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
+  }
+
+  if !state.write().unwrap().remove_workspace(&query.name) {
+    return (StatusCode::NOT_FOUND, "no such workspace").into_response();
+  }
+
+  Json(workspaces_of(&state)).into_response()
 }
 
 /// Close a tab. Token-guarded like every other mutation; the updated tab list
@@ -654,7 +699,10 @@ pub fn router(state: Shared) -> Router {
     .route("/api/export", post(export_by_path))
     .route("/api/asset", get(read_asset))
     .route("/api/documents", post(add_documents))
-    .route("/api/workspaces", get(list_workspaces))
+    .route(
+      "/api/workspaces",
+      get(list_workspaces).delete(remove_workspace),
+    )
     .fallback(static_handler)
     .with_state(state)
 }
@@ -854,6 +902,30 @@ mod tests {
     format!(
       "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
       path, addr
+    )
+  }
+
+  /// A request carrying a bearer token and an optional JSON body — the shape
+  /// of every mutating call the page or a tool makes.
+  fn with_token(
+    addr: std::net::SocketAddr,
+    method: &str,
+    path: &str,
+    token: Option<&str>,
+    body: Option<&str>,
+  ) -> String {
+    let auth = token
+      .map(|t| format!("Authorization: Bearer {}\r\n", t))
+      .unwrap_or_default();
+    let body = body.unwrap_or("");
+    format!(
+      "{} {} HTTP/1.1\r\nHost: {}\r\n{}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+      method,
+      path,
+      addr,
+      auth,
+      body.len(),
+      body
     )
   }
 
@@ -1221,6 +1293,98 @@ mod tests {
     let scoped = documents_of(&shared, Some("docs"));
     assert_eq!(scoped.len(), 1);
     assert_eq!(scoped[0].workspace, "docs");
+  }
+
+  #[test]
+  fn removing_a_workspace_frees_its_name_and_its_asset_roots() {
+    let base = temp_dir("remove-ws");
+    let notes = base.join("notes");
+    let docs = base.join("docs");
+    fs::create_dir_all(&notes).unwrap();
+    fs::create_dir_all(&docs).unwrap();
+    fs::write(notes.join("a.md"), "# a").unwrap();
+    fs::write(docs.join("b.md"), "# b").unwrap();
+    let notes_image = notes.join("pic.png");
+    fs::write(&notes_image, [0u8; 4]).unwrap();
+
+    let mut state = ServerState::new(specs_for(&[notes.clone(), docs]), "token".to_string());
+    assert!(state.allows_asset(&notes_image));
+
+    assert!(state.remove_workspace("notes"));
+
+    // The workspace, its tabs and its asset root are gone; the other one is
+    // untouched and keeps its id.
+    assert!(state.workspace("notes").is_none());
+    assert!(!state.allows_asset(&notes_image));
+    assert_eq!(all_ids(&state), vec![1]);
+
+    // Opening the same directory again gets the plain name back, not notes-2.
+    let (added, touched) = state.add_workspaces(specs_for(&[notes]), true);
+    assert_eq!(added.len(), 1);
+    assert_eq!(touched, vec!["notes".to_string()]);
+    // Under a fresh id: ids are never recycled, even across a workspace close.
+    assert_eq!(all_ids(&state), vec![1, 2]);
+  }
+
+  #[test]
+  fn removing_an_unknown_workspace_is_a_no_op() {
+    let dir = temp_dir("remove-ws-unknown");
+    let mut state = state_with(&dir);
+
+    assert!(!state.remove_workspace("nowhere"));
+    assert_eq!(state.workspaces.len(), 1);
+    assert_eq!(all_ids(&state), vec![0]);
+  }
+
+  #[test]
+  fn a_workspace_can_be_closed_over_http_and_its_page_turns_404() {
+    let base = temp_dir("remove-ws-http");
+    let notes = base.join("notes");
+    let docs = base.join("docs");
+    fs::create_dir_all(&notes).unwrap();
+    fs::create_dir_all(&docs).unwrap();
+    fs::write(notes.join("a.md"), "# a").unwrap();
+    fs::write(docs.join("b.md"), "# b").unwrap();
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[notes, docs]),
+      "test-token".to_string(),
+    )));
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      tokio::spawn(async move {
+        let _ = axum::serve(listener, router(shared)).await;
+      });
+
+      // Closing needs the token, like every other mutation.
+      let (status, _) = http(addr, with_token(addr, "DELETE", "/api/workspaces?name=notes", None, None)).await;
+      assert_eq!(status, 401);
+      let (status, _) = http(addr, get(addr, "/notes/")).await;
+      assert_eq!(status, 200);
+
+      let (status, _) = http(addr, with_token(addr, "DELETE", "/api/workspaces?name=nowhere", Some("test-token"), None)).await;
+      assert_eq!(status, 404);
+
+      let (status, body) = http(addr, with_token(addr, "DELETE", "/api/workspaces?name=notes", Some("test-token"), None)).await;
+      assert_eq!(status, 200);
+      // The remaining list comes back, so the caller need not re-fetch.
+      assert!(body.contains("\"docs\""));
+      assert!(!body.contains("\"notes\""));
+
+      // Its page and its tabs are gone; the other workspace still serves.
+      let (status, _) = http(addr, get(addr, "/notes/")).await;
+      assert_eq!(status, 404);
+      let (_, files) = http(addr, get(addr, "/api/files")).await;
+      assert!(!files.contains("a.md"));
+      assert!(files.contains("b.md"));
+    });
   }
 
   #[test]
