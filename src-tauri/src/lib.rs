@@ -1,5 +1,6 @@
 mod attach;
 mod cli;
+mod remote;
 mod server;
 mod state;
 
@@ -148,9 +149,12 @@ fn read_file(path: String) -> Result<String, String> {
     .map_err(|e| format!("Failed to read file: {}", e))
 }
 
+/// Save a document. A remote document's edit is also kept outside /tmp,
+/// the same as in server mode; see `remote::save`.
 #[tauri::command]
 fn write_file(path: String, content: String) -> Result<(), String> {
-  fs::write(&path, content)
+  remote::save(Path::new(&path), &content)
+    .map(|_| ())
     .map_err(|e| format!("Failed to write file: {}", e))
 }
 

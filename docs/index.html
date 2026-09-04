@@ -401,7 +401,16 @@ make install        <span class="c"># everything under ~/.local and ~/bin — no
 mdrender notes.md           <span class="c"># open one file</span>
 mdrender a.md b.md ./docs   <span class="c"># several files and a directory — tabs</span>
 mdrender --port notes.md    <span class="c"># serve to a browser instead (port 9999)</span>
-mdrender --mcp              <span class="c"># MCP server over stdio, for agents</span></code></pre>
+mdrender --mcp              <span class="c"># MCP server over stdio, for agents</span>
+mdrender https://github.com/anthropics/skills/blob/main/README.md   <span class="c"># from the internet</span></code></pre>
+  <p>A URL works wherever a path does, in the window and with
+  <code>--port</code>: the document is downloaded under
+  <code>/tmp/md-render/remote</code> (GitHub file pages as their raw content,
+  one directory per repository so its files share a workspace) and opened
+  from there. Naming the URL again re-opens the same tab; the refresh control
+  downloads it again. Since <code>/tmp</code> gets cleared, a saved edit is
+  also kept under <code>~/.config/mdrender/temp_files/</code>, and that copy
+  is what opens and what a refresh restores until you delete it.</p>
   <p>Directory arguments contribute every markdown file beneath them,
   recursively, in stable sorted order. The window and the server build their
   tabs from the same list, so the same arguments produce the same result in

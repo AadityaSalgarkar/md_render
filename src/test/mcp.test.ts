@@ -9,6 +9,8 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -316,6 +318,58 @@ describe.skipIf(!binary || !bundle)('mdrender MCP server', () => {
     expect(missing.ok).toBe(false)
     expect(missing.text).toContain('cannot read')
   })
+
+  it('open_tab and start_server accept a URL and download it into /tmp', async () => {
+    // A loopback web host standing in for GitHub.
+    const host = createServer((request, response) => {
+      if (request.url?.endsWith('.md')) {
+        response.writeHead(200, { 'Content-Type': 'text/markdown' })
+        response.end(`# Remote ${request.url}\n`)
+      } else {
+        response.writeHead(404)
+        response.end('nope')
+      }
+    })
+    await new Promise<void>((resolve) => host.listen(0, '127.0.0.1', resolve))
+    const hostPort = (host.address() as AddressInfo).port
+    const readme = `http://127.0.0.1:${hostPort}/anthropics/skills/main/README.md`
+    const guide = `http://127.0.0.1:${hostPort}/anthropics/skills/main/docs/guide.md`
+
+    try {
+      const opened = await expectOk('open_tab', { path: readme })
+      expect(opened.alreadyOpen).toBe(false)
+      expect(opened.label).toBe('README.md')
+      expect(opened.workspace).toBe('main')
+      expect(String(opened.path)).toContain('md-render/remote')
+      expect(opened.source).toBe(readme)
+      const content = await expectOk('read_document', { id: opened.id })
+      expect(content.content).toContain('Remote /anthropics/skills/main/README.md')
+
+      // The same URL is the same tab.
+      const again = await expectOk('open_tab', { path: readme })
+      expect(again.alreadyOpen).toBe(true)
+      expect(again.id).toBe(opened.id)
+
+      // A URL under the same remote directory joins that workspace.
+      const nested = await expectOk('open_tab', { path: guide, workspace: 'main' })
+      expect(nested.workspace).toBe('main')
+      expect(nested.label).toBe('docs/guide.md')
+
+      // start_server passes URLs through to the server it attaches to.
+      const attached = await expectOk('start_server', {
+        paths: [`http://127.0.0.1:${hostPort}/elsewhere/notes.md`],
+        port: portA,
+      })
+      expect(attached.attached).toBe(true)
+      expect(attached.added).toEqual(['notes.md'])
+
+      const missing = await call('open_tab', { path: `http://127.0.0.1:${hostPort}/missing` })
+      expect(missing.ok).toBe(false)
+      expect(missing.text).toContain('HTTP 404')
+    } finally {
+      host.close()
+    }
+  }, 30_000)
 
   it('close_tab tombstones the file and refresh does not bring it back', async () => {
     const closed = await expectOk('close_tab', { path: api })

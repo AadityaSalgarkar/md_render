@@ -28,10 +28,16 @@ export interface ViewState {
 export interface AddResult {
   added: string[]
   workspaces: string[]
-  documents: DocumentEntry[]
+  /** Every document the request named: just opened, or open already. */
+  documents: Array<DocumentEntry & { added: boolean }>
 }
 
 export const HOST = '127.0.0.1'
+
+/** A document on the internet rather than on disk; the server downloads it. */
+export function isRemote(source: string): boolean {
+  return source.startsWith('http://') || source.startsWith('https://')
+}
 
 export function baseUrl(port: number): string {
   return `http://${HOST}:${port}`
@@ -121,8 +127,15 @@ export class MdRenderClient {
     return body.content
   }
 
-  async write(path: string, content: string) {
-    await this.request('PUT', '/api/file', { body: { path, content }, auth: true })
+  /** Save; a remote document's edit is also kept outside /tmp, and the
+   *  answer says where. */
+  async write(path: string, content: string): Promise<{ savedCopy: string | null }> {
+    const body = await this.json<{ written: boolean; saved_copy?: string | null }>(
+      'PUT',
+      '/api/file',
+      { body: { path, content }, auth: true },
+    )
+    return { savedCopy: body.saved_copy ?? null }
   }
 
   async export(path: string, content: string) {

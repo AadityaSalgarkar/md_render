@@ -25,12 +25,12 @@ export function registerServerTools(server: McpServer): void {
   registerTool(
     server,
     'start_server',
-    'Serve markdown files or directories in the browser: starts `md-render --port` detached and returns the workspace URLs to give the human. Each directory (or a file\'s parent) becomes a workspace at http://127.0.0.1:PORT/<dirname>/. Without a port the first usable one from 9999 is taken; if an md-render server already holds that port the paths are added to it instead (attached: true). Binds 127.0.0.1 unless host is given; only pass a host when the human asked to expose the server.',
+    'Serve markdown files, directories or URLs in the browser: starts `md-render --port` detached and returns the workspace URLs to give the human. Each directory (or a file\'s parent) becomes a workspace at http://127.0.0.1:PORT/<dirname>/. Without a port the first usable one from 9999 is taken; if an md-render server already holds that port the paths are added to it instead (attached: true). Binds 127.0.0.1 unless host is given; only pass a host when the human asked to expose the server.',
     {
       paths: z
         .array(z.string().min(1))
         .min(1)
-        .describe('Markdown files and/or directories to serve, absolute or relative to the MCP process'),
+        .describe('Markdown files, directories and/or URLs (https://…, GitHub file pages included) to serve; local paths absolute or relative to the MCP process'),
       port: portSchema,
       host: z.string().optional().describe('Address to bind; default 127.0.0.1'),
     },

@@ -31,4 +31,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "signal", "sync",
 rust-embed = "8"
 mime_guess = "2"
 uuid = { version = "1", features = ["v4"] }
+# Fetching markdown from the internet. Only the pieces a small download needs;
+# rustls keeps the build free of system TLS libraries.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 dirs = "6"

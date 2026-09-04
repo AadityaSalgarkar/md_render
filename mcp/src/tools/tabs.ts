@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { z } from 'zod'
-import { ToolError } from '../client.ts'
+import { ToolError, isRemote } from '../client.ts'
 import { resolveServer } from '../servers.ts'
 import { portSchema } from './servers.ts'
 import { describeTab, registerTool, resolveTab, resolveWorkspace } from './shared.ts'
@@ -30,17 +30,34 @@ export function registerTabTools(server: McpServer): void {
   registerTool(
     server,
     'open_tab',
-    'Open a markdown file as a tab. With a workspace (or when a served workspace contains the file; the most specific one wins) it joins that workspace under a label relative to it, so a closed nested file comes back where it was. Otherwise the file joins the workspace of its own directory, creating one if needed. A file already open is reported, not duplicated.',
+    'Open a markdown file, or a URL (https://…, GitHub file pages included; downloaded under /tmp/md-render/remote), as a tab. With a workspace (or when a served workspace contains the file; the most specific one wins) it joins that workspace under a label relative to it, so a closed nested file comes back where it was. Otherwise the file joins the workspace of its own directory, creating one if needed. A file already open is reported, not duplicated.',
     {
       path: z.string().min(1).describe('Markdown file, absolute or relative to the MCP process'),
       workspace: workspaceSchema,
       port: portSchema,
     },
     async ({ path: raw, workspace, port }) => {
+      const live = await resolveServer(port)
+
+      if (isRemote(raw)) {
+        // The server downloads it under /tmp/md-render/remote and puts it in
+        // the workspace standing for its origin (one per GitHub repository).
+        if (workspace) await resolveWorkspace(live.client, workspace)
+        const result = await live.client.addDocuments([raw], workspace)
+        const tab = result.documents[0]
+        if (!tab) throw new ToolError(`the server accepted ${raw} but does not list it as a tab`)
+        const { added, ...entry } = tab
+        return {
+          ...describeTab(live.port, entry),
+          alreadyOpen: !added,
+          placement: added ? 'downloaded' : 'downloaded earlier; still the same tab',
+          source: raw,
+        }
+      }
+
       const file = path.resolve(raw)
       if (!existsSync(file)) throw new ToolError(`cannot read '${file}'`)
       const canonical = realpathSync(file)
-      const live = await resolveServer(port)
 
       let target = workspace
       let placement: string
@@ -62,15 +79,14 @@ export function registerTabTools(server: McpServer): void {
       }
 
       const result = await live.client.addDocuments([file], target)
-      const tab =
-        result.documents[0] ??
-        (await live.client.files(target)).find((doc) => doc.path === canonical)
+      const tab = result.documents.find((doc) => doc.path === canonical) ?? result.documents[0]
       if (!tab) {
         throw new ToolError(`the server accepted ${file} but does not list it as a tab`)
       }
+      const { added, ...entry } = tab
       return {
-        ...describeTab(live.port, tab),
-        alreadyOpen: result.documents.length === 0,
+        ...describeTab(live.port, entry),
+        alreadyOpen: !added,
         placement,
       }
     },

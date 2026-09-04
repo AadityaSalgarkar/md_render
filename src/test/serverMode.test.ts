@@ -1,4 +1,4 @@
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import {
   existsSync,
   mkdirSync,
@@ -8,6 +8,8 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -91,7 +93,13 @@ beforeAll(async () => {
   // One explicit file plus a directory, exercising both argument kinds.
   server = spawn(binary, ['--port', String(port), firstDoc, nested], {
     stdio: 'ignore',
-    env: { ...process.env, XDG_STATE_HOME: path.join(work, 'state') },
+    env: {
+      ...process.env,
+      XDG_STATE_HOME: path.join(work, 'state'),
+      // Edits to remote documents are mirrored here rather than into the
+      // developer's real config directory.
+      MDRENDER_SAVED_DIR: path.join(work, 'saved'),
+    },
   })
 
   const ready = await waitForServer(origin)
@@ -548,4 +556,92 @@ describe.skipIf(!binary)('md-render --port', () => {
     await expect(fetch(`${stopOrigin}/api/health`)).rejects.toThrow()
     expect(existsSync(record)).toBe(false)
   }, 20_000)
+  it('downloads a URL argument into /tmp and serves it like a file', async () => {
+    // A loopback web host standing in for the internet; version counts
+    // downloads so a refresh can be told from a cache hit.
+    let version = 0
+    const host = createServer((request, response) => {
+      if (request.url === '/o/r/main/README.md') {
+        version += 1
+        response.writeHead(200, { 'Content-Type': 'text/markdown' })
+        response.end(`# Remote readme\n\nversion ${version}\n`)
+      } else {
+        response.writeHead(404)
+        response.end('nope')
+      }
+    })
+    await new Promise<void>((resolve) => host.listen(0, '127.0.0.1', resolve))
+    const hostPort = (host.address() as AddressInfo).port
+    const url = `http://127.0.0.1:${hostPort}/o/r/main/README.md`
+
+    try {
+      // Exactly what a user would type against the running server. Spawned
+      // asynchronously: the CLI downloads from the host above, which lives
+      // on this very event loop and must stay free to answer.
+      const output = await new Promise<string>((resolve, reject) => {
+        execFile(
+          binary!,
+          ['--port', String(port), url],
+          { encoding: 'utf8', env: { ...process.env, XDG_STATE_HOME: path.join(work, 'state') }, timeout: 20_000 },
+          (error, stdout, stderr) => (error ? reject(new Error(`${error.message}\n${stderr}`)) : resolve(stdout)),
+        )
+      })
+      expect(output).toContain('README.md')
+
+      const files = (await (await fetch(`${origin}/api/files`)).json()) as Array<{
+        id: number
+        label: string
+        path: string
+        workspace: string
+      }>
+      const remote = files.find((doc) => doc.label === 'README.md' && doc.path.includes('md-render/remote'))!
+      expect(remote).toBeDefined()
+      expect(remote.path).toContain(`127.0.0.1-${hostPort}/o/r/main/README.md`)
+      // The workspace is named after the remote directory, not /tmp.
+      expect(remote.workspace).toBe('main')
+      const served = async () => {
+        const body = (await (await fetch(`${origin}/api/file?id=${remote.id}`)).json()) as { content: string }
+        return Number(body.content.match(/version (\d+)/)![1])
+      }
+      const before = await served()
+      expect(before).toBeGreaterThan(0)
+
+      // A refresh downloads it again, in place.
+      await fetch(`${origin}/api/files?refresh=true&ws=main`)
+      expect(await served()).toBe(before + 1)
+
+      // Saving an edit keeps a copy outside /tmp, and a refresh restores it
+      // instead of downloading over it.
+      const saved = await fetch(`${origin}/api/file`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ path: remote.path, content: '# Remote readme\n\nversion 999 (mine)\n' }),
+      })
+      expect(saved.status).toBe(200)
+      const { saved_copy } = (await saved.json()) as { saved_copy: string }
+      expect(saved_copy).toBe(path.join(work, 'saved', `127.0.0.1-${hostPort}`, 'o', 'r', 'main', 'README.md'))
+      expect(readFileSync(saved_copy, 'utf8')).toContain('version 999 (mine)')
+      await fetch(`${origin}/api/files?refresh=true&ws=main`)
+      expect(await served()).toBe(999)
+
+      // A local document is saved as before, with no copy made.
+      const local = await fetch(`${origin}/api/file`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ path: firstDoc, content: '# First document\n\nstill local\n' }),
+      })
+      expect(((await local.json()) as { saved_copy: string | null }).saved_copy).toBeNull()
+
+      // A URL that does not resolve is refused with the reason.
+      const refused = await fetch(`${origin}/api/documents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ paths: [`http://127.0.0.1:${hostPort}/missing.md`] }),
+      })
+      expect(refused.status).toBe(400)
+      expect(await refused.text()).toContain('HTTP 404')
+    } finally {
+      host.close()
+    }
+  }, 30_000)
 })

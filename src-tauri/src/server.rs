@@ -398,7 +398,7 @@ fn documents_of(state: &Shared, workspace: Option<&str>) -> Vec<DocumentMeta> {
 /// added since. Each workspace rescans its own sources into itself, so a
 /// refresh never creates a workspace. The disk walk happens outside the
 /// write lock.
-fn rescan(state: &Shared, workspace: Option<&str>) {
+async fn rescan(state: &Shared, workspace: Option<&str>) {
   let targets: Vec<(PathBuf, String, Vec<String>)> = {
     let guard = state.read().unwrap();
     guard
@@ -410,10 +410,16 @@ fn rescan(state: &Shared, workspace: Option<&str>) {
       .collect()
   };
 
-  let specs: Vec<WorkspaceSpec> = targets
-    .iter()
-    .filter_map(|(dir, name, sources)| crate::cli::spec_for_workspace(dir, name, sources).ok())
-    .collect();
+  // Walking directories and re-downloading remote sources blocks; keep it
+  // off the async workers so the server stays responsive meanwhile.
+  let specs: Vec<WorkspaceSpec> = tokio::task::spawn_blocking(move || {
+    targets
+      .iter()
+      .filter_map(|(dir, name, sources)| crate::cli::spec_for_workspace(dir, name, sources).ok())
+      .collect()
+  })
+  .await
+  .unwrap_or_default();
 
   if !specs.is_empty() {
     state.write().unwrap().add_workspaces(specs, false);
@@ -441,7 +447,7 @@ struct ListQuery {
 async fn list_files(State(state): State<Shared>, Query(query): Query<ListQuery>) -> impl IntoResponse {
   if query.refresh {
     // A rescan, not an explicit ask: closed tabs stay closed.
-    rescan(&state, query.ws.as_deref());
+    rescan(&state, query.ws.as_deref()).await;
   }
 
   Json(documents_of(&state, query.ws.as_deref()))
@@ -508,8 +514,13 @@ async fn write_by_path(
     Err(response) => return response,
   };
 
-  match std::fs::write(&path, body.content) {
-    Ok(()) => Json(serde_json::json!({ "written": true })).into_response(),
+  // A remote document's edit is also kept outside /tmp; see remote::save.
+  match crate::remote::save(&path, &body.content) {
+    Ok(saved_copy) => Json(serde_json::json!({
+      "written": true,
+      "saved_copy": saved_copy.map(|p| p.to_string_lossy().to_string()),
+    }))
+    .into_response(),
     Err(err) => (
       StatusCode::INTERNAL_SERVER_ERROR,
       format!("could not write document: {}", err),
@@ -578,35 +589,64 @@ async fn add_documents(
     return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
   }
 
-  // Build the specs (a disk walk) outside the write lock, as rescan does.
-  let specs = match body.ws.as_deref() {
-    None => crate::cli::group_workspaces(&body.paths),
+  // Building the specs walks directories and may download a URL, so it
+  // runs off the async workers and outside the write lock, as rescan does.
+  let target = match body.ws.as_deref() {
+    None => None,
     Some(name) => {
-      let target = state
+      let found = state
         .read()
         .unwrap()
         .workspace(name)
         .map(|ws| (ws.dir.clone(), ws.name.clone()));
-      let Some((dir, name)) = target else {
+      let Some(found) = found else {
         return (StatusCode::NOT_FOUND, "no such workspace").into_response();
       };
-      crate::cli::spec_for_workspace(&dir, &name, &body.paths).map(|spec| vec![spec])
+      Some(found)
     }
   };
+  let paths = body.paths.clone();
+  let specs = tokio::task::spawn_blocking(move || match target {
+    None => crate::cli::group_workspaces(&paths),
+    Some((dir, name)) => crate::cli::spec_for_workspace(&dir, &name, &paths).map(|spec| vec![spec]),
+  })
+  .await;
   let specs = match specs {
-    Ok(specs) => specs,
-    Err(err) => return (StatusCode::BAD_REQUEST, err.to_string()).into_response(),
+    Ok(Ok(specs)) => specs,
+    Ok(Err(err)) => return (StatusCode::BAD_REQUEST, err.to_string()).into_response(),
+    Err(err) => {
+      return (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        format!("could not collect documents: {}", err),
+      )
+        .into_response()
+    }
   };
+
+  let requested: HashSet<PathBuf> = specs
+    .iter()
+    .flat_map(|spec| spec.documents.iter().map(|doc| doc.path.clone()))
+    .collect();
 
   let (added, workspaces) = state.write().unwrap().add_workspaces(specs, true);
   let labels: Vec<String> = added.iter().map(|doc| doc.label.clone()).collect();
-
-  // The entries just opened, with their fresh ids, so a caller can address
-  // them straight away.
   let added_paths: HashSet<PathBuf> = added.into_iter().map(|doc| doc.path).collect();
-  let documents: Vec<DocumentMeta> = documents_of(&state, None)
+
+  // Every document the request named, whether it just opened (with its fresh
+  // id) or was open already, so a caller can address it either way.
+  let documents: Vec<serde_json::Value> = documents_of(&state, None)
     .into_iter()
-    .filter(|doc| added_paths.contains(Path::new(&doc.path)))
+    .filter(|doc| requested.contains(Path::new(&doc.path)))
+    .map(|doc| {
+      let added = added_paths.contains(Path::new(&doc.path));
+      serde_json::json!({
+        "id": doc.id,
+        "label": doc.label,
+        "path": doc.path,
+        "workspace": doc.workspace,
+        "added": added,
+      })
+    })
     .collect();
 
   Json(serde_json::json!({
@@ -771,38 +811,167 @@ pub fn inject_marker(html: &str, token: &str, workspace: &str) -> String {
   }
 }
 
-/// The root: one workspace redirects straight to it; several list themselves.
+fn escape_html(raw: &str) -> String {
+  raw
+    .replace('&', "&amp;")
+    .replace('<', "&lt;")
+    .replace('>', "&gt;")
+    .replace('"', "&quot;")
+}
+
+/// Styles for the root listing: the documentation site's Warm Paper and
+/// Midnight Ink tokens, picked by the system preference or by the theme
+/// the app remembered in this browser, with no fonts to fetch — the page
+/// has to work over an SSH forward with nothing else reachable.
+const ROOT_STYLE: &str = r#"
+:root, [data-mode="light"] {
+  --bg-primary: #FAF7F2; --bg-secondary: #F5F1EA; --text-primary: #1A1A1A;
+  --text-secondary: #5C5C5C; --text-muted: #8A8A8A; --accent: #C9553D;
+  --accent-hover: #B84A34; --accent-secondary: #2D5A4A; --border: #E8E2D9;
+  --border-strong: #D4CCC0; --code-bg: #F0EDE6; --btn-bg: #FFFDF8;
+  --shadow: 0 1px 3px rgba(26,26,26,.08), 0 6px 24px -12px rgba(26,26,26,.18);
+}
+@media (prefers-color-scheme: dark) { :root { color-scheme: dark;
+  --bg-primary: #121418; --bg-secondary: #1A1D23; --text-primary: #E8E4DC;
+  --text-secondary: #9A968E; --text-muted: #6A665E; --accent: #E07A5F;
+  --accent-hover: #E8907A; --accent-secondary: #81B29A; --border: #2A2D35;
+  --border-strong: #3A3D45; --code-bg: #1A1D23; --btn-bg: #1A1D23;
+  --shadow: 0 1px 3px rgba(0,0,0,.4), 0 6px 24px -12px rgba(0,0,0,.6);
+} }
+[data-mode="dark"] { color-scheme: dark;
+  --bg-primary: #121418; --bg-secondary: #1A1D23; --text-primary: #E8E4DC;
+  --text-secondary: #9A968E; --text-muted: #6A665E; --accent: #E07A5F;
+  --accent-hover: #E8907A; --accent-secondary: #81B29A; --border: #2A2D35;
+  --border-strong: #3A3D45; --code-bg: #1A1D23; --btn-bg: #1A1D23;
+  --shadow: 0 1px 3px rgba(0,0,0,.4), 0 6px 24px -12px rgba(0,0,0,.6);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: "Source Serif 4", "Iowan Old Style", Georgia, serif; font-size: 1.0625rem;
+  line-height: 1.72; color: var(--text-primary); background: var(--bg-primary); }
+main { max-width: 46rem; margin: 0 auto; padding: 4.5rem 1.5rem 5rem; }
+.eyebrow, .mono, .dir, .count { font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace; }
+.eyebrow { font-size: .72rem; letter-spacing: .22em; text-transform: uppercase; color: var(--text-muted); }
+h1 { font-family: "Playfair Display", "Iowan Old Style", Georgia, serif; font-weight: 500;
+  font-size: 2.6rem; line-height: 1.1; letter-spacing: -.01em; margin: .5rem 0 .3rem; }
+.ornament { color: var(--accent); font-size: .8rem; letter-spacing: .5em; margin: .8rem 0 1.4rem; }
+.lede { color: var(--text-secondary); margin-bottom: 2.4rem; }
+.ws { border: 1px solid var(--border); background: var(--btn-bg); box-shadow: var(--shadow);
+  border-radius: 6px; padding: 1.2rem 1.4rem 1rem; margin-bottom: 1.2rem; }
+.ws header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.ws h2 { font-family: "Playfair Display", "Iowan Old Style", Georgia, serif; font-weight: 500;
+  font-size: 1.45rem; line-height: 1.2; }
+.ws h2 a { color: var(--text-primary); text-decoration: none; border-bottom: 2px solid var(--border-strong); }
+.ws h2 a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.count { font-size: .78rem; color: var(--text-muted); }
+.dir { display: block; font-size: .78rem; color: var(--text-muted); margin: .25rem 0 .8rem;
+  overflow-wrap: anywhere; }
+.tabs { list-style: none; display: flex; flex-wrap: wrap; gap: .4rem .5rem; }
+.tabs a { display: inline-block; font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: .8rem; color: var(--text-secondary); text-decoration: none;
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: .12rem .55rem; }
+.tabs a:hover { color: var(--accent); border-color: var(--accent); }
+.empty { color: var(--text-muted); font-style: italic; font-size: .92rem; }
+footer { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--border);
+  color: var(--text-muted); font-size: .88rem; }
+footer code { font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace; font-size: .8rem;
+  background: var(--code-bg); padding: .1rem .35rem; border-radius: 3px; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+"#;
+
+/// Picks light or dark from the theme the app stored in this browser, so
+/// the listing matches the pages it links to.
+const ROOT_SCRIPT: &str = r#"
+(function(){try{var t=localStorage.getItem('md-render-theme');if(!t)return;
+var dark=t==='midnight-ink'||t==='nocturne'||t==='evergreen';
+document.documentElement.setAttribute('data-mode',dark?'dark':'light');}catch(e){}})();
+"#;
+
+/// The root listing as HTML: every workspace with its directory and tabs.
+/// Workspace names are restricted to `[A-Za-z0-9._-]`; everything else
+/// that came from disk is escaped.
+fn root_html(workspaces: &[Workspace]) -> String {
+  let total: usize = workspaces.iter().map(|ws| ws.documents.len()).sum();
+  let plural = |n: usize| if n == 1 { "" } else { "s" };
+
+  let cards: String = if workspaces.is_empty() {
+    "<p class=\"empty\">Nothing is being served. Add something with \
+     <code>mdrender --port FILE</code>.</p>"
+      .to_string()
+  } else {
+    workspaces
+      .iter()
+      .map(|ws| {
+        let tabs: String = if ws.documents.is_empty() {
+          "<p class=\"empty\">No open tabs.</p>".to_string()
+        } else {
+          let items: String = ws
+            .documents
+            .iter()
+            .map(|doc| {
+              format!(
+                "<li><a href=\"/{name}/?doc={id}\">{label}</a></li>",
+                name = ws.name,
+                id = doc.id,
+                label = escape_html(&doc.document.label)
+              )
+            })
+            .collect();
+          format!("<ul class=\"tabs\">{}</ul>", items)
+        };
+        format!(
+          "<section class=\"ws\"><header><h2><a href=\"/{name}/\">{name}/</a></h2>\
+           <span class=\"count\">{n} file{s}</span></header>\
+           <span class=\"dir\">{dir}</span>{tabs}</section>",
+          name = ws.name,
+          n = ws.documents.len(),
+          s = plural(ws.documents.len()),
+          dir = escape_html(&ws.dir.to_string_lossy()),
+          tabs = tabs
+        )
+      })
+      .collect()
+  };
+
+  format!(
+    "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
+     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
+     <title>MD_RENDER · {n} workspace{ws_s}</title><style>{style}</style>\
+     <script>{script}</script></head><body><main>\
+     <div class=\"eyebrow\">MD_RENDER · serving {total} file{total_s}</div>\
+     <h1>Workspaces</h1><div class=\"ornament\">◆</div>\
+     <p class=\"lede\">Each directory is a workspace with its own tabs. Open one, \
+     or jump straight to a document.</p>{cards}\
+     <footer>Add more with <code>mdrender --port FILE|DIR|URL</code> — it lands \
+     here without a restart.</footer></main></body></html>",
+    n = workspaces.len(),
+    ws_s = plural(workspaces.len()),
+    style = ROOT_STYLE.trim(),
+    script = ROOT_SCRIPT.trim(),
+    total = total,
+    total_s = plural(total),
+    cards = cards
+  )
+}
+
+/// The root: one workspace redirects straight to it; none or several show
+/// the listing (with a 404 when there is nothing, so probes stay honest).
 fn root_page(state: &Shared) -> Response {
   let guard = state.read().unwrap();
-  match guard.workspaces.len() {
-    0 => (StatusCode::NOT_FOUND, "nothing is being served").into_response(),
-    1 => {
-      let location = format!("/{}/", guard.workspaces[0].name);
-      (StatusCode::FOUND, [(header::LOCATION, location)]).into_response()
-    }
-    _ => {
-      // Workspace names are restricted to [A-Za-z0-9._-], so plain
-      // interpolation cannot break out of the markup.
-      let items: String = guard
-        .workspaces
-        .iter()
-        .map(|ws| {
-          format!(
-            "<li><a href=\"/{name}/\">{name}/</a> — {n} file{s}</li>",
-            name = ws.name,
-            n = ws.documents.len(),
-            s = if ws.documents.len() == 1 { "" } else { "s" }
-          )
-        })
-        .collect();
-      let html = format!(
-        "<!doctype html><meta charset=\"utf-8\"><title>md-render</title>\
-         <h1>md-render</h1><ul>{}</ul>",
-        items
-      );
-      ([(header::CONTENT_TYPE, "text/html")], html).into_response()
-    }
+  if guard.workspaces.len() == 1 {
+    let location = format!("/{}/", guard.workspaces[0].name);
+    return (StatusCode::FOUND, [(header::LOCATION, location)]).into_response();
   }
+  let status = if guard.workspaces.is_empty() {
+    StatusCode::NOT_FOUND
+  } else {
+    StatusCode::OK
+  };
+  (
+    status,
+    [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+    root_html(&guard.workspaces),
+  )
+    .into_response()
 }
 
 /// Serve the built frontend out of the binary. `/<workspace>/…` serves the
@@ -1606,7 +1775,11 @@ mod tests {
     }
 
     fs::write(nested.join("later.md"), "# later").unwrap();
-    rescan(&shared, None);
+    tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap()
+      .block_on(rescan(&shared, None));
 
     let guard = shared.read().unwrap();
     assert_eq!(guard.workspaces.len(), 1);
@@ -1675,12 +1848,15 @@ mod tests {
       assert_eq!(parsed["documents"][0]["workspace"], "docs");
       assert_eq!(parsed["documents"][0]["id"], 1);
 
-      // Adding it again reports nothing new.
+      assert_eq!(parsed["documents"][0]["added"], true);
+
+      // Adding it again reports nothing new, but still says where it is.
       let body = serde_json::json!({ "paths": [deep.display().to_string()], "ws": "docs" }).to_string();
       let (_, text) = http(addr, post(body)).await;
       let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
       assert_eq!(parsed["added"], serde_json::json!([]));
-      assert_eq!(parsed["documents"], serde_json::json!([]));
+      assert_eq!(parsed["documents"][0]["id"], 1);
+      assert_eq!(parsed["documents"][0]["added"], false);
     });
   }
 
@@ -1832,6 +2008,115 @@ mod tests {
       let (_, body) = http(addr, get(addr, "/api/view?ws=notes")).await;
       assert_eq!(body, "{\"doc\":0,\"theme\":\"forest\",\"seq\":2}");
     });
+  }
+
+  #[test]
+  fn a_url_can_be_added_over_http_and_refreshed_from_its_origin() {
+    let dir = temp_dir("remote-http");
+    fs::write(dir.join("a.md"), "# a").unwrap();
+    let (web_port, hits) = crate::remote::serve_markdown(vec![("/team/notes.md", "# Notes {n}\n")]);
+    let url = format!("http://127.0.0.1:{}/team/notes.md", web_port);
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[dir.join("a.md")]),
+      "test-token".to_string(),
+    )));
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      tokio::spawn(async move {
+        let _ = axum::serve(listener, router(shared)).await;
+      });
+
+      // The download happens inside the server, in a request handler.
+      let body = serde_json::json!({ "paths": [url] }).to_string();
+      let (status, text) = http(addr, with_token(addr, "POST", "/api/documents", Some("test-token"), Some(&body))).await;
+      assert_eq!(status, 200, "{}", text);
+      let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+      assert_eq!(parsed["added"], serde_json::json!(["notes.md"]));
+      assert_eq!(parsed["workspaces"], serde_json::json!(["team"]));
+      let id = parsed["documents"][0]["id"].as_u64().unwrap();
+
+      let (_, content) = http(addr, get(addr, &format!("/api/file?id={}", id))).await;
+      assert!(content.contains("Notes 1"), "{}", content);
+
+      // Saving the remote document keeps a durable copy, and the answer
+      // says where.
+      let remote_path = parsed["documents"][0]["path"].as_str().unwrap().to_string();
+      let body = serde_json::json!({ "path": remote_path, "content": "# Notes\n\nedited\n" }).to_string();
+      let (status, text) = http(addr, with_token(addr, "PUT", "/api/file", Some("test-token"), Some(&body))).await;
+      assert_eq!(status, 200, "{}", text);
+      let written: serde_json::Value = serde_json::from_str(&text).unwrap();
+      let saved_copy = PathBuf::from(written["saved_copy"].as_str().unwrap());
+      assert!(saved_copy.starts_with(crate::remote::saved_dir()));
+      assert_eq!(fs::read_to_string(&saved_copy).unwrap(), "# Notes\n\nedited\n");
+
+      // A refresh restores the edit rather than downloading over it.
+      let (status, _) = http(addr, get(addr, "/api/files?refresh=true&ws=team")).await;
+      assert_eq!(status, 200);
+      let (_, content) = http(addr, get(addr, &format!("/api/file?id={}", id))).await;
+      assert!(content.contains("edited"), "{}", content);
+      fs::remove_dir_all(saved_copy.parent().unwrap().parent().unwrap()).unwrap();
+
+      // Without a saved copy, a refresh of that workspace downloads it again.
+      let (status, _) = http(addr, get(addr, "/api/files?refresh=true&ws=team")).await;
+      assert_eq!(status, 200);
+      let (_, content) = http(addr, get(addr, &format!("/api/file?id={}", id))).await;
+      assert!(content.contains("Notes 2"), "{}", content);
+      assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+
+      // A download that fails is a 400 naming the reason, and the server
+      // is still there afterwards.
+      let body = serde_json::json!({ "paths": [format!("http://127.0.0.1:{}/missing.md", web_port)] }).to_string();
+      let (status, text) = http(addr, with_token(addr, "POST", "/api/documents", Some("test-token"), Some(&body))).await;
+      assert_eq!(status, 400);
+      assert!(text.contains("HTTP 404"), "{}", text);
+      let (status, _) = http(addr, get(addr, "/api/health")).await;
+      assert_eq!(status, 200);
+
+      let remote_dir = PathBuf::from(parsed["documents"][0]["path"].as_str().unwrap());
+      let _ = fs::remove_dir_all(remote_dir.parent().unwrap().parent().unwrap());
+    });
+  }
+
+  #[test]
+  fn the_root_listing_links_every_workspace_and_tab_and_escapes_paths() {
+    let base = temp_dir("root-html");
+    let notes = base.join("notes");
+    let odd = base.join("a<b>&\"c\"");
+    fs::create_dir_all(&notes).unwrap();
+    fs::create_dir_all(&odd).unwrap();
+    fs::write(notes.join("a.md"), "# a").unwrap();
+    fs::write(notes.join("b.md"), "# b").unwrap();
+    fs::write(odd.join("<x>.md"), "# x").unwrap();
+
+    let state = ServerState::new(specs_for(&[notes, odd]), "token".to_string());
+    let html = root_html(&state.workspaces);
+
+    // Styled, self-contained, and titled.
+    assert!(html.contains("<style>"));
+    assert!(html.contains("--bg-primary"));
+    assert!(html.contains("<title>MD_RENDER · 2 workspaces</title>"));
+    assert!(html.contains("serving 3 files"));
+    // Each workspace links to its page, each tab straight to its document.
+    assert!(html.contains("<a href=\"/notes/\">notes/</a>"));
+    assert!(html.contains("<a href=\"/notes/?doc=0\">a.md</a>"));
+    assert!(html.contains("<a href=\"/notes/?doc=1\">b.md</a>"));
+    // Anything from disk is escaped; the workspace name was already sanitised.
+    assert!(html.contains("a&lt;b&gt;&amp;&quot;c&quot;"));
+    assert!(html.contains(">&lt;x&gt;.md</a>"));
+    assert!(!html.contains("<x>.md"));
+
+    // Nothing served: still a page, saying so.
+    let empty = root_html(&[]);
+    assert!(empty.contains("Nothing is being served"));
+    assert!(empty.contains("<title>MD_RENDER · 0 workspaces</title>"));
   }
 
   #[test]

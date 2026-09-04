@@ -71,6 +71,8 @@ pub enum CliError {
   UnknownFlag(String),
   /// A path handed to a named workspace that does not live under its directory.
   OutsideWorkspace(String),
+  /// A URL that could not be downloaded, with the reason.
+  Fetch(String, String),
 }
 
 impl std::fmt::Display for CliError {
@@ -91,14 +93,18 @@ impl std::fmt::Display for CliError {
       CliError::OutsideWorkspace(path) => {
         write!(f, "'{}' is outside the workspace directory", path)
       }
+      CliError::Fetch(url, reason) => write!(f, "could not open {}: {}", url, reason),
     }
   }
 }
 
 pub const USAGE: &str = "\
 Usage:
-  md-render [FILE|DIR]...                open the desktop app (several files: tabs)
-  md-render --port [PORT] [FILE|DIR]...  serve rendered markdown over HTTP
+  md-render [FILE|DIR|URL]...                open the desktop app (several files: tabs)
+  md-render --port [PORT] [FILE|DIR|URL]...  serve rendered markdown over HTTP
+
+  A URL (https://...) is downloaded under /tmp/md-render/remote and opened
+  from there; GitHub file pages are fetched as their raw content.
 
 Serving:
   Without a PORT the server takes 9999, or the next free port when another
@@ -176,8 +182,12 @@ pub fn parse(args: &[String]) -> Result<Mode, CliError> {
     })
   } else {
     // Unreadable paths are not fatal here: the desktop app opens with its
-    // local draft rather than refusing to start, as it always has.
-    let documents = collect_documents(&paths).unwrap_or_default();
+    // local draft rather than refusing to start, as it always has. The
+    // reason still goes to stderr so a failed download is not silent.
+    let documents = collect_documents(&paths).unwrap_or_else(|err| {
+      eprintln!("md-render: {}", err);
+      Vec::new()
+    });
     Ok(Mode::Desktop {
       documents,
       sources: paths,
@@ -219,20 +229,33 @@ pub fn group_workspaces(paths: &[String]) -> Result<Vec<WorkspaceSpec>, CliError
   let mut specs: Vec<WorkspaceSpec> = Vec::new();
 
   for raw in paths {
-    let path = Path::new(raw)
-      .canonicalize()
-      .map_err(|_| CliError::UnreadablePath(raw.clone()))?;
-
-    let dir = if path.is_dir() {
-      path.clone()
+    // A downloaded document belongs to the directory standing in for its
+    // remote location (one per GitHub repository), not to wherever under
+    // /tmp it happens to sit.
+    let (dir, documents) = if crate::remote::is_url(raw) {
+      let fetched = fetch_url(raw, false)?;
+      (
+        fetched.root,
+        vec![Document {
+          path: fetched.path,
+          label: fetched.label,
+        }],
+      )
     } else {
-      path
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("/"))
-    };
+      let path = Path::new(raw)
+        .canonicalize()
+        .map_err(|_| CliError::UnreadablePath(raw.clone()))?;
 
-    let documents = collect_documents(&[raw.clone()])?;
+      let dir = if path.is_dir() {
+        path.clone()
+      } else {
+        path
+          .parent()
+          .map(|p| p.to_path_buf())
+          .unwrap_or_else(|| PathBuf::from("/"))
+      };
+      (dir, collect_documents(&[raw.clone()])?)
+    };
 
     match specs.iter_mut().find(|spec| spec.dir == dir) {
       Some(spec) => {
@@ -270,14 +293,26 @@ pub fn spec_for_workspace(
   let mut sources: Vec<String> = Vec::new();
 
   for raw in paths {
-    let path = Path::new(raw)
-      .canonicalize()
-      .map_err(|_| CliError::UnreadablePath(raw.clone()))?;
+    // A URL is downloaded afresh: this is the refresh path, and naming a
+    // remote document again is the way to pick up what changed upstream.
+    let (path, found) = if crate::remote::is_url(raw) {
+      let fetched = fetch_url(raw, true)?;
+      let document = Document {
+        path: fetched.path.clone(),
+        label: fetched.label,
+      };
+      (fetched.path, vec![document])
+    } else {
+      let path = Path::new(raw)
+        .canonicalize()
+        .map_err(|_| CliError::UnreadablePath(raw.clone()))?;
+      (path.clone(), collect_documents(&[raw.clone()])?)
+    };
     if !path.starts_with(dir) {
       return Err(CliError::OutsideWorkspace(raw.clone()));
     }
 
-    for mut document in collect_documents(&[raw.clone()])? {
+    for mut document in found {
       document.label = document
         .path
         .strip_prefix(dir)
@@ -338,6 +373,15 @@ pub fn collect_documents(paths: &[String]) -> Result<Vec<Document>, CliError> {
   let mut documents = Vec::new();
 
   for raw in paths {
+    if crate::remote::is_url(raw) {
+      let fetched = fetch_url(raw, false)?;
+      documents.push(Document {
+        path: fetched.path,
+        label: fetched.label,
+      });
+      continue;
+    }
+
     let path = Path::new(raw)
       .canonicalize()
       .map_err(|_| CliError::UnreadablePath(raw.clone()))?;
@@ -364,6 +408,10 @@ pub fn collect_documents(paths: &[String]) -> Result<Vec<Document>, CliError> {
   documents.retain(|doc| seen.insert(doc.path.clone()));
 
   Ok(documents)
+}
+
+fn fetch_url(url: &str, refresh: bool) -> Result<crate::remote::Fetched, CliError> {
+  crate::remote::fetch(url, refresh).map_err(|reason| CliError::Fetch(url.to_string(), reason))
 }
 
 fn scan_directory(root: &Path, dir: &Path, depth: usize, out: &mut Vec<Document>) {
@@ -465,6 +513,74 @@ mod tests {
     let err = spec_for_workspace(&dir, "docs", &args(&[dir.join("missing.md").to_str().unwrap()]))
       .unwrap_err();
     assert!(matches!(err, CliError::UnreadablePath(_)));
+  }
+
+  #[test]
+  fn a_url_argument_is_downloaded_and_opened_like_a_file() {
+    let (port, hits) = crate::remote::serve_markdown(vec![("/notes/today.md", "# Today\n")]);
+    let url = format!("http://127.0.0.1:{}/notes/today.md", port);
+
+    // Desktop and server mode both accept it.
+    let Mode::Serve { documents, sources, .. } = parse(&args(&["--port", &url])).unwrap() else {
+      panic!("expected serve mode");
+    };
+    assert_eq!(documents.len(), 1);
+    assert_eq!(documents[0].label, "today.md");
+    assert!(documents[0].path.is_file());
+    assert!(documents[0].path.starts_with(crate::remote::base_dir().canonicalize().unwrap()));
+    // The URL itself is what gets remembered, so a refresh can fetch again.
+    assert_eq!(sources, vec![url.clone()]);
+
+    let Mode::Desktop { documents, .. } = parse(&args(&[&url])).unwrap() else {
+      panic!("expected desktop mode");
+    };
+    assert_eq!(documents[0].label, "today.md");
+    // One download served both parses.
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    let _ = fs::remove_dir_all(documents[0].path.parent().unwrap().parent().unwrap());
+  }
+
+  #[test]
+  fn a_remote_document_joins_the_workspace_of_its_origin() {
+    let (port, _) = crate::remote::serve_markdown(vec![
+      ("/anthropics/skills/main/README.md", "# Skills\n"),
+      ("/anthropics/skills/main/docs/guide.md", "# Guide\n"),
+    ]);
+    let readme = format!("http://127.0.0.1:{}/anthropics/skills/main/README.md", port);
+    let guide = format!("http://127.0.0.1:{}/anthropics/skills/main/docs/guide.md", port);
+
+    let specs = group_workspaces(&[readme.clone(), guide.clone()]).unwrap();
+    // Not GitHub, so the root is the host plus the directories: two
+    // workspaces, each named after its remote directory rather than /tmp.
+    assert_eq!(specs.len(), 2);
+    assert_eq!(specs[0].name_hint, "main");
+    assert_eq!(specs[0].documents[0].label, "README.md");
+    assert_eq!(specs[1].name_hint, "docs");
+    assert!(specs[0].dir.starts_with(crate::remote::base_dir().canonicalize().unwrap()));
+
+    // Naming a URL for an existing workspace downloads it again and labels
+    // it relative to that workspace's directory.
+    let spec = spec_for_workspace(&specs[0].dir, "main", &[guide.clone()]).unwrap();
+    assert_eq!(spec.documents[0].label, "docs/guide.md");
+    assert_eq!(spec.sources, vec![guide.clone()]);
+
+    let outside = spec_for_workspace(&specs[1].dir, "docs", &[readme]).unwrap_err();
+    assert!(matches!(outside, CliError::OutsideWorkspace(_)));
+
+    let _ = fs::remove_dir_all(specs[0].dir.parent().unwrap());
+  }
+
+  #[test]
+  fn a_url_that_cannot_be_fetched_is_a_readable_error() {
+    let (port, _) = crate::remote::serve_markdown(vec![]);
+    let url = format!("http://127.0.0.1:{}/missing.md", port);
+
+    let err = parse(&args(&["--port", &url])).unwrap_err();
+    assert!(matches!(err, CliError::Fetch(_, _)));
+    let text = err.to_string();
+    assert!(text.contains(&url), "{}", text);
+    assert!(text.contains("HTTP 404"), "{}", text);
   }
 
   #[test]

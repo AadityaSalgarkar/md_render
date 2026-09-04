@@ -36,6 +36,8 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
   renders a card whose options stay hidden until the eye button reveals them;
   an `<answer>…</answer>` inside (or anywhere) stays hidden until clicked
 - Server mode with full parity: editing and saving work in the browser too
+- Markdown from the internet: `mdrender https://…/README.md` downloads the
+  file (GitHub pages as raw content) and opens it like a local one
 - An MCP server (`mdrender --mcp`) so agents can start and stop servers,
   open and close workspaces and tabs, read, write, comment on and export
   documents, and focus a tab or switch the theme in the reader's browser
@@ -83,10 +85,23 @@ mdrender notes.md           # open one file
 mdrender a.md b.md ./docs   # several files and a directory — tabs
 mdrender --port notes.md    # serve to a browser instead
 mdrender --mcp              # MCP server over stdio, for agents
+mdrender https://github.com/anthropics/skills/blob/main/README.md   # from the internet
 ```
 
 Directory arguments contribute every markdown file beneath them. The window
 and the server take the same arguments and open the same tabs.
+
+A URL is downloaded under `/tmp/md-render/remote` and opened from there, in
+the window or the browser. GitHub file pages are fetched as their raw
+content, and every file from one repository lands in one place, so
+`mdrender --port` on two files of a repository gives one workspace named
+after it. Naming a URL again re-opens the same tab; the refresh control (or
+the MCP `refresh` tool) downloads it again.
+
+`/tmp` gets cleared by the system, so an edit you save to a remote document
+is also kept under `~/.config/mdrender/temp_files/` in the same layout. That
+saved copy is what opens the next time you name the URL, and what a refresh
+restores, so your edits win over upstream until you delete the saved copy.
 
 ## Server mode
 

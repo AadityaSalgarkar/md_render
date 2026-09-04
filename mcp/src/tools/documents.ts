@@ -14,7 +14,7 @@ const workspaceSchema = z
   .describe('Workspace name, to disambiguate a file open in several')
 
 const SYNC_NOTE =
-  'An open browser re-reads the file within 30 seconds unless it holds unsaved edits, in which case its edits win; call focus_tab to make it reload now.'
+  'An open browser re-reads the file within 30 seconds unless it holds unsaved edits, in which case its edits win; call focus_tab to make it reload now. A document that came from a URL lives under /tmp, so its edit is also kept at savedCopy (under ~/.config/mdrender/temp_files) and restored from there on later opens and refreshes.'
 
 export function registerDocumentTools(server: McpServer): void {
   registerTool(
@@ -48,8 +48,8 @@ export function registerDocumentTools(server: McpServer): void {
     async ({ path: file, content, workspace, port }) => {
       const live = await resolveServer(port)
       const tab = await resolveTab(live.client, { path: file, workspace })
-      await live.client.write(tab.path, content)
-      return { ...describeTab(live.port, tab), written: true, note: SYNC_NOTE }
+      const { savedCopy } = await live.client.write(tab.path, content)
+      return { ...describeTab(live.port, tab), written: true, savedCopy, note: SYNC_NOTE }
     },
   )
 
@@ -70,12 +70,12 @@ export function registerDocumentTools(server: McpServer): void {
       const current = await live.client.read(tab.path)
       const result = insertCommentForSelection(current, passage, comment)
       if (!result.inserted) throw new ToolError('passage and comment must both be non-empty')
-      await live.client.write(tab.path, result.content)
+      const { savedCopy } = await live.client.write(tab.path, result.content)
       // A passage that was not found gets a "Comment target" note instead of
       // an anchor; one more of those than before means this comment did.
       const notes = (text: string) => text.split('> Comment target:').length
       const anchored = notes(result.content) === notes(current)
-      return { ...describeTab(live.port, tab), anchored, note: SYNC_NOTE }
+      return { ...describeTab(live.port, tab), anchored, savedCopy, note: SYNC_NOTE }
     },
   )
 

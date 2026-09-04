@@ -21,6 +21,23 @@ mdrender a.md b.md ./docs       # several files and a directory -> tabs
 Directory arguments contribute every `.md`/`.markdown` beneath them. The
 command returns immediately; the window opens detached.
 
+A URL works wherever a path does, in both modes:
+
+```bash
+mdrender https://github.com/anthropics/skills/blob/main/README.md
+mdrender --port https://raw.githubusercontent.com/o/r/main/docs/guide.md
+```
+
+The document is downloaded under `/tmp/md-render/remote` (GitHub file pages
+as their raw content; files of one repository share one directory, so they
+share one workspace named `github.com-OWNER-REPO`) and opened from there.
+Naming the URL again re-opens the same tab; a refresh downloads it again.
+Saving an edit to a remote document also keeps a copy under
+`~/.config/mdrender/temp_files/` (same layout; `MDRENDER_SAVED_DIR`
+overrides), and that copy is what opens and what a refresh restores from
+then on — delete it to get back to upstream. Relative images inside a remote
+document do not resolve.
+
 ## Serve to a browser (works headless)
 
 ```bash
@@ -58,10 +75,10 @@ browser follows within about 3 seconds.
 | Need | Tool |
 |---|---|
 | Which servers are running, on which ports | `list_servers` |
-| Serve files/directories (or add to a live server) | `start_server {paths, port?, host?}` |
+| Serve files/directories/URLs (or add to a live server) | `start_server {paths, port?, host?}` |
 | Stop a server | `stop_server {port}` |
 | Workspaces and their URLs | `list_workspaces`, `open_directory {path}`, `close_workspace {workspace}` |
-| Tabs | `list_tabs {workspace?}`, `open_tab {path, workspace?}`, `close_tab {id \| path}`, `refresh {workspace?}` |
+| Tabs | `list_tabs {workspace?}`, `open_tab {path, workspace?}` (path may be a URL), `close_tab {id \| path}`, `refresh {workspace?}` |
 | Content | `read_document {id \| path}`, `write_document {path, content}` |
 | Review | `add_comment {path, passage, comment}`, `export_clean {path}` |
 | The reader's browser | `focus_tab {id \| path}`, `set_theme {theme, workspace?}` |
