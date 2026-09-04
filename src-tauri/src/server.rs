@@ -226,6 +226,9 @@ struct DocumentMeta {
   id: u64,
   label: String,
   path: String,
+  /// Name of the workspace the tab belongs to, so a caller listing every
+  /// workspace at once can still build the tab's URL.
+  workspace: String,
 }
 
 #[derive(Serialize)]
@@ -302,11 +305,12 @@ fn documents_of(state: &Shared, workspace: Option<&str>) -> Vec<DocumentMeta> {
     .workspaces
     .iter()
     .filter(|ws| workspace.map(|name| ws.name == name).unwrap_or(true))
-    .flat_map(|ws| ws.documents.iter())
-    .map(|doc| DocumentMeta {
+    .flat_map(|ws| ws.documents.iter().map(move |doc| (ws.name.as_str(), doc)))
+    .map(|(name, doc)| DocumentMeta {
       id: doc.id,
       label: doc.document.label.clone(),
       path: doc.document.path.to_string_lossy().to_string(),
+      workspace: name.to_string(),
     })
     .collect()
 }
@@ -1187,6 +1191,36 @@ mod tests {
     assert_eq!(reopened.len(), 1);
     assert_eq!(state.workspaces.len(), 1);
     assert_eq!(all_ids(&state), vec![1, 2]);
+  }
+
+  #[test]
+  fn file_list_names_the_workspace_of_each_document() {
+    let base = temp_dir("ws-name");
+    let notes = base.join("notes");
+    let docs = base.join("docs");
+    fs::create_dir_all(&notes).unwrap();
+    fs::create_dir_all(&docs).unwrap();
+    fs::write(notes.join("a.md"), "# a").unwrap();
+    fs::write(docs.join("b.md"), "# b").unwrap();
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[notes, docs]),
+      "token".to_string(),
+    )));
+
+    // Listing everything still says where each tab lives, so a caller can
+    // build its URL without a request per workspace.
+    let all = documents_of(&shared, None);
+    let names: Vec<(&str, &str)> = all
+      .iter()
+      .map(|doc| (doc.label.as_str(), doc.workspace.as_str()))
+      .collect();
+    assert_eq!(names, vec![("a.md", "notes"), ("b.md", "docs")]);
+
+    // Scoping to one workspace keeps the field on the entries that remain.
+    let scoped = documents_of(&shared, Some("docs"));
+    assert_eq!(scoped.len(), 1);
+    assert_eq!(scoped[0].workspace, "docs");
   }
 
   #[test]
