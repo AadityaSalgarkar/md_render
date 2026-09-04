@@ -367,4 +367,185 @@ describe.skipIf(!binary)('md-render --port', () => {
     const labels = (await serverBackend(origin).listDocuments()).map((doc) => doc.label)
     expect(labels).toContain('rel.md')
   }, 30_000)
+  it('names the workspace of each document in the tab list', async () => {
+    const response = await fetch(`${origin}/api/files`)
+    const documents = (await response.json()) as Array<{ label: string; workspace: string }>
+
+    const byLabel = Object.fromEntries(documents.map((doc) => [doc.label, doc.workspace]))
+    expect(byLabel['third.md']).toBe('nested')
+    expect(byLabel['first.md']).toBe(path.basename(work))
+    // Scoping keeps the field.
+    const scoped = (await (await fetch(`${origin}/api/files?ws=nested`)).json()) as Array<{
+      workspace: string
+    }>
+    expect(scoped.every((doc) => doc.workspace === 'nested')).toBe(true)
+  })
+
+  it('re-opens a closed nested file into its workspace when ws is given', async () => {
+    ;(globalThis as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ = token()
+    const backend = serverBackend(origin)
+
+    // A file two levels down inside the nested workspace.
+    const deeper = path.join(work, 'nested', 'deeper')
+    mkdirSync(deeper)
+    const fourth = path.join(deeper, 'fourth.md')
+    writeFileSync(fourth, '# Fourth document\n')
+    const refreshed = await backend.refreshDocuments()
+    const found = refreshed.find((doc) => doc.label === 'deeper/fourth.md')!
+    expect(found).toBeDefined()
+    await backend.closeDocument(found.id)
+
+    // Naming it for its workspace brings it back under the same label —
+    // not as a new "deeper" workspace.
+    const response = await fetch(`${origin}/api/documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+      body: JSON.stringify({ paths: [fourth], ws: 'nested' }),
+    })
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      workspaces: string[]
+      documents: Array<{ id: number; label: string; workspace: string }>
+    }
+    expect(body.workspaces).toEqual(['nested'])
+    expect(body.documents).toHaveLength(1)
+    expect(body.documents[0].label).toBe('deeper/fourth.md')
+    expect(body.documents[0].workspace).toBe('nested')
+    expect(String(body.documents[0].id)).not.toBe(found.id)
+
+    const workspaces = (await (await fetch(`${origin}/api/workspaces`)).json()) as Array<{
+      name: string
+    }>
+    expect(workspaces.map((ws) => ws.name)).not.toContain('deeper')
+  })
+
+  it('refuses to add a path outside the named workspace', async () => {
+    const response = await fetch(`${origin}/api/documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+      body: JSON.stringify({ paths: [firstDoc], ws: 'nested' }),
+    })
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain('outside the workspace')
+
+    const unknown = await fetch(`${origin}/api/documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+      body: JSON.stringify({ paths: [firstDoc], ws: 'nowhere' }),
+    })
+    expect(unknown.status).toBe(404)
+  })
+
+  it('closes a workspace, frees its name, and refuses without the token', async () => {
+    // The workspace the relative-path attach created above.
+    const pageBefore = await fetch(`${origin}/relative-ws/`)
+    expect(pageBefore.status).toBe(200)
+
+    const unauthorised = await fetch(`${origin}/api/workspaces?name=relative-ws`, {
+      method: 'DELETE',
+    })
+    expect(unauthorised.status).toBe(401)
+
+    const response = await fetch(`${origin}/api/workspaces?name=relative-ws`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token()}` },
+    })
+    expect(response.status).toBe(200)
+    const remaining = (await response.json()) as Array<{ name: string }>
+    expect(remaining.map((ws) => ws.name)).not.toContain('relative-ws')
+
+    // Its page is gone and its tab with it.
+    expect((await fetch(`${origin}/relative-ws/`)).status).toBe(404)
+    const labels = (await serverBackend(origin).listDocuments()).map((doc) => doc.label)
+    expect(labels).not.toContain('rel.md')
+
+    // Opening the directory again gets the plain name back.
+    const reopened = await fetch(`${origin}/api/documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+      body: JSON.stringify({ paths: [path.join(work, 'relative-ws')] }),
+    })
+    const body = (await reopened.json()) as { workspaces: string[] }
+    expect(body.workspaces).toEqual(['relative-ws'])
+  })
+
+  it('view state starts empty and each update bumps the sequence', async () => {
+    const empty = await (await fetch(`${origin}/api/view?ws=nested`)).json()
+    expect(empty).toEqual({ doc: null, theme: null, seq: 0 })
+    expect((await fetch(`${origin}/api/view?ws=nowhere`)).status).toBe(404)
+
+    const put = (body: unknown, auth = true) =>
+      fetch(`${origin}/api/view`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(auth ? { Authorization: `Bearer ${token()}` } : {}),
+        },
+        body: JSON.stringify(body),
+      })
+
+    expect((await put({ ws: 'nested', theme: 'nocturne' }, false)).status).toBe(401)
+
+    const themed = await put({ ws: 'nested', theme: 'nocturne' })
+    expect(themed.status).toBe(200)
+    expect(await themed.json()).toEqual({ doc: null, theme: 'nocturne', seq: 1 })
+
+    const third = (await serverBackend(origin).listDocuments()).find(
+      (doc) => doc.label === 'third.md',
+    )!
+    const focused = await put({ ws: 'nested', doc: Number(third.id) })
+    expect(await focused.json()).toEqual({ doc: Number(third.id), theme: 'nocturne', seq: 2 })
+
+    // A tab from another workspace cannot be focused here.
+    const first = (await serverBackend(origin).listDocuments()).find(
+      (doc) => doc.label === 'first.md',
+    )!
+    expect((await put({ ws: 'nested', doc: Number(first.id) })).status).toBe(404)
+    expect((await put({ ws: 'nested' })).status).toBe(400)
+
+    expect(await (await fetch(`${origin}/api/view?ws=nested`)).json()).toEqual({
+      doc: Number(third.id),
+      theme: 'nocturne',
+      seq: 2,
+    })
+  })
+
+  it('shuts down on request and removes its state file', async () => {
+    // A server of its own, so the rest of the suite keeps the first one.
+    const doc = path.join(work, 'stoppable.md')
+    writeFileSync(doc, '# Stoppable\n')
+    const stopPort = pickPort()
+    const stopOrigin = `http://127.0.0.1:${stopPort}`
+    const child = spawn(binary!, ['--port', String(stopPort), doc], {
+      stdio: 'ignore',
+      env: { ...process.env, XDG_STATE_HOME: path.join(work, 'state') },
+    })
+    expect(await waitForServer(stopOrigin)).toBe(true)
+
+    // The token comes from the state file, the way out-of-process tooling
+    // gets it.
+    const record = path.join(work, 'state', 'md-render', 'servers', `${stopPort}.json`)
+    const { token: stopToken } = JSON.parse(readFileSync(record, 'utf8')) as { token: string }
+
+    expect((await fetch(`${stopOrigin}/api/shutdown`, { method: 'POST' })).status).toBe(401)
+    expect((await fetch(`${stopOrigin}/api/health`)).status).toBe(200)
+
+    const response = await fetch(`${stopOrigin}/api/shutdown`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${stopToken}` },
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ stopping: true })
+
+    const exited = await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => resolve(false), 5_000)
+      child.once('exit', () => {
+        clearTimeout(timer)
+        resolve(true)
+      })
+    })
+    expect(exited).toBe(true)
+    await expect(fetch(`${stopOrigin}/api/health`)).rejects.toThrow()
+    expect(existsSync(record)).toBe(false)
+  }, 20_000)
 })
