@@ -32,7 +32,11 @@ The document is downloaded under `/tmp/md-render/remote` (GitHub file pages
 as their raw content; files of one repository share one directory, so they
 share one workspace named `github.com-OWNER-REPO`) and opened from there.
 Naming the URL again re-opens the same tab; a refresh downloads it again.
-Relative images inside a remote document do not resolve.
+Saving an edit to a remote document also keeps a copy under
+`~/.config/mdrender/temp_files/` (same layout; `MDRENDER_SAVED_DIR`
+overrides), and that copy is what opens and what a refresh restores from
+then on — delete it to get back to upstream. Relative images inside a remote
+document do not resolve.
 
 ## Serve to a browser (works headless)
 

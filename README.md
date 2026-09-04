@@ -98,6 +98,11 @@ content, and every file from one repository lands in one place, so
 after it. Naming a URL again re-opens the same tab; the refresh control (or
 the MCP `refresh` tool) downloads it again.
 
+`/tmp` gets cleared by the system, so an edit you save to a remote document
+is also kept under `~/.config/mdrender/temp_files/` in the same layout. That
+saved copy is what opens the next time you name the URL, and what a refresh
+restores, so your edits win over upstream until you delete the saved copy.
+
 ## Server mode
 
 ```
