@@ -93,7 +93,13 @@ beforeAll(async () => {
   // One explicit file plus a directory, exercising both argument kinds.
   server = spawn(binary, ['--port', String(port), firstDoc, nested], {
     stdio: 'ignore',
-    env: { ...process.env, XDG_STATE_HOME: path.join(work, 'state') },
+    env: {
+      ...process.env,
+      XDG_STATE_HOME: path.join(work, 'state'),
+      // Edits to remote documents are mirrored here rather than into the
+      // developer's real config directory.
+      MDRENDER_SAVED_DIR: path.join(work, 'saved'),
+    },
   })
 
   const ready = await waitForServer(origin)
@@ -603,6 +609,28 @@ describe.skipIf(!binary)('md-render --port', () => {
       // A refresh downloads it again, in place.
       await fetch(`${origin}/api/files?refresh=true&ws=main`)
       expect(await served()).toBe(before + 1)
+
+      // Saving an edit keeps a copy outside /tmp, and a refresh restores it
+      // instead of downloading over it.
+      const saved = await fetch(`${origin}/api/file`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ path: remote.path, content: '# Remote readme\n\nversion 999 (mine)\n' }),
+      })
+      expect(saved.status).toBe(200)
+      const { saved_copy } = (await saved.json()) as { saved_copy: string }
+      expect(saved_copy).toBe(path.join(work, 'saved', `127.0.0.1-${hostPort}`, 'o', 'r', 'main', 'README.md'))
+      expect(readFileSync(saved_copy, 'utf8')).toContain('version 999 (mine)')
+      await fetch(`${origin}/api/files?refresh=true&ws=main`)
+      expect(await served()).toBe(999)
+
+      // A local document is saved as before, with no copy made.
+      const local = await fetch(`${origin}/api/file`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ path: firstDoc, content: '# First document\n\nstill local\n' }),
+      })
+      expect(((await local.json()) as { saved_copy: string | null }).saved_copy).toBeNull()
 
       // A URL that does not resolve is refused with the reason.
       const refused = await fetch(`${origin}/api/documents`, {

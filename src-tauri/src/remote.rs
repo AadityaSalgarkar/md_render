@@ -50,6 +50,59 @@ pub fn base_dir() -> PathBuf {
   base.join("md-render").join("remote")
 }
 
+/// Where edited remote documents are kept for good: the temporary copy is
+/// what the app works on, but `/tmp` gets cleared, so every save is mirrored
+/// here and restored from here the next time the URL is opened.
+/// `$XDG_CONFIG_HOME/mdrender/temp_files`, falling back to
+/// `~/.config/mdrender/temp_files`; `MDRENDER_SAVED_DIR` overrides.
+pub fn saved_dir() -> PathBuf {
+  if let Some(dir) = std::env::var_os("MDRENDER_SAVED_DIR") {
+    if !dir.is_empty() {
+      return PathBuf::from(dir);
+    }
+  }
+  let config = match std::env::var_os("XDG_CONFIG_HOME") {
+    Some(dir) if !dir.is_empty() => PathBuf::from(dir),
+    _ => dirs::home_dir()
+      .unwrap_or_else(std::env::temp_dir)
+      .join(".config"),
+  };
+  config.join("mdrender").join("temp_files")
+}
+
+/// The durable counterpart of a temporary remote copy, or `None` for a
+/// document that did not come from a URL.
+pub fn saved_copy_for(path: &Path) -> Option<PathBuf> {
+  let base = base_dir().canonicalize().ok()?;
+  let relative = path.strip_prefix(&base).ok()?;
+  Some(saved_dir().join(relative))
+}
+
+/// Write a document, and when it is a remote copy under `/tmp`, keep the
+/// same content in [`saved_dir`] as well so the edit survives a cleanup.
+/// Returns where the durable copy went, if one was made.
+pub fn save(path: &Path, content: &str) -> Result<Option<PathBuf>, String> {
+  let saved = saved_copy_for(path);
+  if saved.is_some() {
+    // The temporary directory may have been cleared under a running app.
+    if let Some(parent) = path.parent() {
+      std::fs::create_dir_all(parent)
+        .map_err(|err| format!("could not create {}: {}", parent.display(), err))?;
+    }
+  }
+  std::fs::write(path, content).map_err(|err| format!("could not write {}: {}", path.display(), err))?;
+
+  if let Some(durable) = &saved {
+    if let Some(parent) = durable.parent() {
+      std::fs::create_dir_all(parent)
+        .map_err(|err| format!("could not create {}: {}", parent.display(), err))?;
+    }
+    std::fs::write(durable, content)
+      .map_err(|err| format!("could not keep a copy at {}: {}", durable.display(), err))?;
+  }
+  Ok(saved)
+}
+
 /// The URL actually downloaded. GitHub's HTML "blob" pages become their raw
 /// counterparts; anything else is taken as given.
 pub fn raw_url(url: &str) -> String {
@@ -170,10 +223,17 @@ pub fn fetch(url: &str, refresh: bool) -> Result<Fetched, String> {
 
   let (root_rel, file_rel) =
     local_layout(url).ok_or_else(|| format!("'{}' is not a URL that can be fetched", url))?;
-  let root = base_dir().join(root_rel);
-  let path = root.join(file_rel);
+  let root = base_dir().join(&root_rel);
+  let path = root.join(&file_rel);
 
-  let body = download(&raw_url(url))?;
+  // An edit saved earlier wins over whatever is upstream now: it is restored
+  // rather than downloaded over, on open and on refresh alike. Deleting the
+  // saved copy is how to get back to the published version.
+  let saved = saved_dir().join(&root_rel).join(&file_rel);
+  let body = match std::fs::read(&saved) {
+    Ok(kept) => kept,
+    Err(_) => download(&raw_url(url))?,
+  };
 
   if let Some(parent) = path.parent() {
     std::fs::create_dir_all(parent).map_err(|err| format!("could not create {}: {}", parent.display(), err))?;
@@ -381,6 +441,47 @@ mod tests {
     let missing = fetch(&format!("http://127.0.0.1:{}/nope.md", port), false).unwrap_err();
     assert!(missing.contains("HTTP 404"), "{}", missing);
 
+    let _ = std::fs::remove_dir_all(fetched.root.parent().unwrap());
+  }
+
+  #[test]
+  fn a_saved_edit_outlives_tmp_and_wins_over_a_new_download() {
+    use std::sync::atomic::Ordering;
+
+    let (port, hits) = serve_markdown(vec![("/notes/plan.md", "# Plan\n\nupstream {n}\n")]);
+    let url = format!("http://127.0.0.1:{}/notes/plan.md", port);
+    let fetched = fetch(&url, false).unwrap();
+
+    // Saving a remote document keeps a copy outside /tmp, same layout.
+    let saved = save(&fetched.path, "# Plan\n\nmine\n").unwrap().expect("a remote copy is mirrored");
+    assert!(saved.starts_with(saved_dir()));
+    assert!(saved.ends_with(format!("127.0.0.1-{}/notes/plan.md", port)));
+    assert_eq!(std::fs::read_to_string(&saved).unwrap(), "# Plan\n\nmine\n");
+    assert_eq!(std::fs::read_to_string(&fetched.path).unwrap(), "# Plan\n\nmine\n");
+
+    // A local file is just written; nothing is mirrored.
+    let local = std::env::temp_dir().join(format!("md-render-local-{}.md", port));
+    assert_eq!(save(&local, "# local\n").unwrap(), None);
+    let _ = std::fs::remove_file(&local);
+
+    // /tmp gets cleared. Opening the URL again restores the edit instead of
+    // downloading, and so does a refresh.
+    std::fs::remove_dir_all(fetched.root.parent().unwrap()).unwrap();
+    let downloads = hits.load(Ordering::SeqCst);
+    let restored = fetch(&url, true).unwrap();
+    assert_eq!(restored.path, fetched.path);
+    assert_eq!(std::fs::read_to_string(&restored.path).unwrap(), "# Plan\n\nmine\n");
+    assert_eq!(hits.load(Ordering::SeqCst), downloads);
+
+    // Saving again while /tmp is gone recreates the working copy too.
+    std::fs::remove_dir_all(fetched.root.parent().unwrap()).unwrap();
+    save(&fetched.path, "# Plan\n\nmine again\n").unwrap();
+    assert_eq!(std::fs::read_to_string(&fetched.path).unwrap(), "# Plan\n\nmine again\n");
+
+    // Deleting the saved copy is the way back to upstream.
+    std::fs::remove_dir_all(saved.parent().unwrap().parent().unwrap()).unwrap();
+    let upstream = fetch(&url, true).unwrap();
+    assert!(std::fs::read_to_string(&upstream.path).unwrap().contains("upstream"));
     let _ = std::fs::remove_dir_all(fetched.root.parent().unwrap());
   }
 }

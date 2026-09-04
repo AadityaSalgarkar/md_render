@@ -514,8 +514,13 @@ async fn write_by_path(
     Err(response) => return response,
   };
 
-  match std::fs::write(&path, body.content) {
-    Ok(()) => Json(serde_json::json!({ "written": true })).into_response(),
+  // A remote document's edit is also kept outside /tmp; see remote::save.
+  match crate::remote::save(&path, &body.content) {
+    Ok(saved_copy) => Json(serde_json::json!({
+      "written": true,
+      "saved_copy": saved_copy.map(|p| p.to_string_lossy().to_string()),
+    }))
+    .into_response(),
     Err(err) => (
       StatusCode::INTERNAL_SERVER_ERROR,
       format!("could not write document: {}", err),
@@ -2041,7 +2046,25 @@ mod tests {
       let (_, content) = http(addr, get(addr, &format!("/api/file?id={}", id))).await;
       assert!(content.contains("Notes 1"), "{}", content);
 
-      // A refresh of that workspace downloads it again.
+      // Saving the remote document keeps a durable copy, and the answer
+      // says where.
+      let remote_path = parsed["documents"][0]["path"].as_str().unwrap().to_string();
+      let body = serde_json::json!({ "path": remote_path, "content": "# Notes\n\nedited\n" }).to_string();
+      let (status, text) = http(addr, with_token(addr, "PUT", "/api/file", Some("test-token"), Some(&body))).await;
+      assert_eq!(status, 200, "{}", text);
+      let written: serde_json::Value = serde_json::from_str(&text).unwrap();
+      let saved_copy = PathBuf::from(written["saved_copy"].as_str().unwrap());
+      assert!(saved_copy.starts_with(crate::remote::saved_dir()));
+      assert_eq!(fs::read_to_string(&saved_copy).unwrap(), "# Notes\n\nedited\n");
+
+      // A refresh restores the edit rather than downloading over it.
+      let (status, _) = http(addr, get(addr, "/api/files?refresh=true&ws=team")).await;
+      assert_eq!(status, 200);
+      let (_, content) = http(addr, get(addr, &format!("/api/file?id={}", id))).await;
+      assert!(content.contains("edited"), "{}", content);
+      fs::remove_dir_all(saved_copy.parent().unwrap().parent().unwrap()).unwrap();
+
+      // Without a saved copy, a refresh of that workspace downloads it again.
       let (status, _) = http(addr, get(addr, "/api/files?refresh=true&ws=team")).await;
       assert_eq!(status, 200);
       let (_, content) = http(addr, get(addr, &format!("/api/file?id={}", id))).await;
