@@ -1,5 +1,6 @@
 mod attach;
 mod cli;
+mod remote;
 mod server;
 mod state;
 

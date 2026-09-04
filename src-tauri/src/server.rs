@@ -398,7 +398,7 @@ fn documents_of(state: &Shared, workspace: Option<&str>) -> Vec<DocumentMeta> {
 /// added since. Each workspace rescans its own sources into itself, so a
 /// refresh never creates a workspace. The disk walk happens outside the
 /// write lock.
-fn rescan(state: &Shared, workspace: Option<&str>) {
+async fn rescan(state: &Shared, workspace: Option<&str>) {
   let targets: Vec<(PathBuf, String, Vec<String>)> = {
     let guard = state.read().unwrap();
     guard
@@ -410,10 +410,16 @@ fn rescan(state: &Shared, workspace: Option<&str>) {
       .collect()
   };
 
-  let specs: Vec<WorkspaceSpec> = targets
-    .iter()
-    .filter_map(|(dir, name, sources)| crate::cli::spec_for_workspace(dir, name, sources).ok())
-    .collect();
+  // Walking directories and re-downloading remote sources blocks; keep it
+  // off the async workers so the server stays responsive meanwhile.
+  let specs: Vec<WorkspaceSpec> = tokio::task::spawn_blocking(move || {
+    targets
+      .iter()
+      .filter_map(|(dir, name, sources)| crate::cli::spec_for_workspace(dir, name, sources).ok())
+      .collect()
+  })
+  .await
+  .unwrap_or_default();
 
   if !specs.is_empty() {
     state.write().unwrap().add_workspaces(specs, false);
@@ -441,7 +447,7 @@ struct ListQuery {
 async fn list_files(State(state): State<Shared>, Query(query): Query<ListQuery>) -> impl IntoResponse {
   if query.refresh {
     // A rescan, not an explicit ask: closed tabs stay closed.
-    rescan(&state, query.ws.as_deref());
+    rescan(&state, query.ws.as_deref()).await;
   }
 
   Json(documents_of(&state, query.ws.as_deref()))
@@ -578,35 +584,64 @@ async fn add_documents(
     return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
   }
 
-  // Build the specs (a disk walk) outside the write lock, as rescan does.
-  let specs = match body.ws.as_deref() {
-    None => crate::cli::group_workspaces(&body.paths),
+  // Building the specs walks directories and may download a URL, so it
+  // runs off the async workers and outside the write lock, as rescan does.
+  let target = match body.ws.as_deref() {
+    None => None,
     Some(name) => {
-      let target = state
+      let found = state
         .read()
         .unwrap()
         .workspace(name)
         .map(|ws| (ws.dir.clone(), ws.name.clone()));
-      let Some((dir, name)) = target else {
+      let Some(found) = found else {
         return (StatusCode::NOT_FOUND, "no such workspace").into_response();
       };
-      crate::cli::spec_for_workspace(&dir, &name, &body.paths).map(|spec| vec![spec])
+      Some(found)
     }
   };
+  let paths = body.paths.clone();
+  let specs = tokio::task::spawn_blocking(move || match target {
+    None => crate::cli::group_workspaces(&paths),
+    Some((dir, name)) => crate::cli::spec_for_workspace(&dir, &name, &paths).map(|spec| vec![spec]),
+  })
+  .await;
   let specs = match specs {
-    Ok(specs) => specs,
-    Err(err) => return (StatusCode::BAD_REQUEST, err.to_string()).into_response(),
+    Ok(Ok(specs)) => specs,
+    Ok(Err(err)) => return (StatusCode::BAD_REQUEST, err.to_string()).into_response(),
+    Err(err) => {
+      return (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        format!("could not collect documents: {}", err),
+      )
+        .into_response()
+    }
   };
+
+  let requested: HashSet<PathBuf> = specs
+    .iter()
+    .flat_map(|spec| spec.documents.iter().map(|doc| doc.path.clone()))
+    .collect();
 
   let (added, workspaces) = state.write().unwrap().add_workspaces(specs, true);
   let labels: Vec<String> = added.iter().map(|doc| doc.label.clone()).collect();
-
-  // The entries just opened, with their fresh ids, so a caller can address
-  // them straight away.
   let added_paths: HashSet<PathBuf> = added.into_iter().map(|doc| doc.path).collect();
-  let documents: Vec<DocumentMeta> = documents_of(&state, None)
+
+  // Every document the request named, whether it just opened (with its fresh
+  // id) or was open already, so a caller can address it either way.
+  let documents: Vec<serde_json::Value> = documents_of(&state, None)
     .into_iter()
-    .filter(|doc| added_paths.contains(Path::new(&doc.path)))
+    .filter(|doc| requested.contains(Path::new(&doc.path)))
+    .map(|doc| {
+      let added = added_paths.contains(Path::new(&doc.path));
+      serde_json::json!({
+        "id": doc.id,
+        "label": doc.label,
+        "path": doc.path,
+        "workspace": doc.workspace,
+        "added": added,
+      })
+    })
     .collect();
 
   Json(serde_json::json!({
@@ -1606,7 +1641,11 @@ mod tests {
     }
 
     fs::write(nested.join("later.md"), "# later").unwrap();
-    rescan(&shared, None);
+    tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap()
+      .block_on(rescan(&shared, None));
 
     let guard = shared.read().unwrap();
     assert_eq!(guard.workspaces.len(), 1);
@@ -1675,12 +1714,15 @@ mod tests {
       assert_eq!(parsed["documents"][0]["workspace"], "docs");
       assert_eq!(parsed["documents"][0]["id"], 1);
 
-      // Adding it again reports nothing new.
+      assert_eq!(parsed["documents"][0]["added"], true);
+
+      // Adding it again reports nothing new, but still says where it is.
       let body = serde_json::json!({ "paths": [deep.display().to_string()], "ws": "docs" }).to_string();
       let (_, text) = http(addr, post(body)).await;
       let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
       assert_eq!(parsed["added"], serde_json::json!([]));
-      assert_eq!(parsed["documents"], serde_json::json!([]));
+      assert_eq!(parsed["documents"][0]["id"], 1);
+      assert_eq!(parsed["documents"][0]["added"], false);
     });
   }
 
@@ -1831,6 +1873,63 @@ mod tests {
       // The page's poll sees the latest state.
       let (_, body) = http(addr, get(addr, "/api/view?ws=notes")).await;
       assert_eq!(body, "{\"doc\":0,\"theme\":\"forest\",\"seq\":2}");
+    });
+  }
+
+  #[test]
+  fn a_url_can_be_added_over_http_and_refreshed_from_its_origin() {
+    let dir = temp_dir("remote-http");
+    fs::write(dir.join("a.md"), "# a").unwrap();
+    let (web_port, hits) = crate::remote::serve_markdown(vec![("/team/notes.md", "# Notes {n}\n")]);
+    let url = format!("http://127.0.0.1:{}/team/notes.md", web_port);
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[dir.join("a.md")]),
+      "test-token".to_string(),
+    )));
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      tokio::spawn(async move {
+        let _ = axum::serve(listener, router(shared)).await;
+      });
+
+      // The download happens inside the server, in a request handler.
+      let body = serde_json::json!({ "paths": [url] }).to_string();
+      let (status, text) = http(addr, with_token(addr, "POST", "/api/documents", Some("test-token"), Some(&body))).await;
+      assert_eq!(status, 200, "{}", text);
+      let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+      assert_eq!(parsed["added"], serde_json::json!(["notes.md"]));
+      assert_eq!(parsed["workspaces"], serde_json::json!(["team"]));
+      let id = parsed["documents"][0]["id"].as_u64().unwrap();
+
+      let (_, content) = http(addr, get(addr, &format!("/api/file?id={}", id))).await;
+      assert!(content.contains("Notes 1"), "{}", content);
+
+      // A refresh of that workspace downloads it again.
+      let (status, _) = http(addr, get(addr, "/api/files?refresh=true&ws=team")).await;
+      assert_eq!(status, 200);
+      let (_, content) = http(addr, get(addr, &format!("/api/file?id={}", id))).await;
+      assert!(content.contains("Notes 2"), "{}", content);
+      assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+
+      // A download that fails is a 400 naming the reason, and the server
+      // is still there afterwards.
+      let body = serde_json::json!({ "paths": [format!("http://127.0.0.1:{}/missing.md", web_port)] }).to_string();
+      let (status, text) = http(addr, with_token(addr, "POST", "/api/documents", Some("test-token"), Some(&body))).await;
+      assert_eq!(status, 400);
+      assert!(text.contains("HTTP 404"), "{}", text);
+      let (status, _) = http(addr, get(addr, "/api/health")).await;
+      assert_eq!(status, 200);
+
+      let remote_dir = PathBuf::from(parsed["documents"][0]["path"].as_str().unwrap());
+      let _ = fs::remove_dir_all(remote_dir.parent().unwrap().parent().unwrap());
     });
   }
 
