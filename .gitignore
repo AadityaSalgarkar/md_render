@@ -22,3 +22,6 @@ to-delete/
 # Tooling state
 .jj/
 .llm/
+
+# MCP server bundle (built by npm run build:mcp)
+mcp/dist/

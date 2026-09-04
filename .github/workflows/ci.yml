@@ -46,6 +46,9 @@ jobs:
       # and the server-mode tests serve.
       - run: npm run build
 
+      # Bundles the MCP server, which the stdio end-to-end tests spawn.
+      - run: npm run build:mcp
+
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test
