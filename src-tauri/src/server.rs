@@ -34,6 +34,25 @@ struct OpenDocument {
   document: Document,
 }
 
+/// What the server would like every page of a workspace to show: the tab to
+/// focus and the theme to wear. Set by tooling, applied by the page on its
+/// next poll. `seq` climbs on every change so a page applies each command
+/// once and a reload does not replay it.
+#[derive(Serialize, Default, Clone, Debug, PartialEq, Eq)]
+struct ViewState {
+  doc: Option<u64>,
+  theme: Option<String>,
+  seq: u64,
+}
+
+/// Why a view update was refused.
+#[derive(Debug, PartialEq, Eq)]
+enum ViewError {
+  NoWorkspace,
+  NoDocument,
+  Nothing,
+}
+
 /// One URL namespace: `/<name>/` serves the SPA scoped to these documents.
 struct Workspace {
   /// Unique URL segment, derived from the directory's name.
@@ -46,6 +65,7 @@ struct Workspace {
   /// Paths the user closed. A rescan (refresh) leaves these closed; only an
   /// explicit re-add opens them again.
   closed: HashSet<PathBuf>,
+  view: ViewState,
 }
 
 pub struct ServerState {
@@ -122,6 +142,7 @@ impl ServerState {
             sources: Vec::new(),
             documents: Vec::new(),
             closed: HashSet::new(),
+            view: ViewState::default(),
           });
           self.workspaces.len() - 1
         }
@@ -208,6 +229,37 @@ impl ServerState {
 
   fn workspace(&self, name: &str) -> Option<&Workspace> {
     self.workspaces.iter().find(|ws| ws.name == name)
+  }
+
+  /// Point a workspace's pages at a tab and/or a theme. Fields given
+  /// overwrite, fields omitted keep their value, and the sequence climbs.
+  /// The tab must be one of that workspace's own.
+  fn set_view(
+    &mut self,
+    name: &str,
+    doc: Option<u64>,
+    theme: Option<String>,
+  ) -> Result<ViewState, ViewError> {
+    if doc.is_none() && theme.is_none() {
+      return Err(ViewError::Nothing);
+    }
+    let workspace = self
+      .workspaces
+      .iter_mut()
+      .find(|ws| ws.name == name)
+      .ok_or(ViewError::NoWorkspace)?;
+
+    if let Some(id) = doc {
+      if !workspace.documents.iter().any(|d| d.id == id) {
+        return Err(ViewError::NoDocument);
+      }
+      workspace.view.doc = Some(id);
+    }
+    if let Some(theme) = theme {
+      workspace.view.theme = Some(theme);
+    }
+    workspace.view.seq += 1;
+    Ok(workspace.view.clone())
   }
 
   fn find_document(&self, id: u64) -> Option<Document> {
@@ -612,6 +664,60 @@ async fn remove_workspace(
   Json(workspaces_of(&state)).into_response()
 }
 
+#[derive(Deserialize)]
+struct WsQuery {
+  ws: String,
+}
+
+#[derive(Deserialize)]
+struct ViewBody {
+  ws: String,
+  #[serde(default)]
+  doc: Option<u64>,
+  #[serde(default)]
+  theme: Option<String>,
+}
+
+/// What the workspace's pages should show. Polled by the page next to the
+/// tab list, so it needs no token.
+async fn get_view(State(state): State<Shared>, Query(query): Query<WsQuery>) -> Response {
+  let view = state
+    .read()
+    .unwrap()
+    .workspace(&query.ws)
+    .map(|ws| ws.view.clone());
+  match view {
+    Some(view) => Json(view).into_response(),
+    None => (StatusCode::NOT_FOUND, "no such workspace").into_response(),
+  }
+}
+
+/// Focus a tab and/or switch the theme on every open page of a workspace.
+async fn put_view(
+  State(state): State<Shared>,
+  headers: HeaderMap,
+  Json(body): Json<ViewBody>,
+) -> Response {
+  if !authorised(&headers, &state) {
+    return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
+  }
+
+  let result = state
+    .write()
+    .unwrap()
+    .set_view(&body.ws, body.doc, body.theme);
+  match result {
+    Ok(view) => Json(view).into_response(),
+    Err(ViewError::NoWorkspace) => (StatusCode::NOT_FOUND, "no such workspace").into_response(),
+    Err(ViewError::NoDocument) => {
+      (StatusCode::NOT_FOUND, "no such document in that workspace").into_response()
+    }
+    Err(ViewError::Nothing) => {
+      (StatusCode::BAD_REQUEST, "give a doc id, a theme, or both").into_response()
+    }
+  }
+}
+
 /// Stop the server the way ctrl-c would: in-flight requests finish, the
 /// state record is removed, the process exits. Token-guarded so nothing that
 /// merely reaches the port can take the documents away from the reader.
@@ -755,6 +861,7 @@ pub fn router(state: Shared) -> Router {
     .route("/api/export", post(export_by_path))
     .route("/api/asset", get(read_asset))
     .route("/api/documents", post(add_documents))
+    .route("/api/view", get(get_view).put(put_view))
     .route("/api/shutdown", post(shutdown))
     .route(
       "/api/workspaces",
@@ -1614,6 +1721,116 @@ mod tests {
         .expect("serve task should not panic");
       assert!(finished.is_ok());
       assert!(tokio::net::TcpStream::connect(addr).await.is_err());
+    });
+  }
+
+  #[test]
+  fn view_state_starts_empty_and_every_update_bumps_the_sequence() {
+    let dir = temp_dir("view");
+    fs::write(dir.join("a.md"), "# a").unwrap();
+    fs::write(dir.join("b.md"), "# b").unwrap();
+    let mut state = ServerState::new(specs_for(&[dir]), "token".to_string());
+    let name = state.workspaces[0].name.clone();
+
+    assert_eq!(state.workspaces[0].view, ViewState::default());
+
+    // A theme on its own.
+    let view = state.set_view(&name, None, Some("nocturne".to_string())).unwrap();
+    assert_eq!(view.seq, 1);
+    assert_eq!(view.theme.as_deref(), Some("nocturne"));
+    assert_eq!(view.doc, None);
+
+    // A tab on its own keeps the theme.
+    let view = state.set_view(&name, Some(1), None).unwrap();
+    assert_eq!(view.seq, 2);
+    assert_eq!(view.doc, Some(1));
+    assert_eq!(view.theme.as_deref(), Some("nocturne"));
+
+    // Nothing to change is an error, and does not burn a sequence number.
+    assert_eq!(state.set_view(&name, None, None), Err(ViewError::Nothing));
+    assert_eq!(state.workspaces[0].view.seq, 2);
+
+    assert_eq!(state.set_view("nowhere", Some(0), None), Err(ViewError::NoWorkspace));
+  }
+
+  #[test]
+  fn setting_the_view_to_a_document_from_another_workspace_is_refused() {
+    let base = temp_dir("view-cross");
+    let notes = base.join("notes");
+    let docs = base.join("docs");
+    fs::create_dir_all(&notes).unwrap();
+    fs::create_dir_all(&docs).unwrap();
+    fs::write(notes.join("a.md"), "# a").unwrap();
+    fs::write(docs.join("b.md"), "# b").unwrap();
+    let mut state = ServerState::new(specs_for(&[notes, docs]), "token".to_string());
+
+    // b.md holds id 1 and lives in docs, so notes cannot focus it.
+    assert_eq!(state.set_view("notes", Some(1), None), Err(ViewError::NoDocument));
+    assert_eq!(state.set_view("notes", Some(99), None), Err(ViewError::NoDocument));
+    assert_eq!(state.workspaces[0].view.seq, 0);
+
+    assert!(state.set_view("docs", Some(1), None).is_ok());
+  }
+
+  #[test]
+  fn view_state_round_trips_over_http_and_needs_the_token_to_change() {
+    let base = temp_dir("view-http");
+    let notes = base.join("notes");
+    fs::create_dir_all(&notes).unwrap();
+    fs::write(notes.join("a.md"), "# a").unwrap();
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[notes]),
+      "test-token".to_string(),
+    )));
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      tokio::spawn(async move {
+        let _ = axum::serve(listener, router(shared)).await;
+      });
+
+      let (status, body) = http(addr, get(addr, "/api/view?ws=notes")).await;
+      assert_eq!(status, 200);
+      assert_eq!(body, "{\"doc\":null,\"theme\":null,\"seq\":0}");
+
+      let (status, _) = http(addr, get(addr, "/api/view?ws=nowhere")).await;
+      assert_eq!(status, 404);
+
+      let put = |token: Option<&str>, body: String| {
+        with_token(addr, "PUT", "/api/view", token, Some(&body))
+      };
+
+      // Reading is open; changing needs the token.
+      let body = serde_json::json!({ "ws": "notes", "theme": "forest" }).to_string();
+      let (status, _) = http(addr, put(None, body.clone())).await;
+      assert_eq!(status, 401);
+      let (status, text) = http(addr, put(Some("test-token"), body)).await;
+      assert_eq!(status, 200);
+      assert_eq!(text, "{\"doc\":null,\"theme\":\"forest\",\"seq\":1}");
+
+      let body = serde_json::json!({ "ws": "notes", "doc": 0 }).to_string();
+      let (status, text) = http(addr, put(Some("test-token"), body)).await;
+      assert_eq!(status, 200);
+      assert_eq!(text, "{\"doc\":0,\"theme\":\"forest\",\"seq\":2}");
+
+      let body = serde_json::json!({ "ws": "notes", "doc": 42 }).to_string();
+      let (status, _) = http(addr, put(Some("test-token"), body)).await;
+      assert_eq!(status, 404);
+
+      let body = serde_json::json!({ "ws": "notes" }).to_string();
+      let (status, _) = http(addr, put(Some("test-token"), body)).await;
+      assert_eq!(status, 400);
+
+      // The page's poll sees the latest state.
+      let (_, body) = http(addr, get(addr, "/api/view?ws=notes")).await;
+      assert_eq!(body, "{\"doc\":0,\"theme\":\"forest\",\"seq\":2}");
     });
   }
 
