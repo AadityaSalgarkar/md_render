@@ -55,6 +55,8 @@ pub struct ServerState {
   /// document's parent, recomputed when a document closes.
   roots: HashSet<PathBuf>,
   token: String,
+  /// Fired by `POST /api/shutdown`; `serve` stops when it does.
+  shutdown: Arc<tokio::sync::Notify>,
 }
 
 impl ServerState {
@@ -64,9 +66,14 @@ impl ServerState {
       next_id: 0,
       roots: HashSet::new(),
       token,
+      shutdown: Arc::new(tokio::sync::Notify::new()),
     };
     state.add_workspaces(specs, true);
     state
+  }
+
+  fn shutdown_signal(&self) -> Arc<tokio::sync::Notify> {
+    Arc::clone(&self.shutdown)
   }
 
   /// A URL segment not yet taken by another workspace, an API route, or a
@@ -605,6 +612,18 @@ async fn remove_workspace(
   Json(workspaces_of(&state)).into_response()
 }
 
+/// Stop the server the way ctrl-c would: in-flight requests finish, the
+/// state record is removed, the process exits. Token-guarded so nothing that
+/// merely reaches the port can take the documents away from the reader.
+async fn shutdown(State(state): State<Shared>, headers: HeaderMap) -> Response {
+  if !authorised(&headers, &state) {
+    return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
+  }
+
+  state.read().unwrap().shutdown_signal().notify_one();
+  Json(serde_json::json!({ "stopping": true })).into_response()
+}
+
 /// Close a tab. Token-guarded like every other mutation; the updated tab list
 /// comes back so the caller need not re-fetch, and the next poll from any
 /// other browser window converges on the same list.
@@ -736,6 +755,7 @@ pub fn router(state: Shared) -> Router {
     .route("/api/export", post(export_by_path))
     .route("/api/asset", get(read_asset))
     .route("/api/documents", post(add_documents))
+    .route("/api/shutdown", post(shutdown))
     .route(
       "/api/workspaces",
       get(list_workspaces).delete(remove_workspace),
@@ -770,16 +790,26 @@ pub fn run(host: &str, port: u16, specs: Vec<WorkspaceSpec>) -> Result<(), Strin
 
     print_banner(host, port, &shared);
 
-    let result = axum::serve(listener, router(shared))
-      .with_graceful_shutdown(async {
-        let _ = tokio::signal::ctrl_c().await;
-      })
-      .await
-      .map_err(|err| format!("server error: {}", err));
+    let result = serve(listener, shared).await;
 
     state::remove(port);
     result
   })
+}
+
+/// Serve until ctrl-c or a `POST /api/shutdown` carrying the token.
+pub async fn serve(listener: tokio::net::TcpListener, shared: Shared) -> Result<(), String> {
+  let stop = shared.read().unwrap().shutdown_signal();
+
+  axum::serve(listener, router(shared))
+    .with_graceful_shutdown(async move {
+      tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = stop.notified() => {}
+      }
+    })
+    .await
+    .map_err(|err| format!("server error: {}", err))
 }
 
 fn print_banner(host: &str, port: u16, shared: &Shared) {
@@ -1544,6 +1574,46 @@ mod tests {
       let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
       assert_eq!(parsed["added"], serde_json::json!([]));
       assert_eq!(parsed["documents"], serde_json::json!([]));
+    });
+  }
+
+  #[test]
+  fn the_shutdown_route_needs_the_token_and_then_stops_the_server() {
+    let dir = temp_dir("shutdown");
+    fs::write(dir.join("a.md"), "# a").unwrap();
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[dir.join("a.md")]),
+      "test-token".to_string(),
+    )));
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      let server = tokio::spawn(serve(listener, shared));
+
+      // Without the token the server keeps going.
+      let (status, _) = http(addr, with_token(addr, "POST", "/api/shutdown", None, None)).await;
+      assert_eq!(status, 401);
+      let (status, _) = http(addr, get(addr, "/api/health")).await;
+      assert_eq!(status, 200);
+
+      let (status, body) = http(addr, with_token(addr, "POST", "/api/shutdown", Some("test-token"), None)).await;
+      assert_eq!(status, 200);
+      assert!(body.contains("\"stopping\":true"));
+
+      // The serve future resolves cleanly, and the port stops answering.
+      let finished = tokio::time::timeout(std::time::Duration::from_secs(5), server)
+        .await
+        .expect("server should stop within five seconds")
+        .expect("serve task should not panic");
+      assert!(finished.is_ok());
+      assert!(tokio::net::TcpStream::connect(addr).await.is_err());
     });
   }
 
