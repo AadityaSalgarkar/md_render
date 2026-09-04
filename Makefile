@@ -8,6 +8,11 @@ APPLICATIONS_DIR ?= /Applications
 BIN_DIR ?= $(HOME)/bin
 WRAPPER := bin/mdrender
 
+# The MCP server is one bundled file; it lives under the user's data dir on
+# both platforms and `mdrender --mcp` looks for it there.
+MCP_DIR ?= $(HOME)/.local/share/md-render/mcp
+MCP_BUNDLE := mcp/dist/index.js
+
 # Linux installs into the user's home by default; no root required.
 PREFIX ?= $(HOME)/.local
 DESKTOP_DIR := $(PREFIX)/share/applications
@@ -16,7 +21,7 @@ DESKTOP_TEMPLATE := linux/$(BIN_NAME).desktop.in
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build build-app-macos build-binary-linux install install-macos install-linux install-clean test clean
+.PHONY: help build build-app-macos build-binary-linux build-mcp install install-macos install-linux install-mcp install-clean test clean
 
 help:
 	@printf "Targets:\n"
@@ -24,6 +29,8 @@ help:
 	@printf "  make install        Build and install for the current platform ($(UNAME_S))\n"
 	@printf "  make install-macos  Install MD_RENDER.app plus ~/bin/mdrender\n"
 	@printf "  make install-linux  Install into \$$PREFIX (default ~/.local), no root needed\n"
+	@printf "  make build-mcp      Bundle the MCP server into mcp/dist/index.js\n"
+	@printf "  make install-mcp    Install the MCP bundle to \$$MCP_DIR (default ~/.local/share/md-render/mcp)\n"
 	@printf "  make install-clean  Install, then remove local build artifacts\n"
 	@printf "  make test           Run the Rust and frontend test suites\n"
 	@printf "  make clean          Remove local build artifacts\n"
@@ -40,10 +47,23 @@ build-app-macos:
 build-binary-linux:
 	npm run tauri:build -- --no-bundle
 
+build-mcp:
+	npm run build:mcp
+
+# Both platform installs pull this in; it is also usable on its own after a
+# rebuild of the bundle.
+install-mcp: build-mcp
+	mkdir -p "$(MCP_DIR)"
+	install -m 644 "$(MCP_BUNDLE)" "$(MCP_DIR)/index.js"
+	@echo "Installed MCP server to $(MCP_DIR)/index.js"
+	@echo "Register it with: claude mcp add mdrender -- mdrender --mcp"
+
 test:
 	cd src-tauri && cargo test
 	@# The server-mode tests drive the real binary, so make sure it exists.
 	cd src-tauri && cargo build
+	@# The MCP tests drive the real bundle over stdio, so build that too.
+	npm run build:mcp
 	npm test -- --run
 
 ifeq ($(UNAME_S),Darwin)
@@ -52,7 +72,7 @@ else
 install: install-linux
 endif
 
-install-macos: build-app-macos
+install-macos: build-app-macos install-mcp
 	test -d "$(APP_BUNDLE)"
 	rm -rf "$(APPLICATIONS_DIR)/$(APP_NAME).app"
 	cp -R "$(APP_BUNDLE)" "$(APPLICATIONS_DIR)/"
@@ -62,7 +82,7 @@ install-macos: build-app-macos
 	@echo "Installed $(APP_NAME).app to $(APPLICATIONS_DIR)"
 	@echo "Installed mdrender wrapper to $(BIN_DIR)/mdrender"
 
-install-linux: build-binary-linux
+install-linux: build-binary-linux install-mcp
 	test -x "$(LINUX_BIN)"
 	mkdir -p "$(PREFIX)/bin" "$(BIN_DIR)" "$(DESKTOP_DIR)"
 	install -m 755 "$(LINUX_BIN)" "$(PREFIX)/bin/$(BIN_NAME)"
@@ -86,4 +106,4 @@ install-linux: build-binary-linux
 install-clean: install clean
 
 clean:
-	rm -rf dist src-tauri/target
+	rm -rf dist mcp/dist src-tauri/target

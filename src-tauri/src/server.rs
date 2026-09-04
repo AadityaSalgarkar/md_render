@@ -34,6 +34,25 @@ struct OpenDocument {
   document: Document,
 }
 
+/// What the server would like every page of a workspace to show: the tab to
+/// focus and the theme to wear. Set by tooling, applied by the page on its
+/// next poll. `seq` climbs on every change so a page applies each command
+/// once and a reload does not replay it.
+#[derive(Serialize, Default, Clone, Debug, PartialEq, Eq)]
+struct ViewState {
+  doc: Option<u64>,
+  theme: Option<String>,
+  seq: u64,
+}
+
+/// Why a view update was refused.
+#[derive(Debug, PartialEq, Eq)]
+enum ViewError {
+  NoWorkspace,
+  NoDocument,
+  Nothing,
+}
+
 /// One URL namespace: `/<name>/` serves the SPA scoped to these documents.
 struct Workspace {
   /// Unique URL segment, derived from the directory's name.
@@ -46,6 +65,7 @@ struct Workspace {
   /// Paths the user closed. A rescan (refresh) leaves these closed; only an
   /// explicit re-add opens them again.
   closed: HashSet<PathBuf>,
+  view: ViewState,
 }
 
 pub struct ServerState {
@@ -55,6 +75,8 @@ pub struct ServerState {
   /// document's parent, recomputed when a document closes.
   roots: HashSet<PathBuf>,
   token: String,
+  /// Fired by `POST /api/shutdown`; `serve` stops when it does.
+  shutdown: Arc<tokio::sync::Notify>,
 }
 
 impl ServerState {
@@ -64,9 +86,14 @@ impl ServerState {
       next_id: 0,
       roots: HashSet::new(),
       token,
+      shutdown: Arc::new(tokio::sync::Notify::new()),
     };
     state.add_workspaces(specs, true);
     state
+  }
+
+  fn shutdown_signal(&self) -> Arc<tokio::sync::Notify> {
+    Arc::clone(&self.shutdown)
   }
 
   /// A URL segment not yet taken by another workspace, an API route, or a
@@ -115,6 +142,7 @@ impl ServerState {
             sources: Vec::new(),
             documents: Vec::new(),
             closed: HashSet::new(),
+            view: ViewState::default(),
           });
           self.workspaces.len() - 1
         }
@@ -172,19 +200,66 @@ impl ServerState {
     self.workspaces[ws_index]
       .closed
       .insert(removed.document.path.clone());
+    self.recompute_roots();
 
+    Some(removed.document)
+  }
+
+  /// Drop a whole workspace: its tabs, its tombstones and its URL. The name
+  /// is free again afterwards, so opening the same directory later gets the
+  /// plain name back rather than a `-2` suffix.
+  fn remove_workspace(&mut self, name: &str) -> bool {
+    let Some(index) = self.workspaces.iter().position(|ws| ws.name == name) else {
+      return false;
+    };
+    self.workspaces.remove(index);
+    self.recompute_roots();
+    true
+  }
+
+  /// The asset roots are exactly the parents of the documents still open.
+  fn recompute_roots(&mut self) {
     self.roots = self
       .workspaces
       .iter()
       .flat_map(|ws| ws.documents.iter())
       .filter_map(|d| d.document.path.parent().map(|p| p.to_path_buf()))
       .collect();
-
-    Some(removed.document)
   }
 
   fn workspace(&self, name: &str) -> Option<&Workspace> {
     self.workspaces.iter().find(|ws| ws.name == name)
+  }
+
+  /// Point a workspace's pages at a tab and/or a theme. Fields given
+  /// overwrite, fields omitted keep their value, and the sequence climbs.
+  /// The tab must be one of that workspace's own.
+  fn set_view(
+    &mut self,
+    name: &str,
+    doc: Option<u64>,
+    theme: Option<String>,
+  ) -> Result<ViewState, ViewError> {
+    if doc.is_none() && theme.is_none() {
+      return Err(ViewError::Nothing);
+    }
+    let workspace = self
+      .workspaces
+      .iter_mut()
+      .find(|ws| ws.name == name)
+      .ok_or(ViewError::NoWorkspace)?;
+
+    if let Some(id) = doc {
+      if !workspace.documents.iter().any(|d| d.id == id) {
+        return Err(ViewError::NoDocument);
+      }
+      workspace.view.doc = Some(id);
+    }
+    if let Some(theme) = theme {
+      workspace.view.theme = Some(theme);
+    }
+    workspace.view.seq += 1;
+    Ok(workspace.view.clone())
   }
 
   fn find_document(&self, id: u64) -> Option<Document> {
@@ -226,6 +301,9 @@ struct DocumentMeta {
   id: u64,
   label: String,
   path: String,
+  /// Name of the workspace the tab belongs to, so a caller listing every
+  /// workspace at once can still build the tab's URL.
+  workspace: String,
 }
 
 #[derive(Serialize)]
@@ -254,6 +332,10 @@ struct PathQuery {
 #[derive(Deserialize)]
 struct AddDocuments {
   paths: Vec<String>,
+  /// Workspace the paths must join. Without it every path goes to the
+  /// workspace of its own directory, creating one if needed.
+  #[serde(default)]
+  ws: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -302,32 +384,38 @@ fn documents_of(state: &Shared, workspace: Option<&str>) -> Vec<DocumentMeta> {
     .workspaces
     .iter()
     .filter(|ws| workspace.map(|name| ws.name == name).unwrap_or(true))
-    .flat_map(|ws| ws.documents.iter())
-    .map(|doc| DocumentMeta {
+    .flat_map(|ws| ws.documents.iter().map(move |doc| (ws.name.as_str(), doc)))
+    .map(|(name, doc)| DocumentMeta {
       id: doc.id,
       label: doc.document.label.clone(),
       path: doc.document.path.to_string_lossy().to_string(),
+      workspace: name.to_string(),
     })
     .collect()
 }
 
 /// Rescan the sources feeding one workspace (or all of them) for markdown
-/// added since. The disk walk happens outside the write lock.
+/// added since. Each workspace rescans its own sources into itself, so a
+/// refresh never creates a workspace. The disk walk happens outside the
+/// write lock.
 fn rescan(state: &Shared, workspace: Option<&str>) {
-  let sources: Vec<String> = {
+  let targets: Vec<(PathBuf, String, Vec<String>)> = {
     let guard = state.read().unwrap();
     guard
       .workspaces
       .iter()
       .filter(|ws| workspace.map(|name| ws.name == name).unwrap_or(true))
-      .flat_map(|ws| ws.sources.iter().cloned())
+      .filter(|ws| !ws.sources.is_empty())
+      .map(|ws| (ws.dir.clone(), ws.name.clone(), ws.sources.clone()))
       .collect()
   };
 
-  if sources.is_empty() {
-    return;
-  }
-  if let Ok(specs) = crate::cli::group_workspaces(&sources) {
+  let specs: Vec<WorkspaceSpec> = targets
+    .iter()
+    .filter_map(|(dir, name, sources)| crate::cli::spec_for_workspace(dir, name, sources).ok())
+    .collect();
+
+  if !specs.is_empty() {
     state.write().unwrap().add_workspaces(specs, false);
   }
 }
@@ -490,22 +578,50 @@ async fn add_documents(
     return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
   }
 
-  let specs = match crate::cli::group_workspaces(&body.paths) {
+  // Build the specs (a disk walk) outside the write lock, as rescan does.
+  let specs = match body.ws.as_deref() {
+    None => crate::cli::group_workspaces(&body.paths),
+    Some(name) => {
+      let target = state
+        .read()
+        .unwrap()
+        .workspace(name)
+        .map(|ws| (ws.dir.clone(), ws.name.clone()));
+      let Some((dir, name)) = target else {
+        return (StatusCode::NOT_FOUND, "no such workspace").into_response();
+      };
+      crate::cli::spec_for_workspace(&dir, &name, &body.paths).map(|spec| vec![spec])
+    }
+  };
+  let specs = match specs {
     Ok(specs) => specs,
     Err(err) => return (StatusCode::BAD_REQUEST, err.to_string()).into_response(),
   };
 
   let (added, workspaces) = state.write().unwrap().add_workspaces(specs, true);
-  let labels: Vec<String> = added.into_iter().map(|doc| doc.label).collect();
+  let labels: Vec<String> = added.iter().map(|doc| doc.label.clone()).collect();
 
-  Json(serde_json::json!({ "added": labels, "workspaces": workspaces })).into_response()
+  // The entries just opened, with their fresh ids, so a caller can address
+  // them straight away.
+  let added_paths: HashSet<PathBuf> = added.into_iter().map(|doc| doc.path).collect();
+  let documents: Vec<DocumentMeta> = documents_of(&state, None)
+    .into_iter()
+    .filter(|doc| added_paths.contains(Path::new(&doc.path)))
+    .collect();
+
+  Json(serde_json::json!({
+    "added": labels,
+    "workspaces": workspaces,
+    "documents": documents,
+  }))
+  .into_response()
 }
 
-/// The workspaces this server hosts — what the root listing shows, and what
-/// tooling can use to find its URL.
-async fn list_workspaces(State(state): State<Shared>) -> impl IntoResponse {
-  let guard = state.read().unwrap();
-  let workspaces: Vec<serde_json::Value> = guard
+/// The workspace list as the API reports it: name, directory, tab count.
+fn workspaces_of(state: &Shared) -> Vec<serde_json::Value> {
+  state
+    .read()
+    .unwrap()
     .workspaces
     .iter()
     .map(|ws| {
@@ -515,8 +631,103 @@ async fn list_workspaces(State(state): State<Shared>) -> impl IntoResponse {
         "documents": ws.documents.len(),
       })
     })
-    .collect();
-  Json(workspaces)
+    .collect()
+}
+
+/// The workspaces this server hosts — what the root listing shows, and what
+/// tooling can use to find its URL.
+async fn list_workspaces(State(state): State<Shared>) -> impl IntoResponse {
+  Json(workspaces_of(&state))
+}
+
+#[derive(Deserialize)]
+struct NameQuery {
+  name: String,
+}
+
+/// Close a workspace and every tab in it. Token-guarded like the other
+/// mutations; the remaining workspaces come back so the caller need not
+/// re-fetch.
+async fn remove_workspace(
+  State(state): State<Shared>,
+  headers: HeaderMap,
+  Query(query): Query<NameQuery>,
+) -> Response {
+  if !authorised(&headers, &state) {
+    return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
+  }
+
+  if !state.write().unwrap().remove_workspace(&query.name) {
+    return (StatusCode::NOT_FOUND, "no such workspace").into_response();
+  }
+
+  Json(workspaces_of(&state)).into_response()
+}
+
+#[derive(Deserialize)]
+struct WsQuery {
+  ws: String,
+}
+
+#[derive(Deserialize)]
+struct ViewBody {
+  ws: String,
+  #[serde(default)]
+  doc: Option<u64>,
+  #[serde(default)]
+  theme: Option<String>,
+}
+
+/// What the workspace's pages should show. Polled by the page next to the
+/// tab list, so it needs no token.
+async fn get_view(State(state): State<Shared>, Query(query): Query<WsQuery>) -> Response {
+  let view = state
+    .read()
+    .unwrap()
+    .workspace(&query.ws)
+    .map(|ws| ws.view.clone());
+  match view {
+    Some(view) => Json(view).into_response(),
+    None => (StatusCode::NOT_FOUND, "no such workspace").into_response(),
+  }
+}
+
+/// Focus a tab and/or switch the theme on every open page of a workspace.
+async fn put_view(
+  State(state): State<Shared>,
+  headers: HeaderMap,
+  Json(body): Json<ViewBody>,
+) -> Response {
+  if !authorised(&headers, &state) {
+    return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
+  }
+
+  let result = state
+    .write()
+    .unwrap()
+    .set_view(&body.ws, body.doc, body.theme);
+  match result {
+    Ok(view) => Json(view).into_response(),
+    Err(ViewError::NoWorkspace) => (StatusCode::NOT_FOUND, "no such workspace").into_response(),
+    Err(ViewError::NoDocument) => {
+      (StatusCode::NOT_FOUND, "no such document in that workspace").into_response()
+    }
+    Err(ViewError::Nothing) => {
+      (StatusCode::BAD_REQUEST, "give a doc id, a theme, or both").into_response()
+    }
+  }
+}
+
+/// Stop the server the way ctrl-c would: in-flight requests finish, the
+/// state record is removed, the process exits. Token-guarded so nothing that
+/// merely reaches the port can take the documents away from the reader.
+async fn shutdown(State(state): State<Shared>, headers: HeaderMap) -> Response {
+  if !authorised(&headers, &state) {
+    return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
+  }
+
+  state.read().unwrap().shutdown_signal().notify_one();
+  Json(serde_json::json!({ "stopping": true })).into_response()
 }
 
 /// Close a tab. Token-guarded like every other mutation; the updated tab list
@@ -650,7 +861,12 @@ pub fn router(state: Shared) -> Router {
     .route("/api/export", post(export_by_path))
     .route("/api/asset", get(read_asset))
     .route("/api/documents", post(add_documents))
-    .route("/api/workspaces", get(list_workspaces))
+    .route("/api/view", get(get_view).put(put_view))
+    .route("/api/shutdown", post(shutdown))
+    .route(
+      "/api/workspaces",
+      get(list_workspaces).delete(remove_workspace),
+    )
     .fallback(static_handler)
     .with_state(state)
 }
@@ -681,16 +897,26 @@ pub fn run(host: &str, port: u16, specs: Vec<WorkspaceSpec>) -> Result<(), Strin
 
     print_banner(host, port, &shared);
 
-    let result = axum::serve(listener, router(shared))
-      .with_graceful_shutdown(async {
-        let _ = tokio::signal::ctrl_c().await;
-      })
-      .await
-      .map_err(|err| format!("server error: {}", err));
+    let result = serve(listener, shared).await;
 
     state::remove(port);
     result
   })
+}
+
+/// Serve until ctrl-c or a `POST /api/shutdown` carrying the token.
+pub async fn serve(listener: tokio::net::TcpListener, shared: Shared) -> Result<(), String> {
+  let stop = shared.read().unwrap().shutdown_signal();
+
+  axum::serve(listener, router(shared))
+    .with_graceful_shutdown(async move {
+      tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = stop.notified() => {}
+      }
+    })
+    .await
+    .map_err(|err| format!("server error: {}", err))
 }
 
 fn print_banner(host: &str, port: u16, shared: &Shared) {
@@ -850,6 +1076,30 @@ mod tests {
     format!(
       "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
       path, addr
+    )
+  }
+
+  /// A request carrying a bearer token and an optional JSON body — the shape
+  /// of every mutating call the page or a tool makes.
+  fn with_token(
+    addr: std::net::SocketAddr,
+    method: &str,
+    path: &str,
+    token: Option<&str>,
+    body: Option<&str>,
+  ) -> String {
+    let auth = token
+      .map(|t| format!("Authorization: Bearer {}\r\n", t))
+      .unwrap_or_default();
+    let body = body.unwrap_or("");
+    format!(
+      "{} {} HTTP/1.1\r\nHost: {}\r\n{}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+      method,
+      path,
+      addr,
+      auth,
+      body.len(),
+      body
     )
   }
 
@@ -1187,6 +1437,401 @@ mod tests {
     assert_eq!(reopened.len(), 1);
     assert_eq!(state.workspaces.len(), 1);
     assert_eq!(all_ids(&state), vec![1, 2]);
+  }
+
+  #[test]
+  fn file_list_names_the_workspace_of_each_document() {
+    let base = temp_dir("ws-name");
+    let notes = base.join("notes");
+    let docs = base.join("docs");
+    fs::create_dir_all(&notes).unwrap();
+    fs::create_dir_all(&docs).unwrap();
+    fs::write(notes.join("a.md"), "# a").unwrap();
+    fs::write(docs.join("b.md"), "# b").unwrap();
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[notes, docs]),
+      "token".to_string(),
+    )));
+
+    // Listing everything still says where each tab lives, so a caller can
+    // build its URL without a request per workspace.
+    let all = documents_of(&shared, None);
+    let names: Vec<(&str, &str)> = all
+      .iter()
+      .map(|doc| (doc.label.as_str(), doc.workspace.as_str()))
+      .collect();
+    assert_eq!(names, vec![("a.md", "notes"), ("b.md", "docs")]);
+
+    // Scoping to one workspace keeps the field on the entries that remain.
+    let scoped = documents_of(&shared, Some("docs"));
+    assert_eq!(scoped.len(), 1);
+    assert_eq!(scoped[0].workspace, "docs");
+  }
+
+  #[test]
+  fn removing_a_workspace_frees_its_name_and_its_asset_roots() {
+    let base = temp_dir("remove-ws");
+    let notes = base.join("notes");
+    let docs = base.join("docs");
+    fs::create_dir_all(&notes).unwrap();
+    fs::create_dir_all(&docs).unwrap();
+    fs::write(notes.join("a.md"), "# a").unwrap();
+    fs::write(docs.join("b.md"), "# b").unwrap();
+    let notes_image = notes.join("pic.png");
+    fs::write(&notes_image, [0u8; 4]).unwrap();
+
+    let mut state = ServerState::new(specs_for(&[notes.clone(), docs]), "token".to_string());
+    assert!(state.allows_asset(&notes_image));
+
+    assert!(state.remove_workspace("notes"));
+
+    // The workspace, its tabs and its asset root are gone; the other one is
+    // untouched and keeps its id.
+    assert!(state.workspace("notes").is_none());
+    assert!(!state.allows_asset(&notes_image));
+    assert_eq!(all_ids(&state), vec![1]);
+
+    // Opening the same directory again gets the plain name back, not notes-2.
+    let (added, touched) = state.add_workspaces(specs_for(&[notes]), true);
+    assert_eq!(added.len(), 1);
+    assert_eq!(touched, vec!["notes".to_string()]);
+    // Under a fresh id: ids are never recycled, even across a workspace close.
+    assert_eq!(all_ids(&state), vec![1, 2]);
+  }
+
+  #[test]
+  fn removing_an_unknown_workspace_is_a_no_op() {
+    let dir = temp_dir("remove-ws-unknown");
+    let mut state = state_with(&dir);
+
+    assert!(!state.remove_workspace("nowhere"));
+    assert_eq!(state.workspaces.len(), 1);
+    assert_eq!(all_ids(&state), vec![0]);
+  }
+
+  #[test]
+  fn a_workspace_can_be_closed_over_http_and_its_page_turns_404() {
+    let base = temp_dir("remove-ws-http");
+    let notes = base.join("notes");
+    let docs = base.join("docs");
+    fs::create_dir_all(&notes).unwrap();
+    fs::create_dir_all(&docs).unwrap();
+    fs::write(notes.join("a.md"), "# a").unwrap();
+    fs::write(docs.join("b.md"), "# b").unwrap();
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[notes, docs]),
+      "test-token".to_string(),
+    )));
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      tokio::spawn(async move {
+        let _ = axum::serve(listener, router(shared)).await;
+      });
+
+      // Closing needs the token, like every other mutation.
+      let (status, _) = http(addr, with_token(addr, "DELETE", "/api/workspaces?name=notes", None, None)).await;
+      assert_eq!(status, 401);
+      let (status, _) = http(addr, get(addr, "/notes/")).await;
+      assert_eq!(status, 200);
+
+      let (status, _) = http(addr, with_token(addr, "DELETE", "/api/workspaces?name=nowhere", Some("test-token"), None)).await;
+      assert_eq!(status, 404);
+
+      let (status, body) = http(addr, with_token(addr, "DELETE", "/api/workspaces?name=notes", Some("test-token"), None)).await;
+      assert_eq!(status, 200);
+      // The remaining list comes back, so the caller need not re-fetch.
+      assert!(body.contains("\"docs\""));
+      assert!(!body.contains("\"notes\""));
+
+      // Its page and its tabs are gone; the other workspace still serves.
+      let (status, _) = http(addr, get(addr, "/notes/")).await;
+      assert_eq!(status, 404);
+      let (_, files) = http(addr, get(addr, "/api/files")).await;
+      assert!(!files.contains("a.md"));
+      assert!(files.contains("b.md"));
+    });
+  }
+
+  #[test]
+  fn a_file_added_with_a_workspace_name_is_labelled_relative_to_that_directory() {
+    let dir = temp_dir("ws-add");
+    let nested = dir.join("nested");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(dir.join("a.md"), "# a").unwrap();
+    let deep = nested.join("c.md");
+    fs::write(&deep, "# c").unwrap();
+
+    let mut state = ServerState::new(specs_for(&[dir.clone()]), "token".to_string());
+    // a.md sorts before nested/c.md.
+    assert_eq!(all_ids(&state), vec![0, 1]);
+    assert!(state.remove_document(1).is_some());
+
+    // Naming the nested file for its workspace re-opens it there, under its
+    // old label and a fresh id — no `nested` workspace appears.
+    let spec = crate::cli::spec_for_workspace(&dir, "ws-add", &[deep.to_string_lossy().to_string()]).unwrap();
+    let (added, touched) = state.add_workspaces(vec![spec], true);
+    assert_eq!(added.len(), 1);
+    assert_eq!(added[0].label, "nested/c.md");
+    assert_eq!(state.workspaces.len(), 1);
+    assert_eq!(touched, vec![state.workspaces[0].name.clone()]);
+    assert_eq!(all_ids(&state), vec![0, 2]);
+  }
+
+  #[test]
+  fn a_rescan_never_creates_a_workspace_from_a_nested_source() {
+    let dir = temp_dir("ws-rescan-nested");
+    let nested = dir.join("nested");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(dir.join("a.md"), "# a").unwrap();
+    let deep = nested.join("c.md");
+    fs::write(&deep, "# c").unwrap();
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[dir.clone()]),
+      "token".to_string(),
+    )));
+    // The nested file becomes a source of the directory's workspace.
+    {
+      let spec = crate::cli::spec_for_workspace(&dir, "x", &[deep.to_string_lossy().to_string()]).unwrap();
+      shared.write().unwrap().add_workspaces(vec![spec], true);
+    }
+
+    fs::write(nested.join("later.md"), "# later").unwrap();
+    rescan(&shared, None);
+
+    let guard = shared.read().unwrap();
+    assert_eq!(guard.workspaces.len(), 1);
+    let labels: Vec<&str> = guard.workspaces[0]
+      .documents
+      .iter()
+      .map(|d| d.document.label.as_str())
+      .collect();
+    assert_eq!(labels, vec!["a.md", "nested/c.md", "nested/later.md"]);
+  }
+
+  #[test]
+  fn adding_to_a_named_workspace_over_http_refuses_outsiders_and_returns_ids() {
+    let base = temp_dir("ws-add-http");
+    let docs = base.join("docs");
+    let nested = docs.join("nested");
+    let other = base.join("other");
+    fs::create_dir_all(&nested).unwrap();
+    fs::create_dir_all(&other).unwrap();
+    fs::write(docs.join("a.md"), "# a").unwrap();
+    let deep = nested.join("c.md");
+    fs::write(&deep, "# c").unwrap();
+    let far = other.join("far.md");
+    fs::write(&far, "# far").unwrap();
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[docs.join("a.md")]),
+      "test-token".to_string(),
+    )));
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      tokio::spawn(async move {
+        let _ = axum::serve(listener, router(shared)).await;
+      });
+
+      let post = |body: String| with_token(addr, "POST", "/api/documents", Some("test-token"), Some(&body));
+
+      // Unknown workspace.
+      let body = serde_json::json!({ "paths": [deep.display().to_string()], "ws": "nowhere" }).to_string();
+      let (status, _) = http(addr, post(body)).await;
+      assert_eq!(status, 404);
+
+      // A path outside the workspace's directory is refused, not misplaced.
+      let body = serde_json::json!({ "paths": [far.display().to_string()], "ws": "docs" }).to_string();
+      let (status, text) = http(addr, post(body)).await;
+      assert_eq!(status, 400);
+      assert!(text.contains("outside the workspace"));
+      let (_, workspaces) = http(addr, get(addr, "/api/workspaces")).await;
+      assert!(!workspaces.contains("\"other\""));
+
+      // A nested file joins under its relative label, and the response names
+      // the entry with its id so the caller can address it at once.
+      let body = serde_json::json!({ "paths": [deep.display().to_string()], "ws": "docs" }).to_string();
+      let (status, text) = http(addr, post(body)).await;
+      assert_eq!(status, 200);
+      let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+      assert_eq!(parsed["workspaces"], serde_json::json!(["docs"]));
+      assert_eq!(parsed["documents"][0]["label"], "nested/c.md");
+      assert_eq!(parsed["documents"][0]["workspace"], "docs");
+      assert_eq!(parsed["documents"][0]["id"], 1);
+
+      // Adding it again reports nothing new.
+      let body = serde_json::json!({ "paths": [deep.display().to_string()], "ws": "docs" }).to_string();
+      let (_, text) = http(addr, post(body)).await;
+      let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+      assert_eq!(parsed["added"], serde_json::json!([]));
+      assert_eq!(parsed["documents"], serde_json::json!([]));
+    });
+  }
+
+  #[test]
+  fn the_shutdown_route_needs_the_token_and_then_stops_the_server() {
+    let dir = temp_dir("shutdown");
+    fs::write(dir.join("a.md"), "# a").unwrap();
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[dir.join("a.md")]),
+      "test-token".to_string(),
+    )));
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      let server = tokio::spawn(serve(listener, shared));
+
+      // Without the token the server keeps going.
+      let (status, _) = http(addr, with_token(addr, "POST", "/api/shutdown", None, None)).await;
+      assert_eq!(status, 401);
+      let (status, _) = http(addr, get(addr, "/api/health")).await;
+      assert_eq!(status, 200);
+
+      let (status, body) = http(addr, with_token(addr, "POST", "/api/shutdown", Some("test-token"), None)).await;
+      assert_eq!(status, 200);
+      assert!(body.contains("\"stopping\":true"));
+
+      // The serve future resolves cleanly, and the port stops answering.
+      let finished = tokio::time::timeout(std::time::Duration::from_secs(5), server)
+        .await
+        .expect("server should stop within five seconds")
+        .expect("serve task should not panic");
+      assert!(finished.is_ok());
+      assert!(tokio::net::TcpStream::connect(addr).await.is_err());
+    });
+  }
+
+  #[test]
+  fn view_state_starts_empty_and_every_update_bumps_the_sequence() {
+    let dir = temp_dir("view");
+    fs::write(dir.join("a.md"), "# a").unwrap();
+    fs::write(dir.join("b.md"), "# b").unwrap();
+    let mut state = ServerState::new(specs_for(&[dir]), "token".to_string());
+    let name = state.workspaces[0].name.clone();
+
+    assert_eq!(state.workspaces[0].view, ViewState::default());
+
+    // A theme on its own.
+    let view = state.set_view(&name, None, Some("nocturne".to_string())).unwrap();
+    assert_eq!(view.seq, 1);
+    assert_eq!(view.theme.as_deref(), Some("nocturne"));
+    assert_eq!(view.doc, None);
+
+    // A tab on its own keeps the theme.
+    let view = state.set_view(&name, Some(1), None).unwrap();
+    assert_eq!(view.seq, 2);
+    assert_eq!(view.doc, Some(1));
+    assert_eq!(view.theme.as_deref(), Some("nocturne"));
+
+    // Nothing to change is an error, and does not burn a sequence number.
+    assert_eq!(state.set_view(&name, None, None), Err(ViewError::Nothing));
+    assert_eq!(state.workspaces[0].view.seq, 2);
+
+    assert_eq!(state.set_view("nowhere", Some(0), None), Err(ViewError::NoWorkspace));
+  }
+
+  #[test]
+  fn setting_the_view_to_a_document_from_another_workspace_is_refused() {
+    let base = temp_dir("view-cross");
+    let notes = base.join("notes");
+    let docs = base.join("docs");
+    fs::create_dir_all(&notes).unwrap();
+    fs::create_dir_all(&docs).unwrap();
+    fs::write(notes.join("a.md"), "# a").unwrap();
+    fs::write(docs.join("b.md"), "# b").unwrap();
+    let mut state = ServerState::new(specs_for(&[notes, docs]), "token".to_string());
+
+    // b.md holds id 1 and lives in docs, so notes cannot focus it.
+    assert_eq!(state.set_view("notes", Some(1), None), Err(ViewError::NoDocument));
+    assert_eq!(state.set_view("notes", Some(99), None), Err(ViewError::NoDocument));
+    assert_eq!(state.workspaces[0].view.seq, 0);
+
+    assert!(state.set_view("docs", Some(1), None).is_ok());
+  }
+
+  #[test]
+  fn view_state_round_trips_over_http_and_needs_the_token_to_change() {
+    let base = temp_dir("view-http");
+    let notes = base.join("notes");
+    fs::create_dir_all(&notes).unwrap();
+    fs::write(notes.join("a.md"), "# a").unwrap();
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[notes]),
+      "test-token".to_string(),
+    )));
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      tokio::spawn(async move {
+        let _ = axum::serve(listener, router(shared)).await;
+      });
+
+      let (status, body) = http(addr, get(addr, "/api/view?ws=notes")).await;
+      assert_eq!(status, 200);
+      assert_eq!(body, "{\"doc\":null,\"theme\":null,\"seq\":0}");
+
+      let (status, _) = http(addr, get(addr, "/api/view?ws=nowhere")).await;
+      assert_eq!(status, 404);
+
+      let put = |token: Option<&str>, body: String| {
+        with_token(addr, "PUT", "/api/view", token, Some(&body))
+      };
+
+      // Reading is open; changing needs the token.
+      let body = serde_json::json!({ "ws": "notes", "theme": "forest" }).to_string();
+      let (status, _) = http(addr, put(None, body.clone())).await;
+      assert_eq!(status, 401);
+      let (status, text) = http(addr, put(Some("test-token"), body)).await;
+      assert_eq!(status, 200);
+      assert_eq!(text, "{\"doc\":null,\"theme\":\"forest\",\"seq\":1}");
+
+      let body = serde_json::json!({ "ws": "notes", "doc": 0 }).to_string();
+      let (status, text) = http(addr, put(Some("test-token"), body)).await;
+      assert_eq!(status, 200);
+      assert_eq!(text, "{\"doc\":0,\"theme\":\"forest\",\"seq\":2}");
+
+      let body = serde_json::json!({ "ws": "notes", "doc": 42 }).to_string();
+      let (status, _) = http(addr, put(Some("test-token"), body)).await;
+      assert_eq!(status, 404);
+
+      let body = serde_json::json!({ "ws": "notes" }).to_string();
+      let (status, _) = http(addr, put(Some("test-token"), body)).await;
+      assert_eq!(status, 400);
+
+      // The page's poll sees the latest state.
+      let (_, body) = http(addr, get(addr, "/api/view?ws=notes")).await;
+      assert_eq!(body, "{\"doc\":0,\"theme\":\"forest\",\"seq\":2}");
+    });
   }
 
   #[test]

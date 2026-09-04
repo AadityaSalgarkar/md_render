@@ -3,6 +3,7 @@
 #   mdrender                          open the app
 #   mdrender FILE.md                  open the app on FILE.md
 #   mdrender --port 8080 FILE... DIR  serve rendered markdown over HTTP
+#   mdrender --mcp                    run the MCP server over stdio (for agents)
 set -euo pipefail
 
 APP_NAME="MD_RENDER"
@@ -127,6 +128,31 @@ parse_args() {
   done
 }
 
+# The MCP server is a single bundled JavaScript file, installed by `make
+# install` or built in a checkout by `npm run build:mcp`. It speaks the
+# protocol on stdin/stdout, so this must exec it in the foreground.
+exec_mcp() {
+  local self repo_root entry
+  self="$(self_path)"
+  repo_root="$(cd -P "$(dirname "$self")/.." && pwd)"
+
+  for entry in \
+    "${MDRENDER_MCP_DIR:+$MDRENDER_MCP_DIR/index.js}" \
+    "$HOME/.local/share/md-render/mcp/index.js" \
+    "$repo_root/mcp/dist/index.js"; do
+    if [ -n "$entry" ] && [ -f "$entry" ]; then
+      if ! command -v node >/dev/null 2>&1; then
+        echo "mdrender: --mcp needs node (>= 20) on PATH" >&2
+        exit 1
+      fi
+      exec node "$entry" "$@"
+    fi
+  done
+
+  echo "mdrender: the MCP server is not built. Run 'make install' (or 'npm run build:mcp') from the repo." >&2
+  exit 1
+}
+
 # Short and self-contained so an LLM (or a human) can inspect what the tool
 # does without launching anything.
 usage() {
@@ -135,16 +161,26 @@ mdrender — MD_RENDER markdown renderer
 
   mdrender FILE|DIR...            open in the desktop app; several files -> tabs
   mdrender --port [PORT] PATH...  serve over HTTP instead (headless-friendly)
+  mdrender --mcp                  MCP server over stdio, driving the --port mode
 
 Serving: the default port is 9999, falling forward to the next free port when
 another program holds it. Each directory (or a file's parent directory)
 becomes a workspace at http://127.0.0.1:9999/<dirname>/ with one tab per
 markdown file. Re-running the command against a live server adds to it.
 JSON API on the port: /api/health, /api/files, /api/workspaces.
+
+MCP: register with `claude mcp add mdrender -- mdrender --mcp`. Tools cover
+servers, workspaces, tabs, documents, comments and the open browser's view.
 EOF
 }
 
 main() {
+  # The MCP server owns stdin/stdout from here on; nothing else may print.
+  if [ "${1:-}" = "--mcp" ]; then
+    shift
+    exec_mcp "$@"
+  fi
+
   local arg
   for arg in "$@"; do
     case "$arg" in

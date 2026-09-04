@@ -1,6 +1,6 @@
 ---
 name: mdrender
-description: Render markdown for a human using MD_RENDER — open files in the desktop app, or serve them as browser tabs over HTTP from any machine, including headless ones. Use when asked to preview, render, or "open" a markdown file, or to make markdown on a remote host readable locally.
+description: Render markdown for a human using MD_RENDER — open files in the desktop app, or serve them as browser tabs over HTTP from any machine, including headless ones, and drive the served tabs through its MCP server. Use when asked to preview, render, or "open" a markdown file, to make markdown on a remote host readable locally, or to open, close, focus or comment on documents the human is reading.
 ---
 
 # Rendering markdown with MD_RENDER
@@ -44,24 +44,56 @@ new tab and exits. Open browsers pick it up within a few seconds.
 
 **Closing tabs:** every tab has a ✕ in the strip (window and browser alike).
 A closed file does not come back on refresh; re-open it by naming it again
-(`mdrender --port extra.md`, or `mdrender extra.md` for the window).
+(`mdrender --port extra.md`, or `mdrender extra.md` for the window), or with
+the MCP `open_tab` tool, which also keeps it in its original workspace.
 
-## Reading served documents programmatically
+## Driving the server from an agent (MCP)
 
-The server exposes a small JSON API on its port:
+`mdrender --mcp` is an MCP server over stdio. Register it once
+(`claude mcp add mdrender -- mdrender --mcp`, or `.mcp.json` with
+`{"command": "mdrender", "args": ["--mcp"]}`) and use its tools instead of
+shelling out; every result carries the URL to give the human, and an open
+browser follows within about 3 seconds.
+
+| Need | Tool |
+|---|---|
+| Which servers are running, on which ports | `list_servers` |
+| Serve files/directories (or add to a live server) | `start_server {paths, port?, host?}` |
+| Stop a server | `stop_server {port}` |
+| Workspaces and their URLs | `list_workspaces`, `open_directory {path}`, `close_workspace {workspace}` |
+| Tabs | `list_tabs {workspace?}`, `open_tab {path, workspace?}`, `close_tab {id \| path}`, `refresh {workspace?}` |
+| Content | `read_document {id \| path}`, `write_document {path, content}` |
+| Review | `add_comment {path, passage, comment}`, `export_clean {path}` |
+| The reader's browser | `focus_tab {id \| path}`, `set_theme {theme, workspace?}` |
+
+`port` is optional everywhere: with one live server it is inferred, with
+several the error lists them. `open_tab` puts a file back into the most
+specific workspace that contains it (a closed `docs/guide/setup.md` returns
+to `docs` as `guide/setup.md`). `write_document` and `add_comment` only touch
+files that are open as tabs; an open browser re-reads a changed file within
+30 seconds unless it holds unsaved edits, and `focus_tab` makes it reload at
+once. `set_theme` accepts `warm-paper`, `midnight-ink`, `newsprint`,
+`forest`, `nocturne`, `evergreen`.
+
+### Without MCP: the HTTP API
+
+The server also answers plain HTTP on its port:
 
 ```bash
 curl http://127.0.0.1:9999/api/health         # {"app":"md-render",...}
 curl http://127.0.0.1:9999/api/workspaces     # workspace names and dirs
-curl http://127.0.0.1:9999/api/files          # tab list with ids (?ws= scopes)
+curl http://127.0.0.1:9999/api/files          # tab list with ids and workspace (?ws= scopes, ?refresh=true rescans)
 curl http://127.0.0.1:9999/api/file?id=0      # one document's content
+curl "http://127.0.0.1:9999/api/view?ws=docs" # what the workspace's pages should show
 ```
 
-Writing (`PUT /api/file`, `POST /api/documents`, and `DELETE /api/file?id=N`
-to close a tab) requires the bearer token
-from `$XDG_STATE_HOME/md-render/servers/<port>.json` (falls back to
-`~/.local/state/...`). Only same-user processes can read it. Prefer editing
-files on disk directly; the app refreshes from disk on its 30-second sync.
+Mutations need `Authorization: Bearer <token>` with the token from
+`$XDG_STATE_HOME/md-render/servers/<port>.json` (falls back to
+`~/.local/state/...`, mode 0600, so only same-user processes can read it):
+`PUT /api/file {path, content}`, `POST /api/documents {paths, ws?}`,
+`DELETE /api/file?id=N`, `DELETE /api/workspaces?name=X`,
+`PUT /api/view {ws, doc?, theme?}`, `POST /api/export {path, content}`,
+`POST /api/shutdown`.
 
 ## Quiz blocks
 

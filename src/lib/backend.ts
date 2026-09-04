@@ -14,6 +14,17 @@ export interface DocumentBody extends DocumentMeta {
 }
 
 /**
+ * What the server would like this workspace's pages to show: a tab to focus
+ * and a theme to wear, set by tooling outside the browser. `seq` climbs on
+ * every change so the page applies each command once.
+ */
+export interface ViewState {
+  doc: string | null
+  theme: string | null
+  seq: number
+}
+
+/**
  * Where the app is running:
  * - `desktop` — the Tauri shell, with filesystem access. Also the fallback in a
  *   plain browser, where the Tauri calls simply fail and the app drops back to
@@ -39,6 +50,8 @@ export interface Backend {
   writeFile(path: string, content: string): Promise<void>
   exportMarkdown(path: string, content: string): Promise<string>
   getLaunchFile(): Promise<string | null>
+  /** The view the server is asking for; `null` where nothing can ask. */
+  getViewState(): Promise<ViewState | null>
 }
 
 export function isTauri(): boolean {
@@ -55,7 +68,7 @@ function serverToken(): string {
  * Workspace this page is scoped to, injected by the server alongside the
  * token. Empty when absent (older pages, tests), which means "everything".
  */
-function serverWorkspace(): string {
+export function serverWorkspace(): string {
   if (typeof window === 'undefined') return ''
   return (window as { __MD_RENDER_WORKSPACE__?: string }).__MD_RENDER_WORKSPACE__ ?? ''
 }
@@ -110,6 +123,7 @@ export function desktopBackend(): Backend {
     exportMarkdown: (path, content) =>
       invoke<string>('export_markdown', { path, content }),
     getLaunchFile: () => invoke<string | null>('get_launch_file'),
+    getViewState: async () => null,
   }
 }
 
@@ -217,6 +231,22 @@ export function serverBackend(base = ''): Backend {
       return body.path
     },
     getLaunchFile: async () => null,
+    getViewState: async () => {
+      const workspace = serverWorkspace()
+      if (!workspace) return null
+      const response = await fetch(`${base}/api/view?ws=${encodeURIComponent(workspace)}`)
+      if (!response.ok) return null
+      const body = (await response.json()) as {
+        doc: number | null
+        theme: string | null
+        seq: number
+      }
+      return {
+        doc: body.doc === null ? null : String(body.doc),
+        theme: body.theme,
+        seq: body.seq,
+      }
+    },
   }
 }
 

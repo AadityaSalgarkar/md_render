@@ -400,7 +400,8 @@ make install        <span class="c"># everything under ~/.local and ~/bin — no
 <pre><code>mdrender                    <span class="c"># open the app</span>
 mdrender notes.md           <span class="c"># open one file</span>
 mdrender a.md b.md ./docs   <span class="c"># several files and a directory — tabs</span>
-mdrender --port notes.md    <span class="c"># serve to a browser instead (port 9999)</span></code></pre>
+mdrender --port notes.md    <span class="c"># serve to a browser instead (port 9999)</span>
+mdrender --mcp              <span class="c"># MCP server over stdio, for agents</span></code></pre>
   <p>Directory arguments contribute every markdown file beneath them,
   recursively, in stable sorted order. The window and the server build their
   tabs from the same list, so the same arguments produce the same result in
@@ -446,10 +447,12 @@ mdrender --port ~/notes.md          <span class="c"># on the server</span></code
     <li>Every write carries a token the server injects into the page it
     serves. A page on another origin cannot read that token, so it cannot
     forge a write.</li>
-    <li>Adding tabs to a running server requires the token from
+    <li>Changing what a running server does from outside the page — adding
+    or closing tabs and workspaces, steering the view, stopping it — requires
+    the token from
     <code>$XDG_STATE_HOME/md-render/servers/&lt;port&gt;.json</code>, written
-    with mode <code>0600</code> — only processes running as the same user can
-    widen what the server touches.</li>
+    with mode <code>0600</code> — only processes running as the same user
+    (the MCP server included) can widen what the server touches.</li>
   </ul>
 </section>
 
@@ -496,8 +499,27 @@ mdrender --port ~/notes.md          <span class="c"># on the server</span></code
 
 <section id="claude">
   <h2><a class="anchor" href="#claude">Claude Code integration</a></h2>
-  <p>A small PostToolUse hook opens plan files in MD_RENDER the moment Claude
-  Code writes them:</p>
+  <p>MD_RENDER ships an <strong>MCP server</strong> that drives the
+  <code>--port</code> mode, so an agent can do everything a reader does by
+  hand in the browser. Register it once:</p>
+<pre><code>claude mcp add mdrender -- mdrender --mcp</code></pre>
+  <p>or in a project's <code>.mcp.json</code>:</p>
+<pre><code>{ <span class="s">"mcpServers"</span>: { <span class="s">"mdrender"</span>: { <span class="s">"command"</span>: <span class="s">"mdrender"</span>, <span class="s">"args"</span>: [<span class="s">"--mcp"</span>] } } }</code></pre>
+  <p>Tools: <code>list_servers</code>, <code>start_server</code>,
+  <code>stop_server</code>; <code>list_workspaces</code>,
+  <code>open_directory</code>, <code>close_workspace</code>;
+  <code>list_tabs</code>, <code>open_tab</code>, <code>close_tab</code>,
+  <code>refresh</code>; <code>read_document</code>,
+  <code>write_document</code>, <code>add_comment</code>,
+  <code>export_clean</code>; <code>focus_tab</code>, <code>set_theme</code>.
+  Every result names the URL to hand the human, and an open browser follows
+  within a few seconds — a tab the agent opens appears, a tab it focuses
+  comes to the front, a theme it sets applies. <code>make install</code>
+  puts the bundled server at
+  <code>~/.local/share/md-render/mcp/index.js</code>; it needs
+  <code>node</code>.</p>
+  <p>Separately, a small PostToolUse hook opens plan files in the desktop
+  window the moment Claude Code writes them:</p>
 <pre><code><span class="c">#!/bin/bash
 # ~/.claude/hooks/open-plan-in-md-render.sh</span>
 INPUT=$(cat)
@@ -507,9 +529,8 @@ FILE_PATH=$(echo <span class="s">"$INPUT"</span> | jq -r <span class="s">'.tool_
 <span class="k">fi</span>
 <span class="k">exit</span> 0</code></pre>
   <p>Register it in <code>~/.claude/settings.json</code> under
-  <code>hooks.PostToolUse</code> with matcher <code>Write</code>. Agents can
-  also drive the app directly — see
-  <a href="skills.md">skills.md</a> for a ready-made skill.</p>
+  <code>hooks.PostToolUse</code> with matcher <code>Write</code>. See
+  <a href="skills.md">skills.md</a> for a ready-made skill covering both.</p>
 </section>
 
 <section id="development">
@@ -539,6 +560,8 @@ npm run lint</code></pre>
     project for LLMs, following <a href="https://llmstxt.org">llmstxt.org</a></li>
     <li><a href="skills.md" class="mono">skills.md</a> — a drop-in skill
     teaching an agent to render and serve markdown with MD_RENDER</li>
+    <li><code>mdrender --mcp</code> — the <a href="#claude">MCP server</a>,
+    for agents that would rather call tools than shell out</li>
   </ul>
 </section>
 
