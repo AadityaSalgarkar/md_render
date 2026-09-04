@@ -9,6 +9,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { registerServerTools } from './tools/servers.ts'
+import { registerTabTools } from './tools/tabs.ts'
+import { registerWorkspaceTools } from './tools/workspaces.ts'
 
 declare const __MD_RENDER_VERSION__: string | undefined
 
@@ -16,6 +18,8 @@ const version = typeof __MD_RENDER_VERSION__ === 'string' ? __MD_RENDER_VERSION_
 
 const server = new McpServer({ name: 'mdrender', version })
 registerServerTools(server)
+registerWorkspaceTools(server)
+registerTabTools(server)
 
 const transport = new StdioServerTransport()
 await server.connect(transport)
