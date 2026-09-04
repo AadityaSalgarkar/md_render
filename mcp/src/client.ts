@@ -127,8 +127,15 @@ export class MdRenderClient {
     return body.content
   }
 
-  async write(path: string, content: string) {
-    await this.request('PUT', '/api/file', { body: { path, content }, auth: true })
+  /** Save; a remote document's edit is also kept outside /tmp, and the
+   *  answer says where. */
+  async write(path: string, content: string): Promise<{ savedCopy: string | null }> {
+    const body = await this.json<{ written: boolean; saved_copy?: string | null }>(
+      'PUT',
+      '/api/file',
+      { body: { path, content }, auth: true },
+    )
+    return { savedCopy: body.saved_copy ?? null }
   }
 
   async export(path: string, content: string) {
