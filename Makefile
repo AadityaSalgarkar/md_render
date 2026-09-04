@@ -44,6 +44,8 @@ test:
 	cd src-tauri && cargo test
 	@# The server-mode tests drive the real binary, so make sure it exists.
 	cd src-tauri && cargo build
+	@# The MCP tests drive the real bundle over stdio, so build that too.
+	npm run build:mcp
 	npm test -- --run
 
 ifeq ($(UNAME_S),Darwin)
