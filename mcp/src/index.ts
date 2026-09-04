@@ -11,6 +11,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { registerDocumentTools } from './tools/documents.ts'
 import { registerServerTools } from './tools/servers.ts'
 import { registerTabTools } from './tools/tabs.ts'
+import { registerViewTools } from './tools/view.ts'
 import { registerWorkspaceTools } from './tools/workspaces.ts'
 
 declare const __MD_RENDER_VERSION__: string | undefined
@@ -22,6 +23,7 @@ registerServerTools(server)
 registerWorkspaceTools(server)
 registerTabTools(server)
 registerDocumentTools(server)
+registerViewTools(server)
 
 const transport = new StdioServerTransport()
 await server.connect(transport)
