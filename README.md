@@ -36,6 +36,9 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
   renders a card whose options stay hidden until the eye button reveals them;
   an `<answer>…</answer>` inside (or anywhere) stays hidden until clicked
 - Server mode with full parity: editing and saving work in the browser too
+- An MCP server (`mdrender --mcp`) so agents can start and stop servers,
+  open and close workspaces and tabs, read, write, comment on and export
+  documents, and focus a tab or switch the theme in the reader's browser
 
 ## Install
 
@@ -79,6 +82,7 @@ mdrender                    # open the app
 mdrender notes.md           # open one file
 mdrender a.md b.md ./docs   # several files and a directory — tabs
 mdrender --port notes.md    # serve to a browser instead
+mdrender --mcp              # MCP server over stdio, for agents
 ```
 
 Directory arguments contribute every markdown file beneath them. The window
@@ -121,10 +125,31 @@ write behind a token injected into the page it serves. Details in the
 
 ## Claude Code integration
 
-A PostToolUse hook can open plan files in MD_RENDER the moment Claude Code
-writes them, and agents can drive the app through
-[skills.md](https://aadityasalgarkar.github.io/md_render/skills.md). Hook
-script and settings in the
+MD_RENDER ships an MCP server that drives the `--port` mode, so an agent can
+do everything a reader does by hand in the browser. Register it once:
+
+```bash
+claude mcp add mdrender -- mdrender --mcp
+```
+
+or in a project's `.mcp.json`:
+
+```json
+{ "mcpServers": { "mdrender": { "command": "mdrender", "args": ["--mcp"] } } }
+```
+
+Tools: `list_servers`, `start_server`, `stop_server`; `list_workspaces`,
+`open_directory`, `close_workspace`; `list_tabs`, `open_tab`, `close_tab`,
+`refresh`; `read_document`, `write_document`, `add_comment`, `export_clean`;
+`focus_tab`, `set_theme`. Every result names the URL to hand the human, and
+an open browser follows within a few seconds — a tab the agent opens
+appears, a tab it focuses comes to the front. `make install` puts the
+bundled server at `~/.local/share/md-render/mcp/index.js`; it needs `node`.
+
+A PostToolUse hook can also open plan files in the desktop window the moment
+Claude Code writes them, and
+[skills.md](https://aadityasalgarkar.github.io/md_render/skills.md) is a
+drop-in skill covering both. Hook script and settings in the
 [docs](https://aadityasalgarkar.github.io/md_render/#claude).
 
 ## Development
@@ -133,7 +158,8 @@ script and settings in the
 npm run tauri:dev    # Tauri window + Vite dev server
 npm run tauri:build  # production build and bundles
 npm run dev          # frontend only, in a browser
-make test            # Rust + frontend test suites
+npm run build:mcp    # bundle the MCP server into mcp/dist/index.js
+make test            # Rust + frontend + MCP test suites
 npm run lint
 ```
 
@@ -151,6 +177,7 @@ src/                 # React frontend
   lib/               # backend abstraction, theme registry, comments, image paths
   test/              # Vitest suites, including end-to-end server tests
 src-tauri/src/       # Rust: lib.rs (commands), cli.rs, server.rs, attach.rs, state.rs
+mcp/                 # MCP server (TypeScript), bundled by `npm run build:mcp`
 bin/mdrender         # cross-platform wrapper
 docs/                # documentation site (GitHub Pages), llms.txt, skills.md
 ```
