@@ -69,6 +69,8 @@ pub enum CliError {
   NoDocuments,
   UnreadablePath(String),
   UnknownFlag(String),
+  /// A path handed to a named workspace that does not live under its directory.
+  OutsideWorkspace(String),
 }
 
 impl std::fmt::Display for CliError {
@@ -86,6 +88,9 @@ impl std::fmt::Display for CliError {
       ),
       CliError::UnreadablePath(path) => write!(f, "cannot read '{}'", path),
       CliError::UnknownFlag(flag) => write!(f, "unknown option '{}'", flag),
+      CliError::OutsideWorkspace(path) => {
+        write!(f, "'{}' is outside the workspace directory", path)
+      }
     }
   }
 }
@@ -252,6 +257,50 @@ pub fn group_workspaces(paths: &[String]) -> Result<Vec<WorkspaceSpec>, CliError
   Ok(specs)
 }
 
+/// The spec for paths that must all join one existing workspace. Unlike
+/// [`group_workspaces`], a nested file stays in the workspace of `dir` with a
+/// label relative to it — `guide/setup.md`, not a new `guide` workspace — and
+/// anything outside `dir` is refused rather than silently placed elsewhere.
+pub fn spec_for_workspace(
+  dir: &Path,
+  name_hint: &str,
+  paths: &[String],
+) -> Result<WorkspaceSpec, CliError> {
+  let mut documents: Vec<Document> = Vec::new();
+  let mut sources: Vec<String> = Vec::new();
+
+  for raw in paths {
+    let path = Path::new(raw)
+      .canonicalize()
+      .map_err(|_| CliError::UnreadablePath(raw.clone()))?;
+    if !path.starts_with(dir) {
+      return Err(CliError::OutsideWorkspace(raw.clone()));
+    }
+
+    for mut document in collect_documents(&[raw.clone()])? {
+      document.label = document
+        .path
+        .strip_prefix(dir)
+        .unwrap_or(&document.path)
+        .to_string_lossy()
+        .to_string();
+      if !documents.iter().any(|d| d.path == document.path) {
+        documents.push(document);
+      }
+    }
+    if !sources.contains(raw) {
+      sources.push(raw.clone());
+    }
+  }
+
+  Ok(WorkspaceSpec {
+    dir: dir.to_path_buf(),
+    name_hint: name_hint.to_string(),
+    documents,
+    sources,
+  })
+}
+
 /// Digits only — used to tell a port from a path following `--port`.
 fn is_numeric(value: &str) -> bool {
   !value.is_empty() && value.chars().all(|c| c.is_ascii_digit())
@@ -370,6 +419,52 @@ mod tests {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir
+  }
+
+  #[test]
+  fn spec_for_workspace_relabels_nested_files_relative_to_the_workspace() {
+    let dir = temp_dir("spec-nested").canonicalize().unwrap();
+    let nested = dir.join("guide");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(dir.join("top.md"), "# top").unwrap();
+    fs::write(nested.join("setup.md"), "# setup").unwrap();
+
+    let spec = spec_for_workspace(
+      &dir,
+      "docs",
+      &args(&[
+        nested.join("setup.md").to_str().unwrap(),
+        // A directory inside the workspace contributes its files, relabelled
+        // against the workspace rather than against itself.
+        nested.to_str().unwrap(),
+        dir.join("top.md").to_str().unwrap(),
+      ]),
+    )
+    .unwrap();
+
+    assert_eq!(spec.dir, dir);
+    assert_eq!(spec.name_hint, "docs");
+    let labels: Vec<&str> = spec.documents.iter().map(|d| d.label.as_str()).collect();
+    // The nested file appears once, under its path relative to the workspace.
+    assert_eq!(labels, vec!["guide/setup.md", "top.md"]);
+    assert_eq!(spec.sources.len(), 3);
+  }
+
+  #[test]
+  fn spec_for_workspace_rejects_paths_outside_it() {
+    let dir = temp_dir("spec-outside").canonicalize().unwrap();
+    let elsewhere = temp_dir("spec-outside-other").canonicalize().unwrap();
+    fs::write(elsewhere.join("far.md"), "# far").unwrap();
+
+    let err = spec_for_workspace(&dir, "docs", &args(&[elsewhere.join("far.md").to_str().unwrap()]))
+      .unwrap_err();
+    assert!(matches!(err, CliError::OutsideWorkspace(_)));
+    assert!(err.to_string().contains("outside the workspace"));
+
+    // A path that does not exist is still reported as unreadable.
+    let err = spec_for_workspace(&dir, "docs", &args(&[dir.join("missing.md").to_str().unwrap()]))
+      .unwrap_err();
+    assert!(matches!(err, CliError::UnreadablePath(_)));
   }
 
   #[test]

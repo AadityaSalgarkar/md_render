@@ -273,6 +273,10 @@ struct PathQuery {
 #[derive(Deserialize)]
 struct AddDocuments {
   paths: Vec<String>,
+  /// Workspace the paths must join. Without it every path goes to the
+  /// workspace of its own directory, creating one if needed.
+  #[serde(default)]
+  ws: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -332,22 +336,27 @@ fn documents_of(state: &Shared, workspace: Option<&str>) -> Vec<DocumentMeta> {
 }
 
 /// Rescan the sources feeding one workspace (or all of them) for markdown
-/// added since. The disk walk happens outside the write lock.
+/// added since. Each workspace rescans its own sources into itself, so a
+/// refresh never creates a workspace. The disk walk happens outside the
+/// write lock.
 fn rescan(state: &Shared, workspace: Option<&str>) {
-  let sources: Vec<String> = {
+  let targets: Vec<(PathBuf, String, Vec<String>)> = {
     let guard = state.read().unwrap();
     guard
       .workspaces
       .iter()
       .filter(|ws| workspace.map(|name| ws.name == name).unwrap_or(true))
-      .flat_map(|ws| ws.sources.iter().cloned())
+      .filter(|ws| !ws.sources.is_empty())
+      .map(|ws| (ws.dir.clone(), ws.name.clone(), ws.sources.clone()))
       .collect()
   };
 
-  if sources.is_empty() {
-    return;
-  }
-  if let Ok(specs) = crate::cli::group_workspaces(&sources) {
+  let specs: Vec<WorkspaceSpec> = targets
+    .iter()
+    .filter_map(|(dir, name, sources)| crate::cli::spec_for_workspace(dir, name, sources).ok())
+    .collect();
+
+  if !specs.is_empty() {
     state.write().unwrap().add_workspaces(specs, false);
   }
 }
@@ -510,15 +519,43 @@ async fn add_documents(
     return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
   }
 
-  let specs = match crate::cli::group_workspaces(&body.paths) {
+  // Build the specs (a disk walk) outside the write lock, as rescan does.
+  let specs = match body.ws.as_deref() {
+    None => crate::cli::group_workspaces(&body.paths),
+    Some(name) => {
+      let target = state
+        .read()
+        .unwrap()
+        .workspace(name)
+        .map(|ws| (ws.dir.clone(), ws.name.clone()));
+      let Some((dir, name)) = target else {
+        return (StatusCode::NOT_FOUND, "no such workspace").into_response();
+      };
+      crate::cli::spec_for_workspace(&dir, &name, &body.paths).map(|spec| vec![spec])
+    }
+  };
+  let specs = match specs {
     Ok(specs) => specs,
     Err(err) => return (StatusCode::BAD_REQUEST, err.to_string()).into_response(),
   };
 
   let (added, workspaces) = state.write().unwrap().add_workspaces(specs, true);
-  let labels: Vec<String> = added.into_iter().map(|doc| doc.label).collect();
+  let labels: Vec<String> = added.iter().map(|doc| doc.label.clone()).collect();
 
-  Json(serde_json::json!({ "added": labels, "workspaces": workspaces })).into_response()
+  // The entries just opened, with their fresh ids, so a caller can address
+  // them straight away.
+  let added_paths: HashSet<PathBuf> = added.into_iter().map(|doc| doc.path).collect();
+  let documents: Vec<DocumentMeta> = documents_of(&state, None)
+    .into_iter()
+    .filter(|doc| added_paths.contains(Path::new(&doc.path)))
+    .collect();
+
+  Json(serde_json::json!({
+    "added": labels,
+    "workspaces": workspaces,
+    "documents": documents,
+  }))
+  .into_response()
 }
 
 /// The workspace list as the API reports it: name, directory, tab count.
@@ -1384,6 +1421,129 @@ mod tests {
       let (_, files) = http(addr, get(addr, "/api/files")).await;
       assert!(!files.contains("a.md"));
       assert!(files.contains("b.md"));
+    });
+  }
+
+  #[test]
+  fn a_file_added_with_a_workspace_name_is_labelled_relative_to_that_directory() {
+    let dir = temp_dir("ws-add");
+    let nested = dir.join("nested");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(dir.join("a.md"), "# a").unwrap();
+    let deep = nested.join("c.md");
+    fs::write(&deep, "# c").unwrap();
+
+    let mut state = ServerState::new(specs_for(&[dir.clone()]), "token".to_string());
+    // a.md sorts before nested/c.md.
+    assert_eq!(all_ids(&state), vec![0, 1]);
+    assert!(state.remove_document(1).is_some());
+
+    // Naming the nested file for its workspace re-opens it there, under its
+    // old label and a fresh id — no `nested` workspace appears.
+    let spec = crate::cli::spec_for_workspace(&dir, "ws-add", &[deep.to_string_lossy().to_string()]).unwrap();
+    let (added, touched) = state.add_workspaces(vec![spec], true);
+    assert_eq!(added.len(), 1);
+    assert_eq!(added[0].label, "nested/c.md");
+    assert_eq!(state.workspaces.len(), 1);
+    assert_eq!(touched, vec![state.workspaces[0].name.clone()]);
+    assert_eq!(all_ids(&state), vec![0, 2]);
+  }
+
+  #[test]
+  fn a_rescan_never_creates_a_workspace_from_a_nested_source() {
+    let dir = temp_dir("ws-rescan-nested");
+    let nested = dir.join("nested");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(dir.join("a.md"), "# a").unwrap();
+    let deep = nested.join("c.md");
+    fs::write(&deep, "# c").unwrap();
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[dir.clone()]),
+      "token".to_string(),
+    )));
+    // The nested file becomes a source of the directory's workspace.
+    {
+      let spec = crate::cli::spec_for_workspace(&dir, "x", &[deep.to_string_lossy().to_string()]).unwrap();
+      shared.write().unwrap().add_workspaces(vec![spec], true);
+    }
+
+    fs::write(nested.join("later.md"), "# later").unwrap();
+    rescan(&shared, None);
+
+    let guard = shared.read().unwrap();
+    assert_eq!(guard.workspaces.len(), 1);
+    let labels: Vec<&str> = guard.workspaces[0]
+      .documents
+      .iter()
+      .map(|d| d.document.label.as_str())
+      .collect();
+    assert_eq!(labels, vec!["a.md", "nested/c.md", "nested/later.md"]);
+  }
+
+  #[test]
+  fn adding_to_a_named_workspace_over_http_refuses_outsiders_and_returns_ids() {
+    let base = temp_dir("ws-add-http");
+    let docs = base.join("docs");
+    let nested = docs.join("nested");
+    let other = base.join("other");
+    fs::create_dir_all(&nested).unwrap();
+    fs::create_dir_all(&other).unwrap();
+    fs::write(docs.join("a.md"), "# a").unwrap();
+    let deep = nested.join("c.md");
+    fs::write(&deep, "# c").unwrap();
+    let far = other.join("far.md");
+    fs::write(&far, "# far").unwrap();
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[docs.join("a.md")]),
+      "test-token".to_string(),
+    )));
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      tokio::spawn(async move {
+        let _ = axum::serve(listener, router(shared)).await;
+      });
+
+      let post = |body: String| with_token(addr, "POST", "/api/documents", Some("test-token"), Some(&body));
+
+      // Unknown workspace.
+      let body = serde_json::json!({ "paths": [deep.display().to_string()], "ws": "nowhere" }).to_string();
+      let (status, _) = http(addr, post(body)).await;
+      assert_eq!(status, 404);
+
+      // A path outside the workspace's directory is refused, not misplaced.
+      let body = serde_json::json!({ "paths": [far.display().to_string()], "ws": "docs" }).to_string();
+      let (status, text) = http(addr, post(body)).await;
+      assert_eq!(status, 400);
+      assert!(text.contains("outside the workspace"));
+      let (_, workspaces) = http(addr, get(addr, "/api/workspaces")).await;
+      assert!(!workspaces.contains("\"other\""));
+
+      // A nested file joins under its relative label, and the response names
+      // the entry with its id so the caller can address it at once.
+      let body = serde_json::json!({ "paths": [deep.display().to_string()], "ws": "docs" }).to_string();
+      let (status, text) = http(addr, post(body)).await;
+      assert_eq!(status, 200);
+      let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+      assert_eq!(parsed["workspaces"], serde_json::json!(["docs"]));
+      assert_eq!(parsed["documents"][0]["label"], "nested/c.md");
+      assert_eq!(parsed["documents"][0]["workspace"], "docs");
+      assert_eq!(parsed["documents"][0]["id"], 1);
+
+      // Adding it again reports nothing new.
+      let body = serde_json::json!({ "paths": [deep.display().to_string()], "ws": "docs" }).to_string();
+      let (_, text) = http(addr, post(body)).await;
+      let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+      assert_eq!(parsed["added"], serde_json::json!([]));
+      assert_eq!(parsed["documents"], serde_json::json!([]));
     });
   }
 
