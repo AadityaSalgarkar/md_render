@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MD_RENDER — markdown, set like a book</title>
-<meta name="description" content="A markdown renderer for macOS and Linux with book typography, six themes, tabs, review comments, and a server mode for reading over SSH.">
+<meta name="description" content="A markdown renderer for macOS and Linux with book typography, eight themes, tabs, review comments, and a server mode for reading over SSH.">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -302,7 +302,7 @@ footer .mono, .mono { font-family: "IBM Plex Mono", monospace; font-size: 0.8rem
   <div class="eyebrow">MD_RENDER · macOS + Linux · Tauri 2</div>
   <h1>Markdown, set like a book.</h1>
   <div class="ornament">◆</div>
-  <p class="lede">A markdown renderer with book typography — six themes, a
+  <p class="lede">A markdown renderer with book typography — eight themes, a
   document index, math, Mermaid, review comments — in a desktop window or
   served to your browser over SSH.</p>
 
@@ -337,13 +337,17 @@ serving 4 files on <span class="s">http://127.0.0.1:9999</span>
   them in serious book typography. It is a small Tauri app: a Rust core with a
   React reading surface, built for macOS and Linux.</p>
   <ul>
-    <li>Six typographic themes, three light and three dark, each with its own
-    faces, colors and code palette</li>
+    <li>Eight typographic themes, five light and three dark, each with its
+    own faces, colors and code palette</li>
     <li>Collapsible document index built from headings, with scroll-spy and a
     reading-progress bar</li>
     <li>Several files open as tabs — in the window or in the browser</li>
     <li>GitHub-flavored markdown, KaTeX math, Mermaid diagrams,
     syntax-highlighted code, local images</li>
+    <li>Markdown written for MathJax renders as it does there:
+    <code>\(…\)</code> and <code>\[…\]</code> delimiters, bare
+    <code>\begin{align}</code> blocks, AMS equation numbering,
+    <code>\label</code> and <code>\eqref</code></li>
     <li>Split-pane editor with save, 30-second autosave, and save-on-close</li>
     <li>Review comments attached to selected passages, stored in the markdown
     itself, with clean export</li>
@@ -502,6 +506,18 @@ mdrender --port ~/notes.md          <span class="c"># on the server</span></code
       <td><strong>Forest</strong> — moss and bark on a sage page</td>
       <td><span class="swatch"><i style="background:#0B1512"></i><i style="background:#7FB685"></i><i style="background:#D9A05B"></i></span></td>
       <td><strong>Evergreen</strong> — moss and amber on pine-black</td>
+    </tr>
+    <tr>
+      <td><span class="swatch"><i style="background:#FFFFFF"></i><i style="background:#22558E"></i><i style="background:#2E7D32"></i></span></td>
+      <td><strong>Plain</strong> — bare Helvetica on white, blue links, nothing else</td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td><span class="swatch"><i style="background:#FFFFFF"></i><i style="background:#8E7BD0"></i><i style="background:#5E42BC"></i></span></td>
+      <td><strong>Ponder</strong> — system sans on white with a violet accent, code in Google Sans Code</td>
+      <td></td>
+      <td></td>
     </tr>
   </table>
 </section>

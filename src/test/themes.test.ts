@@ -38,6 +38,24 @@ describe('theme registry', () => {
     expect(themes.some((t) => t.mode === 'light')).toBe(true)
     expect(themes.some((t) => t.mode === 'dark')).toBe(true)
   })
+
+  it('has the plain sans-serif theme with its site colours', () => {
+    const plain = getTheme('plain')!
+    expect(plain.mode).toBe('light')
+    expect(plain.vars['--bg-primary']).toBe('#FFFFFF')
+    expect(plain.vars['--accent']).toBe('#22558E')
+    expect(plain.vars['--font-body']).toMatch(/^Helvetica/)
+    // No serif face anywhere: the whole point of the theme.
+    expect(plain.vars['--font-head']).not.toMatch(/serif"|Georgia/)
+  })
+
+  it('has the ponder theme with its violet accent and code face', () => {
+    const ponder = getTheme('ponder')!
+    expect(ponder.mode).toBe('light')
+    expect(ponder.vars['--accent']).toBe('#8E7BD0')
+    expect(ponder.vars['--font-mono']).toMatch(/^"Google Sans Code"/)
+    expect(ponder.vars['--font-body']).toMatch(/^-apple-system/)
+  })
 })
 
 describe('getTheme', () => {

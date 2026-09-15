@@ -172,6 +172,38 @@ code
     expect(copyButton).toBeInTheDocument()
   })
 
+  it('renders MathJax-style delimiters and bare environments as math', () => {
+    const content = [
+      'Let \\(X_t\\) satisfy',
+      '',
+      '\\[dX_t = a\\,dt\\]',
+      '',
+      '\\begin{align}',
+      'a &= b \\label{eq:ab} \\\\',
+      'c &= d',
+      '\\end{align}',
+      '',
+      'By \\eqref{eq:ab} we are done.',
+    ].join('\n')
+    render(<Preview content={content} tocOpen={false} />)
+
+    // Inline and display math both rendered by KaTeX. (KaTeX keeps the TeX
+    // source in an accessible annotation, so the raw text is checked outside
+    // the rendered math only.)
+    expect(document.querySelectorAll('.katex').length).toBeGreaterThanOrEqual(3)
+    expect(document.querySelectorAll('.katex-display').length).toBe(2)
+    const outside = Array.from(document.querySelectorAll('.markdown-body p'))
+      .map((p) => p.textContent ?? '')
+      .join(' ')
+    expect(outside).not.toContain('\\(')
+    expect(outside).not.toContain('\\begin')
+    // The align rows carry AMS numbers, and the reference resolves to one.
+    const tags = Array.from(document.querySelectorAll('.katex .tag')).map((el) => el.textContent)
+    expect(tags.join(' ')).toContain('1')
+    expect(tags.join(' ')).toContain('2')
+    expect(screen.getByText(/By \(1\) we are done\./)).toBeInTheDocument()
+  })
+
   it('renders inline math', () => {
     render(<Preview content="The equation $E = mc^2$ is famous." tocOpen={false} />)
     const katexSpan = document.querySelector('.katex')

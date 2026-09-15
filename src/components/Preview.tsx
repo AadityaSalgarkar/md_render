@@ -27,6 +27,7 @@ import { MermaidDiagram } from './MermaidDiagram'
 import { Quiz, Enumerate, Option, Answer } from './Quiz'
 import { resolveImageSrc } from '../lib/resolveImageSrc'
 import { prepareQuizBlocks } from '../lib/quiz'
+import { normalizeMath } from '../lib/math'
 import type { Heading } from '../types'
 
 interface PreviewProps {
@@ -100,7 +101,9 @@ export function Preview({
   )
 
   // Rewrite <quiz> tags to their parser-safe internal names before parsing.
-  const preparedContent = useMemo(() => prepareQuizBlocks(content), [content])
+  // MathJax-style math (bracket delimiters, bare AMS environments, numbering,
+  // labels) is normalised for KaTeX before the quiz markup is prepared.
+  const preparedContent = useMemo(() => prepareQuizBlocks(normalizeMath(content)), [content])
 
   const components: Components = useMemo(() => ({
     pre: ({ children, ...props }) => <PreWithCopy {...props}>{children}</PreWithCopy>,
