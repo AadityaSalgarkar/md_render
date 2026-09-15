@@ -260,6 +260,42 @@ export const themes: ThemeDefinition[] = [
       '--code-builtin': '#C57F5B',
     },
   },
+  {
+    // The bare personal-notes look: browser-default black Helvetica on
+    // white, links in one blue, a grey rule for quotes, and GitHub's light
+    // code palette. No serif, no cream, no texture.
+    id: 'plain',
+    name: 'Plain',
+    mode: 'light',
+    blurb: 'Bare Helvetica notes on white — blue links, grey rules, nothing else.',
+    swatch: ['#FFFFFF', '#22558E', '#2E7D32'],
+    vars: {
+      '--bg-primary': '#FFFFFF',
+      '--bg-secondary': '#F7F7F7',
+      '--bg-editor': '#FFFFFF',
+      '--bg-preview': '#FFFFFF',
+      '--text-primary': '#000000',
+      '--text-secondary': '#555555',
+      '--text-muted': '#888888',
+      '--accent': '#22558E',
+      '--accent-hover': '#1A4472',
+      '--accent-secondary': '#2E7D32',
+      '--border': '#DDDDDD',
+      '--border-strong': '#BBBBBB',
+      '--code-bg': '#F6F8FA',
+      '--selection': 'rgba(34, 85, 142, 0.15)',
+      '--shadow-fold': '8px 0 24px -8px rgba(0, 0, 0, 0.12)',
+      '--font-head': 'Helvetica, Arial, sans-serif',
+      '--font-body': 'Helvetica, Arial, sans-serif',
+      '--font-mono': '"SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace',
+      '--code-keyword': '#CF222E',
+      '--code-string': '#0A3069',
+      '--code-number': '#0550AE',
+      '--code-comment': '#6E7781',
+      '--code-function': '#8250DF',
+      '--code-builtin': '#953800',
+    },
+  },
 ]
 
 export const DEFAULT_LIGHT = 'warm-paper'

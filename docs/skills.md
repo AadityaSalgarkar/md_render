@@ -90,7 +90,7 @@ to `docs` as `guide/setup.md`). `write_document` and `add_comment` only touch
 files that are open as tabs; an open browser re-reads a changed file within
 30 seconds unless it holds unsaved edits, and `focus_tab` makes it reload at
 once. `set_theme` accepts `warm-paper`, `midnight-ink`, `newsprint`,
-`forest`, `nocturne`, `evergreen`.
+`forest`, `nocturne`, `evergreen`, `plain`.
 
 ### Without MCP: the HTTP API
 

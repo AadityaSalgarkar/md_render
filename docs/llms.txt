@@ -1,6 +1,6 @@
 # MD_RENDER
 
-> A markdown renderer for macOS and Linux built on Tauri 2 (Rust + React). It sets `.md`/`.markdown` files in book typography with six themes, a heading index, KaTeX math, Mermaid diagrams, syntax highlighting, review comments stored in the file, and tabs across several documents. The same binary runs as a desktop window or, with `--port`, as a localhost HTTP server with identical capabilities — including editing and saving — which makes it usable over an SSH port-forward from a headless machine.
+> A markdown renderer for macOS and Linux built on Tauri 2 (Rust + React). It sets `.md`/`.markdown` files in book typography with seven themes, a heading index, KaTeX math, Mermaid diagrams, syntax highlighting, review comments stored in the file, and tabs across several documents. The same binary runs as a desktop window or, with `--port`, as a localhost HTTP server with identical capabilities — including editing and saving — which makes it usable over an SSH port-forward from a headless machine.
 
 Key facts:
 
