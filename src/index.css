@@ -28,6 +28,8 @@
   --code-bg: #F0EDE6;
   --selection: rgba(201, 85, 61, 0.15);
   --shadow-fold: 8px 0 24px -8px rgba(0, 0, 0, 0.12);
+  --math-display-bg: var(--code-bg);
+  --math-display-padding: 1em 1.5em;
   /* Typography */
   --font-head: 'Playfair Display', Georgia, serif;
   --font-body: 'Source Serif 4', Georgia, serif;
@@ -873,8 +875,8 @@ body {
 
 .markdown-body .katex-display {
   margin: 1.5em 0;
-  padding: 1em 1.5em;
-  background: var(--code-bg);
+  padding: var(--math-display-padding, 1em 1.5em);
+  background: var(--math-display-bg, var(--code-bg));
   border-radius: 8px;
   overflow-x: auto;
 }
