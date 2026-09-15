@@ -90,7 +90,7 @@ to `docs` as `guide/setup.md`). `write_document` and `add_comment` only touch
 files that are open as tabs; an open browser re-reads a changed file within
 30 seconds unless it holds unsaved edits, and `focus_tab` makes it reload at
 once. `set_theme` accepts `warm-paper`, `midnight-ink`, `newsprint`,
-`forest`, `nocturne`, `evergreen`, `plain`.
+`forest`, `nocturne`, `evergreen`, `plain`, `ponder`.
 
 ### Without MCP: the HTTP API
 
@@ -111,6 +111,16 @@ Mutations need `Authorization: Bearer <token>` with the token from
 `DELETE /api/file?id=N`, `DELETE /api/workspaces?name=X`,
 `PUT /api/view {ws, doc?, theme?}`, `POST /api/export {path, content}`,
 `POST /api/shutdown`.
+
+## Math written for MathJax
+
+Documents from MathJax sites render as they do there: `\(…\)` and `\[…\]`
+delimiters, bare `\begin{align}` / `\begin{equation}` blocks, AMS numbering
+(one number per equation or per align row; `\nonumber` suppresses),
+`\label{key}` and `\eqref{key}` all work. Use `$…$` / `$$…$$` and starred
+environments as usual when numbers are not wanted. The `plain` and `ponder`
+themes show display math on the page rather than in a panel, as those
+blogs do.
 
 ## Quiz blocks
 

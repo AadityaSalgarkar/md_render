@@ -48,6 +48,14 @@ describe('theme registry', () => {
     // No serif face anywhere: the whole point of the theme.
     expect(plain.vars['--font-head']).not.toMatch(/serif"|Georgia/)
   })
+
+  it('has the ponder theme with its violet accent and code face', () => {
+    const ponder = getTheme('ponder')!
+    expect(ponder.mode).toBe('light')
+    expect(ponder.vars['--accent']).toBe('#8E7BD0')
+    expect(ponder.vars['--font-mono']).toMatch(/^"Google Sans Code"/)
+    expect(ponder.vars['--font-body']).toMatch(/^-apple-system/)
+  })
 })
 
 describe('getTheme', () => {

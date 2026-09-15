@@ -4,7 +4,7 @@
 [![release](https://img.shields.io/github/v/release/AadityaSalgarkar/md_render?sort=semver)](https://github.com/AadityaSalgarkar/md_render/releases/latest)
 
 Markdown, set like a book. A renderer for macOS and Linux built on Tauri 2 —
-seven typographic themes, a document index, math, Mermaid, review comments, and
+eight typographic themes, a document index, math, Mermaid, review comments, and
 a server mode that puts the same app in your browser over SSH.
 
 ```bash
@@ -19,9 +19,10 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
 
 ## Features
 
-- Seven typographic themes — four light (Warm Paper, Newsprint, Forest, and
-  Plain: bare Helvetica on white), three dark (Midnight Ink, Nocturne,
-  Evergreen) — each with its own faces, colors, and code palette
+- Eight typographic themes — five light (Warm Paper, Newsprint, Forest,
+  Plain: bare Helvetica on white, and Ponder: system sans with a violet
+  accent), three dark (Midnight Ink, Nocturne, Evergreen) — each with its
+  own faces, colors, and code palette
 - Collapsible document index built from headings, with scroll-spy and a
   reading-progress bar
 - Several files open as tabs, in the window or in the browser, each closable
@@ -29,6 +30,9 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
   after launch, and a closed tab stays closed until the file is opened again
 - GitHub-flavored markdown, KaTeX math, Mermaid diagrams, highlighted code,
   local images resolved relative to the file
+- Markdown written for MathJax renders as it does there: `\(…\)` and
+  `\[…\]` delimiters, bare `\begin{align}` blocks, AMS equation numbering,
+  `\label` and `\eqref`
 - Split-pane editor with save, 30-second autosave, and save-on-close
 - Review comments attached to selected passages, stored in the markdown
   itself, with clean export (`notes.md` → `notes.clean.md`)
