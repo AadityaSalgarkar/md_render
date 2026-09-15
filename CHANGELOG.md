@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.4.0...v0.5.0) (2026-09-15)
+
+
+### Features
+
+* Plain and Ponder themes, and MathJax-compatible math ([94ee0b5](https://github.com/AadityaSalgarkar/md_render/commit/94ee0b57a599e08ca0f3c15233c95bcb69d40682))
+* **preview:** render markdown written for MathJax as MathJax would ([7b8dab8](https://github.com/AadityaSalgarkar/md_render/commit/7b8dab83bf46d684317e8077de07f863f3f378a4))
+* **themes:** Plain, a bare sans-serif theme ([b4511a9](https://github.com/AadityaSalgarkar/md_render/commit/b4511a93b65a1c526a8db75d565d6ab05ab49654))
+* **themes:** Ponder, system sans with a violet accent ([e36b37f](https://github.com/AadityaSalgarkar/md_render/commit/e36b37f886c988c092c8b022607c1dff866ca5ce))
+
 ## [0.4.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.3.0...v0.4.0) (2026-09-04)
 
 
