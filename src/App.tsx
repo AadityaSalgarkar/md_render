@@ -50,8 +50,9 @@ export default function App() {
   const [fileLoaded, setFileLoaded] = useState(false)
   const [selectedText, setSelectedText] = useState<string | null>(null)
   const [commentsOpen, setCommentsOpen] = useState(false)
-  // Highlight-to-comment only reacts to selections while enabled; off by
-  // default so reading and copying never pop the pane open.
+  // Selections are captured while the comments pane is open, or while
+  // highlight-to-comment mode is armed with the pane closed. The mode is off
+  // by default so reading and copying never pop the pane open.
   const [commentModeEnabled, setCommentModeEnabled] = useState(false)
   const [saveState, setSaveState] = useState<string | null>(null)
   const [exportState, setExportState] = useState<string | null>(null)
@@ -321,9 +322,15 @@ export default function App() {
   useEffect(() => {
     commentModeEnabledRef.current = commentModeEnabled
   }, [commentModeEnabled])
+  const commentsOpenRef = useRef(commentsOpen)
+  useEffect(() => {
+    commentsOpenRef.current = commentsOpen
+  }, [commentsOpen])
 
+  // An open pane is an explicit invitation to comment, so its own hint
+  // ("highlight text to attach a comment") holds without arming the mode.
   const handleTextSelection = useCallback((text: string) => {
-    if (!commentModeEnabledRef.current) return
+    if (!commentModeEnabledRef.current && !commentsOpenRef.current) return
     setSelectedText(text)
     setCommentsOpen(true)
     setSaveState(null)
@@ -703,8 +710,8 @@ export default function App() {
           data-comment-mode={commentModeEnabled ? 'on' : 'off'}
           title={
             commentModeEnabled
-              ? 'Comments — highlight-to-comment on (double-click to turn off)'
-              : 'Comments — double-click to turn on highlight-to-comment'
+              ? 'Comments — capturing highlights even while closed (double-click to stop)'
+              : 'Comments — open, then highlight text to comment on it (double-click to capture highlights while closed)'
           }
         >
           <CommentIcon />
