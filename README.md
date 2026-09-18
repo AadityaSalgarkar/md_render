@@ -35,7 +35,9 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
   `\label` and `\eqref`
 - Split-pane editor with save, 30-second autosave, and save-on-close
 - Review comments attached to selected passages, stored in the markdown
-  itself, with clean export (`notes.md` → `notes.clean.md`)
+  itself, with clean export (`notes.md` → `notes.clean.md`). Open the comments
+  pane and highlight a passage; double-click the comments button to keep
+  capturing highlights while the pane is closed
 - Quiz blocks: `<quiz>question <enumerate><option>…</option></enumerate></quiz>`
   renders a card whose options stay hidden until the eye button reveals them;
   an `<answer>…</answer>` inside (or anywhere) stays hidden until clicked

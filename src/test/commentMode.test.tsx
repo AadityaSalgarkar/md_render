@@ -46,7 +46,7 @@ beforeEach(() => {
 })
 
 describe('highlight-to-comment mode', () => {
-  it('ignores text selection while disabled (the default)', async () => {
+  it('ignores text selection while the pane is closed and the mode is off', async () => {
     render(<App />)
     await screen.findAllByText('Selectable passage of text.')
 
@@ -55,6 +55,39 @@ describe('highlight-to-comment mode', () => {
     // No comments pane, no captured selection.
     expect(screen.queryByRole('complementary', { name: /comments/i })).toBeNull()
     expect(commentsButton()).toHaveAttribute('data-comment-mode', 'off')
+  })
+
+  it('an open pane captures selections without arming the mode', async () => {
+    render(<App />)
+    await screen.findAllByText('Selectable passage of text.')
+
+    fireEvent.click(commentsButton())
+    await screen.findByRole('complementary', { name: /comments/i })
+    expect(commentsButton()).toHaveAttribute('data-comment-mode', 'off')
+
+    selectInPreview('Selectable passage of text.')
+
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: /add comment/i })).toHaveTextContent(
+        'Selectable passage of text.',
+      )
+    })
+    expect(screen.getByRole('textbox', { name: /comment text/i })).toBeEnabled()
+  })
+
+  it('closing the pane stops capturing again while the mode is off', async () => {
+    render(<App />)
+    await screen.findAllByText('Selectable passage of text.')
+
+    fireEvent.click(commentsButton())
+    await screen.findByRole('complementary', { name: /comments/i })
+    fireEvent.click(screen.getByRole('button', { name: /close comments/i }))
+    await waitFor(() => {
+      expect(screen.queryByRole('complementary', { name: /comments/i })).toBeNull()
+    })
+
+    selectInPreview('Selectable passage of text.')
+    expect(screen.queryByRole('complementary', { name: /comments/i })).toBeNull()
   })
 
   it('double-clicking the comments button arms the mode; selection then comments', async () => {

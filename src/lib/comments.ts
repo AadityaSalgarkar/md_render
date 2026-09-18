@@ -67,7 +67,13 @@ export function insertCommentForSelection(
     }
   }
 
-  const nextContent = `${content.slice(0, range.end)}${block}${content.slice(range.end)}`
+  // Land after the block (paragraph, list, …) holding the end of the
+  // selection, never inside it: a block split mid-sentence renders as two
+  // paragraphs, both on disk and on screen.
+  const at = blockEnd(content, range.end)
+  // The blank line that ends the block already supplies the trailing newline.
+  const inserted = content.startsWith('\n', at) ? block.slice(0, -1) : block
+  const nextContent = `${content.slice(0, at)}${inserted}${content.slice(at)}`
   return { content: nextContent, inserted: true }
 }
 
@@ -107,4 +113,12 @@ function decodeEntities(value: string): string {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
+}
+
+/** Offset of the first blank line at or after `from`, else the end of text. */
+function blockEnd(content: string, from: number): number {
+  const blank = /\n[ \t]*\n/g
+  blank.lastIndex = from
+  const found = blank.exec(content)
+  return found ? found.index : content.length
 }
