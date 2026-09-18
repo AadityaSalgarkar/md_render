@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.1](https://github.com/AadityaSalgarkar/md_render/compare/v0.5.0...v0.5.1) (2026-09-18)
+
+
+### Bug Fixes
+
+* **comments:** capture highlights whenever the comments pane is open ([045d461](https://github.com/AadityaSalgarkar/md_render/commit/045d461396ebc627a7cc2400121be7acdbac5f9a))
+* **comments:** capture highlights while the comments pane is open ([e0471c4](https://github.com/AadityaSalgarkar/md_render/commit/e0471c435188dfd639418decad63d2f81104a677))
+* **comments:** place the chat block after the paragraph, not inside it ([f99785b](https://github.com/AadityaSalgarkar/md_render/commit/f99785b35b4a182bf650c7a52fe9f586372f18a7))
+
 ## [0.5.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.4.0...v0.5.0) (2026-09-15)
 
 
