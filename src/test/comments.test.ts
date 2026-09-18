@@ -19,6 +19,40 @@ describe('comment markdown helpers', () => {
     )
   })
 
+  it('keeps the paragraph whole when the selection ends mid-sentence', () => {
+    const result = insertCommentForSelection(
+      'Intro line with a selectable passage of text for testing.\n\nSecond paragraph.',
+      'a selectable pass',
+      'Why?',
+    )
+
+    expect(result.content).toBe(
+      'Intro line with a selectable passage of text for testing.\n'
+        + '<chat><comment>Why?</comment></chat>\n'
+        + '\nSecond paragraph.',
+    )
+  })
+
+  it('lands after a hard-wrapped paragraph, not inside it', () => {
+    const result = insertCommentForSelection(
+      'Line one of the paragraph\nline two of the paragraph.\n\nNext.',
+      'one of the',
+      'Hm',
+    )
+
+    expect(result.content).toBe(
+      'Line one of the paragraph\nline two of the paragraph.\n'
+        + '<chat><comment>Hm</comment></chat>\n'
+        + '\nNext.',
+    )
+  })
+
+  it('appends at the end when the selection sits in the last block', () => {
+    const result = insertCommentForSelection('Only line here', 'line', 'Note')
+
+    expect(result.content).toBe('Only line here\n<chat><comment>Note</comment></chat>\n')
+  })
+
   it('escapes comment content before writing it into markdown', () => {
     const result = insertCommentForSelection('Text', 'Text', 'Use <tag> & explain')
 

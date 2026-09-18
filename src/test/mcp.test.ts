@@ -270,7 +270,7 @@ describe.skipIf(!binary || !bundle)('mdrender MCP server', () => {
     })
     expect(anchored.anchored).toBe(true)
     const onDisk = readFileSync(notes, 'utf8')
-    expect(onDisk).toContain('quick brown fox\n<chat><comment>Needs a &lt;citation&gt;</comment></chat>\n')
+    expect(onDisk).toContain('The quick brown fox.\n<chat><comment>Needs a &lt;citation&gt;</comment></chat>\n')
 
     const orphan = await expectOk('add_comment', {
       path: notes,
