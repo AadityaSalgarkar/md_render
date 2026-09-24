@@ -11,17 +11,21 @@ binary, two modes — a desktop window and an HTTP server with the same
 capabilities. The CLI entry point is the `mdrender` wrapper (usually on PATH
 at `~/bin/mdrender`).
 
-## Open files in the desktop window
+## Open files for the human
 
 ```bash
-mdrender notes.md               # one file
+mdrender notes.md               # serve it and open the human's browser on it
 mdrender a.md b.md ./docs       # several files and a directory -> tabs
+mdrender --app notes.md         # the desktop window instead
 ```
 
-Directory arguments contribute every `.md`/`.markdown` beneath them. The
-command returns immediately; the window opens detached.
+The default starts a server on port 9999 (or joins one already running),
+opens the first document in the browser, prints the workspace URLs and
+returns with the server left running in the background. Directory arguments
+contribute every `.md`/`.markdown` beneath them. `--app` opens the desktop
+window instead, detached.
 
-A URL works wherever a path does, in both modes:
+A URL works wherever a path does, in every mode:
 
 ```bash
 mdrender https://github.com/anthropics/skills/blob/main/README.md
@@ -38,30 +42,32 @@ overrides), and that copy is what opens and what a refresh restores from
 then on — delete it to get back to upstream. Relative images inside a remote
 document do not resolve.
 
-## Serve to a browser (works headless)
+## Serve in the foreground (works headless)
 
 ```bash
 mdrender --port notes.md ./docs     # default port 9999 (auto-falls forward)
 mdrender --port 8080 notes.md       # explicit port (1-65535)
 ```
 
-Each directory (or a file's parent directory) becomes a workspace at
-`http://127.0.0.1:9999/<dirname>/` with its own tab set. This prints the
-workspace URLs and blocks until ctrl-c — run it in the background if you
-need your shell back. No display is required, so it works on servers; the
+The same server as the default mode, kept in the foreground with no browser
+opened: it prints the workspace URLs and blocks until ctrl-c, so run it in
+the background if you need your shell back. Each directory (or a file's
+parent directory) becomes a workspace at `http://127.0.0.1:9999/<dirname>/`
+with its own tab set. No display is required, so it works on servers; the
 human reads it through an SSH forward:
 
 ```bash
 ssh -L 9999:127.0.0.1:9999 host   # run on the human's machine
 ```
 
-**Adding tabs:** running `mdrender --port extra.md` while a server already
-holds the port does not fail — it hands `extra.md` to the running server as a
-new tab and exits. Open browsers pick it up within a few seconds.
+**Adding tabs:** running `mdrender extra.md` (or `mdrender --port extra.md`)
+while a server already holds the port does not fail — it hands `extra.md` to
+the running server as a new tab and exits. Open browsers pick it up within a
+few seconds; the default mode also focuses the browser on it.
 
 **Closing tabs:** every tab has a ✕ in the strip (window and browser alike).
 A closed file does not come back on refresh; re-open it by naming it again
-(`mdrender --port extra.md`, or `mdrender extra.md` for the window), or with
+(`mdrender extra.md`, or `mdrender --app extra.md` for the window), or with
 the MCP `open_tab` tool, which also keeps it in its original workspace.
 
 ## Driving the server from an agent (MCP)
