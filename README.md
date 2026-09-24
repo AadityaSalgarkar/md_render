@@ -4,7 +4,7 @@
 [![release](https://img.shields.io/github/v/release/AadityaSalgarkar/md_render?sort=semver)](https://github.com/AadityaSalgarkar/md_render/releases/latest)
 
 Markdown, set like a book. A renderer for macOS and Linux built on Tauri 2 —
-eight typographic themes, a document index, math, Mermaid, review comments, and
+nine typographic themes, a document index, math, Mermaid, review comments, and
 a server mode that puts the same app in your browser over SSH.
 
 ```bash
@@ -19,9 +19,9 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
 
 ## Features
 
-- Eight typographic themes — five light (Warm Paper, Newsprint, Forest,
-  Plain: bare Helvetica on white, and Ponder: system sans with a violet
-  accent), three dark (Midnight Ink, Nocturne, Evergreen) — each with its
+- Nine typographic themes — six light (Warm Paper, Newsprint, Forest,
+  Plain: bare Helvetica on white, Ponder: system sans with a violet accent,
+  and Paradigm: Literata in dark teal on warm stone), three dark (Midnight Ink, Nocturne, Evergreen) — each with its
   own faces, colors, and code palette
 - Collapsible document index built from headings, with scroll-spy and a
   reading-progress bar
