@@ -1,5 +1,6 @@
 import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -256,6 +257,90 @@ describe.skipIf(!binary)('md-render --port', () => {
     const added = after.find((doc) => doc.label === 'second.md')!
     const document = await serverBackend(origin).readDocument(added.id)
     expect(document.content).toContain('Second document')
+  }, 30_000)
+
+  // A stand-in browser: MDRENDER_BROWSER names the opener, and this one just
+  // records the URL it was handed.
+  const fakeBrowser = () => {
+    const seen = path.join(work, `browser-${Date.now()}-${Math.random()}.txt`)
+    const script = path.join(work, 'browser.sh')
+    writeFileSync(script, `#!/usr/bin/env bash\necho "$1" >> "${seen}"\n`)
+    chmodSync(script, 0o755)
+    return { script, seen }
+  }
+
+  const urlsOpened = async (seen: string, attempts = 30): Promise<string[]> => {
+    for (let i = 0; i < attempts; i += 1) {
+      if (existsSync(seen)) return readFileSync(seen, 'utf8').trim().split('\n')
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    return []
+  }
+
+  const documentUrl = async (base: string, file: string): Promise<string> => {
+    const files = (await (await fetch(`${base}/api/files`)).json()) as Array<{
+      id: number
+      path: string
+      workspace: string
+    }>
+    const entry = files.find((doc) => doc.path === file)!
+    return `${base}/${entry.workspace}/?doc=${entry.id}`
+  }
+
+  it('with --open, joining a running server hands the named document to the browser', async () => {
+    const { script, seen } = fakeBrowser()
+
+    const output = execFileSync(binary!, ['--port', String(port), '--open', secondDoc], {
+      encoding: 'utf8',
+      env: { ...process.env, XDG_STATE_HOME: path.join(work, 'state'), MDRENDER_BROWSER: script },
+      timeout: 20_000,
+    })
+
+    // second.md is open already from the previous case: the browser still
+    // lands on it, by its existing id.
+    const url = await documentUrl(origin, secondDoc)
+    expect(output).toContain(`opening ${url} in the browser`)
+    expect(await urlsOpened(seen)).toEqual([url])
+  }, 30_000)
+
+  it('with --open and no opener, says which URL to open by hand', async () => {
+    const { seen } = fakeBrowser()
+
+    const output = execFileSync(binary!, ['--port', String(port), '--open', secondDoc], {
+      encoding: 'utf8',
+      env: { ...process.env, XDG_STATE_HOME: path.join(work, 'state'), MDRENDER_BROWSER: '' },
+      timeout: 20_000,
+    })
+
+    const url = await documentUrl(origin, secondDoc)
+    expect(output).toContain(`open ${url} in your browser`)
+    expect(await urlsOpened(seen, 5)).toEqual([])
+  }, 30_000)
+
+  it('with --open, a fresh server opens its first document once the port is bound', async () => {
+    const { script, seen } = fakeBrowser()
+    const freshPort = pickPort()
+    const freshOrigin = `http://127.0.0.1:${freshPort}`
+    let output = ''
+    const fresh = spawn(binary!, ['--port', String(freshPort), '--open', secondDoc, firstDoc], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env: { ...process.env, XDG_STATE_HOME: path.join(work, 'state'), MDRENDER_BROWSER: script },
+    })
+    fresh.stdout!.on('data', (chunk: Buffer) => {
+      output += chunk.toString()
+    })
+
+    try {
+      expect(await waitForServer(freshOrigin)).toBe(true)
+      // The first document named on the command line, not the first found.
+      const url = await documentUrl(freshOrigin, secondDoc)
+      expect(await urlsOpened(seen)).toEqual([url])
+      expect(output).toContain(`opening ${url} in the browser`)
+      // Said before the ctrl-c hint, which the wrapper waits for.
+      expect(output.indexOf('opening ')).toBeLessThan(output.indexOf('(ctrl-c to stop)'))
+    } finally {
+      fresh.kill('SIGTERM')
+    }
   }, 30_000)
 
   it('refuses to close a tab without the token', async () => {

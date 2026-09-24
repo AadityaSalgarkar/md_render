@@ -79,14 +79,25 @@ pub fn probe(host: &str, port: u16) -> Probe {
   }
 }
 
-/// Hand new documents to a running server. Returns the labels it added and
-/// the workspace names they landed in, so the caller can print the URLs.
+/// What a running server said after being handed documents.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Added {
+  /// Labels of the documents that were not open before.
+  pub labels: Vec<String>,
+  /// Workspaces the named documents live in, so the caller can print URLs.
+  pub workspaces: Vec<String>,
+  /// Workspace and id of the first document named, whether or not it was
+  /// open already: where a browser should land.
+  pub first: Option<(String, u64)>,
+}
+
+/// Hand new documents to a running server.
 pub fn add_documents(
   host: &str,
   port: u16,
   token: &str,
   paths: &[String],
-) -> Result<(Vec<String>, Vec<String>), String> {
+) -> Result<Added, String> {
   let body = serde_json::json!({ "paths": paths }).to_string();
   let raw = format!(
     "POST /api/documents HTTP/1.1\r\n\
@@ -129,12 +140,35 @@ pub fn add_documents(
       .unwrap_or_default()
   };
 
-  Ok((strings("added"), strings("workspaces")))
+  Ok(Added {
+    labels: strings("added"),
+    workspaces: strings("workspaces"),
+    first: first_document(&parsed),
+  })
+}
+
+/// The first entry of `documents` as (workspace, id).
+fn first_document(response: &serde_json::Value) -> Option<(String, u64)> {
+  let document = response.get("documents")?.as_array()?.first()?;
+  let workspace = document.get("workspace")?.as_str()?.to_string();
+  let id = document.get("id")?.as_u64()?;
+  Some((workspace, id))
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn reads_the_first_named_document_out_of_the_response() {
+    let response = serde_json::json!({
+      "added": [],
+      "workspaces": ["docs"],
+      "documents": [{ "id": 4, "label": "b.md", "workspace": "docs", "added": false }]
+    });
+    assert_eq!(first_document(&response), Some(("docs".to_string(), 4)));
+    assert_eq!(first_document(&serde_json::json!({ "documents": [] })), None);
+  }
 
   #[test]
   fn parses_a_status_line_and_body() {

@@ -42,6 +42,8 @@ pub enum Mode {
     /// `None` means no port was named: start at [`DEFAULT_PORT`] and fall
     /// forward to the next usable one. An explicit port is used exactly.
     port: Option<u16>,
+    /// Hand the first document to the browser once serving.
+    open: bool,
     documents: Vec<Document>,
     sources: Vec<String>,
   },
@@ -102,6 +104,9 @@ pub const USAGE: &str = "\
 Usage:
   md-render [FILE|DIR|URL]...                open the desktop app (several files: tabs)
   md-render --port [PORT] [FILE|DIR|URL]...  serve rendered markdown over HTTP
+  md-render --open [FILE|DIR|URL]...         serve, and open the first document in
+                                             the browser (what the mdrender wrapper
+                                             does by default)
 
   A URL (https://...) is downloaded under /tmp/md-render/remote and opened
   from there; GitHub file pages are fetched as their raw content.
@@ -115,12 +120,15 @@ Serving:
 Options:
   -p, --port [PORT]   port to listen on, 1-65535 (default 9999, auto-fallback)
       --host <ADDR>   address to bind (default 127.0.0.1)
+      --open          hand the first document to the browser once serving;
+                      MDRENDER_BROWSER names the opener (empty disables it)
   -h, --help          show this help";
 
 /// Parse argv (already stripped of the binary name).
 pub fn parse(args: &[String]) -> Result<Mode, CliError> {
   let mut serve = false;
   let mut port: Option<u16> = None;
+  let mut open = false;
   let mut host: Option<String> = None;
   let mut paths: Vec<String> = Vec::new();
 
@@ -143,6 +151,12 @@ pub fn parse(args: &[String]) -> Result<Mode, CliError> {
             idx += 1;
           }
         }
+      }
+      "--open" => {
+        // Serving is implied: there is nothing to open otherwise.
+        serve = true;
+        open = true;
+        idx += 1;
       }
       "--host" => {
         let value = args.get(idx + 1).ok_or(CliError::MissingValue("--host"))?;
@@ -177,6 +191,7 @@ pub fn parse(args: &[String]) -> Result<Mode, CliError> {
     Ok(Mode::Serve {
       host: host.unwrap_or_else(|| "127.0.0.1".to_string()),
       port,
+      open,
       documents,
       sources: paths,
     })
@@ -587,6 +602,32 @@ mod tests {
   fn help_is_requested_explicitly() {
     assert_eq!(parse(&args(&["--help"])).unwrap(), Mode::Help);
     assert_eq!(parse(&args(&["-h"])).unwrap(), Mode::Help);
+  }
+
+  #[test]
+  fn open_implies_serving_on_the_default_port() {
+    let dir = temp_dir("cli-open");
+    let doc = dir.join("a.md");
+    std::fs::write(&doc, "# a").unwrap();
+    let mode = parse(&args(&["--open", doc.to_str().unwrap()])).unwrap();
+    match mode {
+      Mode::Serve { port, open, .. } => {
+        assert_eq!(port, None);
+        assert!(open);
+      }
+      other => panic!("expected serve mode, got {:?}", other),
+    }
+  }
+
+  #[test]
+  fn serving_does_not_open_a_browser_unless_asked() {
+    let dir = temp_dir("cli-no-open");
+    let doc = dir.join("a.md");
+    std::fs::write(&doc, "# a").unwrap();
+    match parse(&args(&["--port", doc.to_str().unwrap()])).unwrap() {
+      Mode::Serve { open, .. } => assert!(!open),
+      other => panic!("expected serve mode, got {:?}", other),
+    }
   }
 
   #[test]
