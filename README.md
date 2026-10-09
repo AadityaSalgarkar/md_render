@@ -46,13 +46,19 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
   logs, with a dropdown of views ("loss/ce: train vs val", "val/loss by
   architecture") derived from the metric names, hover metadata and metric
   descriptions, theme colours, and live refresh while training writes
+- TikZ diagrams: a ```` ```tikz ```` fence (or `<tikz>` tag) compiles to SVG
+  with a LaTeX engine built into the app (Tectonic), so TikZ, tikz-cd,
+  pgfplots and circuitikz work with no TeX installation. Diagrams follow the
+  theme, number with the plots as "Figure N", and are cached, so a reload is
+  instant and only an edited diagram recompiles
 - Server mode with full parity: editing and saving work in the browser too
 - Markdown from the internet: `mdrender https://…/README.md` downloads the
   file (GitHub pages as raw content) and opens it like a local one
 - An MCP server (`mdrender --mcp`) so agents can start and stop servers,
   open and close workspaces and tabs, read, write, comment on and export
   documents, focus a tab or switch the theme in the reader's browser, and
-  list the runs and metrics of trackio projects to write plot blocks
+  list the runs and metrics of trackio projects to write plot blocks, and
+  compile TikZ to check a diagram before writing it
 
 ## Install
 
@@ -81,10 +87,30 @@ make install
 
 `make install` detects the platform. On macOS it installs `MD_RENDER.app` and
 the `~/bin/mdrender` wrapper; on Linux everything lands under `~/.local` and
-`~/bin` — no root. Linux needs the webkit2gtk build deps, and both need Rust
-and Node; see the
+`~/bin` — no root. Linux needs the webkit2gtk build deps; both need Rust
+1.92 or newer, Node, and the libraries of the built-in TeX engine:
+
+```bash
+brew install icu4c freetype graphite2 harfbuzz libpng pkgconf          # macOS
+sudo apt install libicu-dev libfontconfig1-dev libfreetype-dev \
+  libgraphite2-dev libharfbuzz-dev libpng-dev zlib1g-dev                # Debian/Ubuntu
+```
+
+The first TikZ diagram on a machine downloads the TeX files it needs (a few
+minutes, once); `mdrender --warm-tikz` does it ahead of time. See the
 [install docs](https://aadityasalgarkar.github.io/md_render/#install) for the
 package list, `PREFIX=`, and the deb/rpm/AppImage bundles.
+
+Or as a container, serving a folder headless:
+
+```bash
+docker build -t md-render .
+docker run --rm -p 127.0.0.1:9999:9999 -v "$PWD:/docs" md-render
+```
+
+The image has the TeX files baked in, so diagrams render offline. Mount
+trackio databases at `/data/trackio` for plot blocks, and a volume at
+`/cache` to keep rendered diagrams across containers.
 
 To make it the macOS default for markdown:
 `brew install duti && duti -s com.mdrender.app .md all`
@@ -214,7 +240,8 @@ src/                 # React frontend
   components/        # Preview, Editor, TabBar, TableOfContents, ThemePicker, CommentPane
   lib/               # backend abstraction, theme registry, comments, image paths
   test/              # Vitest suites, including end-to-end server tests
-src-tauri/src/       # Rust: lib.rs (commands), cli.rs, server.rs, attach.rs, state.rs
+src-tauri/src/       # Rust: lib.rs (commands), cli.rs, server.rs, attach.rs, state.rs,
+                     #   experiments.rs (trackio), tikz.rs (TikZ via Tectonic)
 mcp/                 # MCP server (TypeScript), bundled by `npm run build:mcp`
 bin/mdrender         # cross-platform wrapper
 docs/                # documentation site (GitHub Pages), llms.txt, skills.md
