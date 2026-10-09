@@ -101,11 +101,25 @@ minutes, once); `mdrender --warm-tikz` does it ahead of time. See the
 [install docs](https://aadityasalgarkar.github.io/md_render/#install) for the
 package list, `PREFIX=`, and the deb/rpm/AppImage bundles.
 
-Or as a container, serving a folder headless:
+On a Linux server, install without compiling anything: `md-render` then runs
+the image published with each release, with your home folder, `/tmp` and
+the server state at their real paths, so the `mdrender` command, joining a
+running server and the MCP server all work as with a native install:
 
 ```bash
-docker build -t md-render .
-docker run --rm -p 127.0.0.1:9999:9999 -v "$PWD:/docs" md-render
+curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | MDRENDER_DOCKER=1 sh
+# or, in a checkout: make install-docker
+```
+
+It needs docker, git, node and npm. `MDRENDER_DOCKER_MOUNTS` names extra
+directories outside home to mount; `MDRENDER_IMAGE` picks another image.
+Re-running the install pulls the latest image.
+
+Or run the container directly, serving a folder headless:
+
+```bash
+docker run --rm -p 127.0.0.1:9999:9999 -v "$PWD:/docs" ghcr.io/aadityasalgarkar/md_render
+# or build it: docker build -t md-render .
 ```
 
 The image has the TeX files baked in, so diagrams render offline. Mount

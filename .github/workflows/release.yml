@@ -104,3 +104,15 @@ jobs:
         with:
           tagName: ${{ env.RELEASE_TAG }}
           releaseName: ${{ env.RELEASE_TAG }}
+
+  # Publish the headless server image for the new release to the GitHub
+  # Container Registry; `make install-docker` installs from it.
+  docker-image:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}

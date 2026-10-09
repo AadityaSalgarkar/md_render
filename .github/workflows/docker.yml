@@ -1,28 +1,51 @@
 name: docker
 
 # Builds the headless server image and checks it serves a document and
-# compiles a TikZ diagram. Runs when the image's inputs change.
+# compiles a TikZ diagram. On pull requests that touch the image's inputs it
+# only builds and tests. Called from the release workflow (or run by hand
+# with a tag) it also publishes the image to the GitHub Container Registry
+# as ghcr.io/aadityasalgarkar/md_render:<tag> and :latest.
 on:
   pull_request:
     paths:
       - Dockerfile
       - .dockerignore
       - .github/workflows/docker.yml
+      - bin/md-render-docker
       - src-tauri/Cargo.toml
       - src-tauri/Cargo.lock
       - src-tauri/src/tikz.rs
       - package-lock.json
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to build and publish, e.g. v0.7.0
+        type: string
+        required: true
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and publish, e.g. v0.7.0 (empty builds the branch without publishing)
+        type: string
+        required: false
 
 concurrency:
-  group: docker-${{ github.ref }}
+  group: docker-${{ inputs.tag || github.ref }}
   cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/aadityasalgarkar/md_render
 
 jobs:
   image:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: docker/setup-buildx-action@v3
 
@@ -56,6 +79,58 @@ jobs:
           head -c 300 tikz.json; echo
           grep -q '"svg":"<svg' tikz.json
 
+      # The host-install route: bin/md-render-docker as the md-render binary,
+      # run by the real mdrender wrapper as the runner's own user.
+      - name: Serve through bin/md-render-docker and the mdrender wrapper
+        run: |
+          # Free port 9999: the first container still holds it.
+          docker logs md
+          docker rm -f md
+          mkdir -p "$HOME/shim-docs"
+          printf '# Shim\n\n```tikz\n%%! packages: tikz-cd\n\\begin{tikzcd} A \\arrow[r] & B \\end{tikzcd}\n```\n' > "$HOME/shim-docs/shim.md"
+          export MDRENDER_IMAGE=md-render:ci MDRENDER_BIN="$PWD/bin/md-render-docker" MDRENDER_BROWSER=
+          bash bin/mdrender "$HOME/shim-docs/shim.md" | tee wrapper.log
+          grep -q "server running in the background" wrapper.log
+          state="$HOME/.local/state/md-render/servers/9999.json"
+          test -f "$state"
+          token=$(sed -n 's/.*"token":"\([^"]*\)".*/\1/p' "$state")
+          pid=$(sed -n 's/.*"pid":\([0-9]*\).*/\1/p' "$state")
+          echo "server pid $pid, seen on the host as: $(ps -o comm= -p "$pid")"
+          ps -p "$pid" >/dev/null
+          curl -fs -X POST http://127.0.0.1:9999/api/tikz \
+            -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+            -d '{"source":"%! packages: tikz-cd\n\\begin{tikzcd} A \\arrow[r] & B \\end{tikzcd}"}' | grep -q '"svg":"<svg'
+          ls "$HOME/.cache/md-render/tikz" | grep -q '\.svg$'
+          # A second document joins the running server instead of starting one.
+          printf '# Second\n' > "$HOME/shim-docs/second.md"
+          bash bin/mdrender "$HOME/shim-docs/second.md" | tee join.log
+          curl -fs http://127.0.0.1:9999/api/files | grep -q second.md
+          curl -fs -X POST -H "Authorization: Bearer $token" http://127.0.0.1:9999/api/shutdown
+
       - name: Container logs
-        if: always()
+        if: failure()
         run: docker logs md || true
+
+      - name: Log in to the GitHub Container Registry
+        if: inputs.tag != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish
+        if: inputs.tag != ''
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ inputs.tag }}
+            ${{ env.IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/AadityaSalgarkar/md_render
+            org.opencontainers.image.description=MD_RENDER headless server: markdown, plots and TikZ diagrams over HTTP
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.version=${{ inputs.tag }}
+          cache-from: type=gha

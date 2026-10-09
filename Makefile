@@ -19,14 +19,18 @@ DESKTOP_DIR := $(PREFIX)/share/applications
 ICON_DIR := $(PREFIX)/share/icons/hicolor
 DESKTOP_TEMPLATE := linux/$(BIN_NAME).desktop.in
 
+# install-docker: md-render runs this image instead of a local build.
+DOCKER_IMAGE ?= ghcr.io/aadityasalgarkar/md_render:latest
+
 .DEFAULT_GOAL := help
 
-.PHONY: help build build-app-macos build-binary-linux build-mcp install install-macos install-linux install-mcp install-clean test clean
+.PHONY: help build build-app-macos build-binary-linux build-mcp install install-macos install-linux install-docker install-mcp install-clean test clean
 
 help:
 	@printf "Targets:\n"
 	@printf "  make build          Build the Tauri app for the current platform\n"
 	@printf "  make install        Build and install for the current platform ($(UNAME_S))\n"
+	@printf "  make install-docker Install without compiling: md-render runs the published Docker image (Linux)\n"
 	@printf "  make install-macos  Install MD_RENDER.app plus ~/bin/mdrender\n"
 	@printf "  make install-linux  Install into \$$PREFIX (default ~/.local), no root needed\n"
 	@printf "  make build-mcp      Bundle the MCP server into mcp/dist/index.js\n"
@@ -101,6 +105,19 @@ install-linux: build-binary-linux install-mcp
 	@echo "Installed $(BIN_NAME) to $(PREFIX)/bin/$(BIN_NAME)"
 	@echo "Installed mdrender wrapper to $(BIN_DIR)/mdrender"
 	@echo "Installed desktop entry to $(DESKTOP_DIR)/$(BIN_NAME).desktop"
+	@echo "Ensure $(PREFIX)/bin and $(BIN_DIR) are on your PATH."
+
+# Nothing is compiled: the server comes from the published image, and
+# bin/md-render-docker stands in for the binary where the wrapper and the
+# MCP server look for it. Pulling again updates it.
+install-docker: install-mcp
+	docker pull "$(DOCKER_IMAGE)"
+	mkdir -p "$(PREFIX)/bin" "$(BIN_DIR)"
+	sed 's|ghcr.io/aadityasalgarkar/md_render:latest|$(DOCKER_IMAGE)|' bin/md-render-docker > "$(PREFIX)/bin/$(BIN_NAME)"
+	chmod 755 "$(PREFIX)/bin/$(BIN_NAME)"
+	install -m 755 "$(WRAPPER)" "$(BIN_DIR)/mdrender"
+	@echo "Installed $(BIN_NAME) (runs $(DOCKER_IMAGE)) to $(PREFIX)/bin/$(BIN_NAME)"
+	@echo "Installed mdrender wrapper to $(BIN_DIR)/mdrender"
 	@echo "Ensure $(PREFIX)/bin and $(BIN_DIR) are on your PATH."
 
 install-clean: install clean
