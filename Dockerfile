@@ -15,7 +15,9 @@
 # ---- frontend and MCP bundle ------------------------------------------------
 FROM node:22-bookworm-slim AS web
 WORKDIR /src
+# The MCP server is an npm workspace: its manifest must be present for npm ci.
 COPY package.json package-lock.json ./
+COPY mcp/package.json mcp/
 RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npm run build && npm run build:mcp
