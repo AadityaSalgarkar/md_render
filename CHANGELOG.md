@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1](https://github.com/AadityaSalgarkar/md_render/compare/v0.8.0...v0.8.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **install:** install-docker renames the script into place ([21e390f](https://github.com/AadityaSalgarkar/md_render/commit/21e390f1adecf369fa4f77632750391f997aab37))
+* **install:** install-docker renames the script into place ([3491419](https://github.com/AadityaSalgarkar/md_render/commit/349141937aaa0e3d6ed7556a73e4c6544c522f07))
+
 ## [0.8.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.7.0...v0.8.0) (2026-10-09)
 
 
