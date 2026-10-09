@@ -113,8 +113,11 @@ install-linux: build-binary-linux install-mcp
 install-docker: install-mcp
 	docker pull "$(DOCKER_IMAGE)"
 	mkdir -p "$(PREFIX)/bin" "$(BIN_DIR)"
-	sed 's|ghcr.io/aadityasalgarkar/md_render:latest|$(DOCKER_IMAGE)|' bin/md-render-docker > "$(PREFIX)/bin/$(BIN_NAME)"
-	chmod 755 "$(PREFIX)/bin/$(BIN_NAME)"
+	@# Write beside it and rename into place: a running md-render (an older
+	@# native binary) keeps its file, where writing over it fails as busy.
+	sed 's|ghcr.io/aadityasalgarkar/md_render:latest|$(DOCKER_IMAGE)|' bin/md-render-docker > "$(PREFIX)/bin/$(BIN_NAME).new"
+	chmod 755 "$(PREFIX)/bin/$(BIN_NAME).new"
+	mv -f "$(PREFIX)/bin/$(BIN_NAME).new" "$(PREFIX)/bin/$(BIN_NAME)"
 	install -m 755 "$(WRAPPER)" "$(BIN_DIR)/mdrender"
 	@echo "Installed $(BIN_NAME) (runs $(DOCKER_IMAGE)) to $(PREFIX)/bin/$(BIN_NAME)"
 	@echo "Installed mdrender wrapper to $(BIN_DIR)/mdrender"
