@@ -4,7 +4,7 @@
 [![release](https://img.shields.io/github/v/release/AadityaSalgarkar/md_render?sort=semver)](https://github.com/AadityaSalgarkar/md_render/releases/latest)
 
 Markdown, set like a book. A renderer for macOS and Linux built on Tauri 2 —
-eight typographic themes, a document index, math, Mermaid, review comments, and
+nine typographic themes, a document index, math, Mermaid, review comments, and
 a server mode that puts the same app in your browser over SSH.
 
 ```bash
@@ -19,9 +19,9 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
 
 ## Features
 
-- Eight typographic themes — five light (Warm Paper, Newsprint, Forest,
-  Plain: bare Helvetica on white, and Ponder: system sans with a violet
-  accent), three dark (Midnight Ink, Nocturne, Evergreen) — each with its
+- Nine typographic themes — six light (Warm Paper, Newsprint, Forest,
+  Plain: bare Helvetica on white, Ponder: system sans with a violet accent,
+  and Paradigm: Literata in dark teal on warm stone), three dark (Midnight Ink, Nocturne, Evergreen) — each with its
   own faces, colors, and code palette
 - Collapsible document index built from headings, with scroll-spy and a
   reading-progress bar
@@ -92,16 +92,20 @@ To make it the macOS default for markdown:
 ## Use
 
 ```bash
-mdrender                    # open the app
-mdrender notes.md           # open one file
+mdrender notes.md           # serve it and open the browser
 mdrender a.md b.md ./docs   # several files and a directory — tabs
-mdrender --port notes.md    # serve to a browser instead
+mdrender                    # the current directory
+mdrender --app notes.md     # the desktop window instead
+mdrender --port notes.md    # serve in the foreground, no browser (headless)
 mdrender --mcp              # MCP server over stdio, for agents
 mdrender https://github.com/anthropics/skills/blob/main/README.md   # from the internet
 ```
 
-Directory arguments contribute every markdown file beneath them. The window
-and the server take the same arguments and open the same tabs.
+The default starts a server on port 9999 (or joins the one already there),
+opens the first document in your browser, and returns with the server left
+running in the background. Directory arguments contribute every markdown
+file beneath them. The window and the server take the same arguments and
+open the same tabs.
 
 A URL is downloaded under `/tmp/md-render/remote` and opened from there, in
 the window or the browser. GitHub file pages are fetched as their raw
@@ -118,7 +122,7 @@ restores, so your edits win over upstream until you delete the saved copy.
 ## Server mode
 
 ```
-$ mdrender --port notes.md ./docs
+$ mdrender notes.md ./docs
 serving 4 files on http://127.0.0.1:9999
   http://127.0.0.1:9999/project/
     notes.md
@@ -126,7 +130,8 @@ serving 4 files on http://127.0.0.1:9999
     api.md
     guide/setup.md
     guide/usage.md
-(ctrl-c to stop)
+opening http://127.0.0.1:9999/project/?doc=1 in the browser
+(server running in the background, pid 4242)
 ```
 
 The port defaults to 9999, falling forward to the next free port when
@@ -136,7 +141,13 @@ file's parent directory — becomes a workspace at
 to the only workspace, or lists them all. Everything works as in the window,
 including editing and saving back to disk. Running the command again while a
 server holds the port adds the files as tabs (and new directories as
-workspaces) instead of failing.
+workspaces) and focuses the browser on the first of them.
+
+`--port` is the same server in the foreground: the banner stays on screen,
+ctrl-c stops it, and no browser is opened — for headless machines and
+scripts. `MDRENDER_BROWSER` names the opener the default mode uses (empty
+disables it); `MDRENDER_FOREGROUND=1` keeps the default mode in the
+foreground too.
 
 Reading a document on a headless machine — the reason the mode exists:
 

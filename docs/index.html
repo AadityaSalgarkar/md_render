@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MD_RENDER — markdown, set like a book</title>
-<meta name="description" content="A markdown renderer for macOS and Linux with book typography, eight themes, tabs, review comments, and a server mode for reading over SSH.">
+<meta name="description" content="A markdown renderer for macOS and Linux with book typography, nine themes, tabs, review comments, and a server mode for reading over SSH.">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -302,18 +302,19 @@ footer .mono, .mono { font-family: "IBM Plex Mono", monospace; font-size: 0.8rem
   <div class="eyebrow">MD_RENDER · macOS + Linux · Tauri 2</div>
   <h1>Markdown, set like a book.</h1>
   <div class="ornament">◆</div>
-  <p class="lede">A markdown renderer with book typography — eight themes, a
+  <p class="lede">A markdown renderer with book typography — nine themes, a
   document index, math, Mermaid, review comments — in a desktop window or
   served to your browser over SSH.</p>
 
   <div class="frame">
-    <div class="terminal"><span class="p">$</span> mdrender --port notes.md ./docs
+    <div class="terminal"><span class="p">$</span> mdrender notes.md ./docs
 serving 4 files on <span class="s">http://127.0.0.1:9999</span>
   <span class="d">[1]</span> notes.md
   <span class="d">[2]</span> api.md
   <span class="d">[3]</span> guide/setup.md
   <span class="d">[4]</span> guide/usage.md
-<span class="d">(ctrl-c to stop)</span></div>
+opening <span class="s">http://127.0.0.1:9999/project/?doc=1</span> in the browser
+<span class="d">(server running in the background, pid 4242)</span></div>
   </div>
 
   <div class="duo">
@@ -337,7 +338,7 @@ serving 4 files on <span class="s">http://127.0.0.1:9999</span>
   them in serious book typography. It is a small Tauri app: a Rust core with a
   React reading surface, built for macOS and Linux.</p>
   <ul>
-    <li>Eight typographic themes, five light and three dark, each with its
+    <li>Nine typographic themes, six light and three dark, each with its
     own faces, colors and code palette</li>
     <li>Collapsible document index built from headings, with scroll-spy and a
     reading-progress bar</li>
@@ -404,14 +405,18 @@ make install        <span class="c"># everything under ~/.local and ~/bin — no
 
 <section id="cli">
   <h2><a class="anchor" href="#cli">Command line</a></h2>
-<pre><code>mdrender                    <span class="c"># open the app</span>
-mdrender notes.md           <span class="c"># open one file</span>
+<pre><code>mdrender notes.md           <span class="c"># serve it and open the browser</span>
 mdrender a.md b.md ./docs   <span class="c"># several files and a directory — tabs</span>
-mdrender --port notes.md    <span class="c"># serve to a browser instead (port 9999)</span>
+mdrender                    <span class="c"># the current directory</span>
+mdrender --app notes.md     <span class="c"># the desktop window instead</span>
+mdrender --port notes.md    <span class="c"># serve in the foreground, no browser (headless)</span>
 mdrender --mcp              <span class="c"># MCP server over stdio, for agents</span>
 mdrender https://github.com/anthropics/skills/blob/main/README.md   <span class="c"># from the internet</span></code></pre>
-  <p>A URL works wherever a path does, in the window and with
-  <code>--port</code>: the document is downloaded under
+  <p>The default starts a server on port 9999, or joins the one already
+  there, opens the first document in your browser, and returns with the
+  server left running in the background.</p>
+  <p>A URL works wherever a path does, in the window and in the browser: the
+  document is downloaded under
   <code>/tmp/md-render/remote</code> (GitHub file pages as their raw content,
   one directory per repository so its files share a workspace) and opened
   from there. Naming the URL again re-opens the same tab; the refresh control
@@ -429,17 +434,25 @@ mdrender https://github.com/anthropics/skills/blob/main/README.md   <span class=
 
 <section id="server">
   <h2><a class="anchor" href="#server">Server mode</a></h2>
-  <p><code>--port</code> serves the app over HTTP instead of opening a window.
-  The port defaults to <strong>9999</strong>, falling forward to the next free port; pass a number to pin one. Each directory becomes a workspace at <code>/&lt;dirname&gt;/</code>:
-  <code>mdrender --port 8080 notes.md</code>. Everything works as it does in
-  the window — tabs, index, themes, math, diagrams, images, and editing and
-  saving back to disk.</p>
+  <p>The browser is the default: <code>mdrender notes.md</code> serves the
+  app over HTTP and opens it. The port defaults to <strong>9999</strong>,
+  falling forward to the next free port; <code>--port</code> pins one and
+  keeps the server in the foreground with no browser opened, for headless
+  machines and scripts: <code>mdrender --port 8080 notes.md</code>. Each
+  directory becomes a workspace at <code>/&lt;dirname&gt;/</code>. Everything
+  works as it does in the window — tabs, index, themes, math, diagrams,
+  images, and editing and saving back to disk.</p>
   <p>Running the command again while a server already holds the port
-  <strong>adds the file as another tab</strong> rather than failing:</p>
-<pre><code><span class="k">$</span> mdrender --port extra.md
+  <strong>adds the file as another tab</strong> rather than failing, and
+  focuses the browser on it:</p>
+<pre><code><span class="k">$</span> mdrender extra.md
 added to http://127.0.0.1:9999
-  extra.md</code></pre>
-  <p>An open browser picks the new tab up within a few seconds, no reload.</p>
+  extra.md
+opening http://127.0.0.1:9999/project/?doc=5 in the browser</code></pre>
+  <p>An open browser picks the new tab up within a few seconds, no reload.
+  <code>MDRENDER_BROWSER</code> names the opener (empty disables it);
+  <code>MDRENDER_FOREGROUND=1</code> keeps the default mode in the
+  foreground.</p>
 
   <h3 id="remote"><a class="anchor" href="#remote">Reading over SSH</a></h3>
   <p>The main reason the mode exists: the machine rendering the markdown needs
@@ -519,6 +532,12 @@ mdrender --port ~/notes.md          <span class="c"># on the server</span></code
     <tr>
       <td><span class="swatch"><i style="background:#FFFFFF"></i><i style="background:#8E7BD0"></i><i style="background:#5E42BC"></i></span></td>
       <td><strong>Ponder</strong> — system sans on white with a violet accent, code in Google Sans Code</td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td><span class="swatch"><i style="background:#E9E5DA"></i><i style="background:#436F7A"></i><i style="background:#3C646E"></i></span></td>
+      <td><strong>Paradigm</strong> — Literata in dark teal on warm stone, section heads in Geist Mono capitals, teal-filled inline code</td>
       <td></td>
       <td></td>
     </tr>

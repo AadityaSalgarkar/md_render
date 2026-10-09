@@ -1,4 +1,5 @@
 mod attach;
+mod browser;
 mod cli;
 mod experiments;
 mod remote;
@@ -254,7 +255,12 @@ fn pick_port(host: &str, start: u16, attempts: u16) -> Result<u16, String> {
 /// Serve mode: either start a server, or hand the documents to one that is
 /// already holding the port. Without an explicit port, scan forward from the
 /// default so the user never has to pick one.
-fn run_server(host: String, port: Option<u16>, sources: Vec<String>) -> Result<(), String> {
+fn run_server(
+  host: String,
+  port: Option<u16>,
+  sources: Vec<String>,
+  open: bool,
+) -> Result<(), String> {
   // Absolutise the path arguments up front: an attach hands them to a server
   // process with a different working directory, where a relative path would
   // mean nothing. Unreadable paths stay as given so the error names them.
@@ -283,17 +289,22 @@ fn run_server(host: String, port: Option<u16>, sources: Vec<String>) -> Result<(
         )
       })?;
 
-      let (added, workspaces) = attach::add_documents(&host, port, &record.token, &sources)?;
-      if added.is_empty() {
+      let added = attach::add_documents(&host, port, &record.token, &sources)?;
+      if added.labels.is_empty() {
         println!("already open on http://{}:{}", host, port);
       } else {
         println!("added to http://{}:{}", host, port);
-        for label in added {
+        for label in &added.labels {
           println!("  {}", label);
         }
       }
-      for workspace in workspaces {
+      for workspace in &added.workspaces {
         println!("open: http://{}:{}/{}/", host, port, workspace);
+      }
+      if open {
+        if let Some((workspace, id)) = &added.first {
+          browser::announce_and_open(&browser::document_url(&host, port, workspace, *id));
+        }
       }
       Ok(())
     }
@@ -303,7 +314,7 @@ fn run_server(host: String, port: Option<u16>, sources: Vec<String>) -> Result<(
     )),
     attach::Probe::Free => {
       let specs = cli::group_workspaces(&sources).map_err(|err| err.to_string())?;
-      server::run(&host, port, specs)
+      server::run(&host, port, specs, open)
     }
   }
 }
@@ -330,9 +341,10 @@ pub fn run() {
       host,
       port,
       sources,
+      open,
       ..
     } => {
-      if let Err(err) = run_server(host, port, sources) {
+      if let Err(err) = run_server(host, port, sources, open) {
         eprintln!("md-render: {}", err);
         std::process::exit(1);
       }
