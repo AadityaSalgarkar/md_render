@@ -49,6 +49,31 @@ if [ "$OS" = "Linux" ] && ! pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
   fail "install the build dependencies and re-run"
 fi
 
+# TikZ diagrams are compiled by Tectonic, which links these libraries.
+if [ "$OS" = "Linux" ] && ! pkg-config --exists icu-uc fontconfig freetype2 graphite2 harfbuzz libpng 2>/dev/null; then
+  say "missing the TeX engine's build libraries; on Debian/Ubuntu:"
+  say "  sudo apt install libicu-dev libfontconfig1-dev libfreetype-dev libgraphite2-dev \\"
+  say "    libharfbuzz-dev libpng-dev zlib1g-dev"
+  fail "install the build dependencies and re-run"
+fi
+if [ "$OS" = "Darwin" ]; then
+  icu_pc=""
+  have brew && icu_pc="$(brew --prefix icu4c 2>/dev/null)/lib/pkgconfig"
+  if ! have pkg-config || ! PKG_CONFIG_PATH="$icu_pc" pkg-config --exists icu-uc graphite2 harfbuzz freetype2 libpng 2>/dev/null; then
+    say "missing the TeX engine's build libraries:"
+    say "  brew install icu4c freetype graphite2 harfbuzz libpng pkgconf"
+    fail "install the build dependencies and re-run"
+  fi
+fi
+
+# Tectonic needs Rust 1.92 or newer.
+rust_minor=$(rustc --version 2>/dev/null | sed -n 's/^rustc 1\.\([0-9]*\).*/\1/p')
+if [ -z "$rust_minor" ] || [ "$rust_minor" -lt 92 ]; then
+  say "Rust 1.92 or newer is needed (found: $(rustc --version 2>/dev/null || echo none))"
+  say "  rustup update stable"
+  fail "update Rust and re-run"
+fi
+
 if [ -d "$SRC/.git" ]; then
   say "updating existing checkout at $SRC"
   git -C "$SRC" fetch --tags origin
@@ -84,3 +109,4 @@ say "  mdrender --app README.md      # desktop window"
 say "  mdrender --port README.md     # serve in the foreground, no browser (headless)"
 say "  mdrender https://github.com/anthropics/skills/blob/main/README.md   # from the internet"
 say "  claude mcp add mdrender -- mdrender --mcp   # let agents drive it"
+say "  mdrender --warm-tikz         # fetch the TeX files TikZ diagrams need (once, a few minutes)"

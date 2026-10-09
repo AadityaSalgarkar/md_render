@@ -157,6 +157,17 @@ describe('bin/mdrender on Linux', () => {
     expect(recorded()).toContain(`SELF=${custom}`)
   })
 
+  it('passes --warm-tikz straight to the binary, without serving', () => {
+    const custom = path.join(work, 'md-render-warm')
+    writeFileSync(custom, recordingStub())
+    chmodSync(custom, 0o755)
+
+    runWrapper(['--warm-tikz'], { MDRENDER_BIN: custom })
+
+    expect(recorded()).toContain('ARGS=--warm-tikz\n')
+    expect(recorded()).not.toContain('--port')
+  })
+
   it('fails with a helpful message when the binary is not installed', () => {
     rmSync(path.join(stubBin, 'md-render'))
     // Run a copy outside the repo so the checkout-build fallback cannot resolve,
