@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.7.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.6.0...v0.7.0) (2026-10-09)
+
+
+### Features
+
+* **install:** check the TeX engine's libraries and Rust 1.92; mdrender --warm-tikz ([b3c1deb](https://github.com/AadityaSalgarkar/md_render/commit/b3c1debea3ddeab63ff039a4e46624e36e26efa3))
+* **mcp:** render_tikz ([18a1209](https://github.com/AadityaSalgarkar/md_render/commit/18a1209be9c86acfa90a3e70d947417d53a21105))
+* **server:** /api/tikz to compile, /api/tikz/&lt;key&gt;.svg to serve cached ([4d3b5bd](https://github.com/AadityaSalgarkar/md_render/commit/4d3b5bd03a2d2a1a2024e7ab29e94905db6219bb))
+* **tikz:** compile diagrams to cached SVG in a timed child process ([e8b24f8](https://github.com/AadityaSalgarkar/md_render/commit/e8b24f842cc61abdd7443e2205205bad35b123d1))
+* **tikz:** render tikz fences and &lt;tikz&gt; tags in the preview ([cbd4b18](https://github.com/AadityaSalgarkar/md_render/commit/cbd4b187033f6c78701acc31af5be0e5e8ff3bad))
+* **tikz:** TikZ diagrams compiled in Rust with Tectonic ([ee79265](https://github.com/AadityaSalgarkar/md_render/commit/ee792657b69bcc0574554043ddb7d6c2d3448598))
+
+
+### Bug Fixes
+
+* **docker:** copy the MCP workspace manifest before npm ci ([ddf1b25](https://github.com/AadityaSalgarkar/md_render/commit/ddf1b25fe1a6d6ad2a0fbdb5f8d8ffc236d044f8))
+* **tikz:** limit CPU time, not wall time ([36a890a](https://github.com/AadityaSalgarkar/md_render/commit/36a890a25d8bcab8e722f6dda3a950b2b9116c5d))
+
 ## [0.6.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.5.1...v0.6.0) (2026-10-09)
 
 
