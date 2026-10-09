@@ -74,24 +74,32 @@ describe('bin/mdrender on Linux', () => {
     writeStub('md-render', recordingStub())
   })
 
-  it('launches the md-render binary with no file when given no argument', () => {
-    runWrapper([])
+  it('serves the current directory and opens the browser when given no argument', () => {
+    execFileSync('bash', [WRAPPER], {
+      cwd: work,
+      env: {
+        ...process.env,
+        PATH: `${stubBin}:${process.env.PATH ?? ''}`,
+        MDRENDER_FOREGROUND: '1',
+      },
+      encoding: 'utf8',
+    })
 
     const log = recorded()
-    expect(log).toContain('ARGS=')
-    expect(log).toContain('TAURI_LAUNCH_FILE=')
+    expect(log).toContain(`ARGS=--port --open ${work}`)
     expect(log).toMatch(/SELF=.*md-render/)
   })
 
-  it('passes the markdown file to the binary as both argv and env var', () => {
+  it('serves the markdown file with the browser opening on it', () => {
     const doc = path.join(work, 'note.md')
     writeFileSync(doc, '# hello')
 
     runWrapper([doc])
 
     const log = recorded()
-    expect(log).toContain(`ARGS=${doc}`)
-    expect(log).toContain(`TAURI_LAUNCH_FILE=${doc}`)
+    expect(log).toContain(`ARGS=--port --open ${doc}`)
+    // The window is not involved, so no launch file for it.
+    expect(log).toContain('TAURI_LAUNCH_FILE=\n')
   })
 
   it('resolves a relative path to an absolute one', () => {
@@ -110,9 +118,43 @@ describe('bin/mdrender on Linux', () => {
 
     const log = recorded()
     // The stub must receive an absolute path, not "relative.md".
-    expect(log).toContain('ARGS=/')
+    expect(log).toContain(`ARGS=--port --open ${doc}`)
+    expect(log).not.toContain('ARGS=--port --open relative.md')
+  })
+
+  it('opens the desktop app instead with --app, passing the file as argv and env var', () => {
+    const doc = path.join(work, 'note.md')
+    writeFileSync(doc, '# hello')
+
+    runWrapper(['--app', doc])
+
+    const log = recorded()
+    expect(log).toContain(`ARGS=${doc}\n`)
     expect(log).toContain(`TAURI_LAUNCH_FILE=${doc}`)
-    expect(log).not.toContain('ARGS=relative.md')
+    expect(log).not.toContain('--app')
+  })
+
+  it('opens the empty desktop app with --app and no file', () => {
+    runWrapper(['--app'])
+
+    const log = recorded()
+    expect(log).toContain('ARGS=\n')
+    expect(log).toContain('TAURI_LAUNCH_FILE=\n')
+  })
+
+  it('honours MDRENDER_BIN over the binary on PATH', () => {
+    const elsewhere = path.join(work, 'elsewhere')
+    mkdirSync(elsewhere)
+    const custom = path.join(elsewhere, 'md-render')
+    writeFileSync(custom, recordingStub())
+    chmodSync(custom, 0o755)
+
+    const doc = path.join(work, 'x.md')
+    writeFileSync(doc, '# x')
+
+    runWrapper(['--port', '8080', doc], { MDRENDER_BIN: custom })
+
+    expect(recorded()).toContain(`SELF=${custom}`)
   })
 
   it('fails with a helpful message when the binary is not installed', () => {
@@ -177,36 +219,136 @@ describe('bin/mdrender on macOS', () => {
     writeStub('open', recordingStub())
   })
 
-  it('opens the app by name when given no argument', () => {
-    runWrapper([])
+  it('serves the file through the app bundle binary and opens the browser', () => {
+    // The bundle's executable lives at a fixed path under /Applications;
+    // MDRENDER_BIN stands in for it here.
+    const bin = writeStub('md-render', recordingStub())
+    const doc = path.join(work, 'note.md')
+    writeFileSync(doc, '# hello')
+
+    runWrapper([doc], { MDRENDER_BIN: bin })
+
+    const log = recorded()
+    expect(log).toContain(`ARGS=--port --open ${doc}`)
+    expect(log).toContain(`SELF=${bin}`)
+    // `open -a` was not used: the browser is the binary's job.
+    expect(log).not.toContain('-a MD_RENDER')
+  })
+
+  it('opens the app by name with --app and no file', () => {
+    runWrapper(['--app'])
 
     const log = recorded()
     expect(log).toContain('ARGS=-a MD_RENDER')
     expect(log).toContain('TAURI_LAUNCH_FILE=')
   })
 
-  it('passes the file as an open --args argument and keeps the env var', () => {
+  it('passes the file as an open --args argument and keeps the env var with --app', () => {
     const doc = path.join(work, 'note.md')
     writeFileSync(doc, '# hello')
 
-    runWrapper([doc])
+    runWrapper(['--app', doc])
 
     const log = recorded()
     expect(log).toContain(`ARGS=-a MD_RENDER --args ${doc}`)
     expect(log).toContain(`TAURI_LAUNCH_FILE=${doc}`)
   })
 
-  it('passes several files through so they open as tabs', () => {
+  it('passes several files through with --app so they open as tabs', () => {
     const a = path.join(work, 'a.md')
     const b = path.join(work, 'b.md')
     writeFileSync(a, '# a')
     writeFileSync(b, '# b')
 
-    runWrapper([a, b])
+    runWrapper([a, '--app', b])
 
     const log = recorded()
     expect(log).toContain(`ARGS=-a MD_RENDER --args ${a} ${b}`)
     expect(log).toContain(`TAURI_LAUNCH_FILE=${a}`)
+  })
+})
+
+describe('bin/mdrender default mode in the background', () => {
+  beforeEach(() => {
+    stubUname('Linux')
+  })
+
+  // Without MDRENDER_FOREGROUND the wrapper detaches the server and returns
+  // once its banner is out. The stub plays the server: banner, then it lingers.
+  const runDetached = (args: string[]) =>
+    execFileSync('bash', [WRAPPER, ...args], {
+      env: { ...process.env, PATH: `${stubBin}:${process.env.PATH ?? ''}`, MDRENDER_FOREGROUND: '' },
+      encoding: 'utf8',
+      timeout: 15_000,
+    })
+
+  it('echoes the banner, drops the ctrl-c hint, and returns while the server runs on', () => {
+    writeStub(
+      'md-render',
+      `#!/usr/bin/env bash
+echo "serving 1 file on http://127.0.0.1:9999"
+echo "  http://127.0.0.1:9999/notes/"
+echo "    a.md"
+echo "opening http://127.0.0.1:9999/notes/?doc=1 in the browser"
+echo "(ctrl-c to stop)"
+sleep 4
+`,
+    )
+    const doc = path.join(work, 'a.md')
+    writeFileSync(doc, '# a')
+
+    const started = Date.now()
+    const output = runDetached([doc])
+
+    expect(Date.now() - started).toBeLessThan(3_000)
+    expect(output).toContain('serving 1 file on http://127.0.0.1:9999')
+    expect(output).toContain('opening http://127.0.0.1:9999/notes/?doc=1')
+    expect(output).not.toContain('ctrl-c')
+    expect(output).toMatch(/running in the background, pid \d+/)
+  })
+
+  it('just relays the output when the binary joined a running server and exited', () => {
+    writeStub(
+      'md-render',
+      `#!/usr/bin/env bash
+echo "added to http://127.0.0.1:9999"
+echo "  b.md"
+echo "opening http://127.0.0.1:9999/notes/?doc=2 in the browser"
+`,
+    )
+    const doc = path.join(work, 'b.md')
+    writeFileSync(doc, '# b')
+
+    const output = runDetached([doc])
+
+    expect(output).toContain('added to http://127.0.0.1:9999')
+    expect(output).toContain('opening http://127.0.0.1:9999/notes/?doc=2')
+    expect(output).not.toContain('background')
+  })
+
+  it('fails with the binary\'s message and status when it could not serve', () => {
+    writeStub(
+      'md-render',
+      `#!/usr/bin/env bash
+echo "md-render: port 9999 is in use by another program" >&2
+exit 1
+`,
+    )
+    const doc = path.join(work, 'c.md')
+    writeFileSync(doc, '# c')
+
+    let status = 0
+    let output = ''
+    try {
+      runDetached([doc])
+    } catch (error) {
+      const failure = error as { status?: number; stdout?: string }
+      status = failure.status ?? 0
+      output = String(failure.stdout ?? '')
+    }
+
+    expect(status).toBe(1)
+    expect(output).toContain('port 9999 is in use')
   })
 })
 
@@ -286,9 +428,20 @@ describe('bin/mdrender argument handling for server mode', () => {
 
     const log = recorded()
     // Not absolutised against the working directory.
-    expect(log).toContain('ARGS=https://github.com/anthropics/skills/blob/main/README.md ' + doc)
+    expect(log).toContain(
+      'ARGS=--port --open https://github.com/anthropics/skills/blob/main/README.md ' + doc,
+    )
     expect(log).not.toContain('/https:')
-    // The launch file is the first local path, not the URL.
+  })
+
+  it('with --app, the launch file is the first local path, not the URL', () => {
+    const doc = path.join(work, 'local.md')
+    writeFileSync(doc, '# local')
+
+    runWrapper(['--app', 'https://github.com/anthropics/skills/blob/main/README.md', doc])
+
+    const log = recorded()
+    expect(log).toContain('ARGS=https://github.com/anthropics/skills/blob/main/README.md ' + doc)
     expect(log).toContain(`TAURI_LAUNCH_FILE=${doc}`)
   })
 
@@ -323,6 +476,7 @@ describe('bin/mdrender --help', () => {
 
     expect(output).toContain('mdrender')
     expect(output).toContain('--port')
+    expect(output).toContain('--app')
     expect(output).toContain('9999')
     // Neither the app nor the server was started.
     expect(recorded()).toBe('')

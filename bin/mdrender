@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Cross-platform launcher for MD_RENDER.
-#   mdrender                          open the app
-#   mdrender FILE.md                  open the app on FILE.md
+#   mdrender                          serve the current directory, open the browser
+#   mdrender FILE.md                  serve FILE.md and open it in the browser
 #   mdrender https://.../README.md    download a document and open it
-#   mdrender --port 8080 FILE... DIR  serve rendered markdown over HTTP
+#   mdrender --app FILE.md            open the desktop app instead
+#   mdrender --port 8080 FILE... DIR  serve over HTTP in the foreground, no browser
 #   mdrender --mcp                    run the MCP server over stdio (for agents)
 set -euo pipefail
 
@@ -78,13 +79,46 @@ find_linux_binary() {
   return 1
 }
 
+# The executable to run for serving: MDRENDER_BIN when set, else the app
+# bundle's binary on macOS or the installed binary on Linux.
+find_binary() {
+  if [ -n "${MDRENDER_BIN:-}" ] && [ -x "${MDRENDER_BIN}" ]; then
+    printf '%s\n' "$MDRENDER_BIN"
+    return 0
+  fi
+  case "$(uname -s)" in
+    Darwin)
+      local app_bin="/Applications/$APP_NAME.app/Contents/MacOS/md-render"
+      if [ ! -x "$app_bin" ]; then
+        app_bin="$(cd -P "$(dirname "$(self_path)")/.." && pwd)/src-tauri/target/release/md-render"
+      fi
+      [ -x "$app_bin" ] || return 1
+      printf '%s\n' "$app_bin"
+      ;;
+    Linux)
+      find_linux_binary
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+not_installed() {
+  echo "mdrender: MD_RENDER is not installed. Run 'make install' from the repo." >&2
+  exit 1
+}
+
 # Rewrite the argument list: flags and their values pass through untouched,
 # bare paths are made absolute so the app resolves them from any directory.
-# Sets ARGS (rewritten argv), FIRST_FILE (first path, for macOS) and SERVE.
+# Sets ARGS (rewritten argv), FIRST_FILE (first local path, for macOS),
+# HAS_DOCUMENT (any path or URL), SERVE (--port given) and APP (--app given).
 parse_args() {
   ARGS=()
   FIRST_FILE=""
+  HAS_DOCUMENT=""
   SERVE=""
+  APP=""
 
   local expect_value=""
   local arg
@@ -103,6 +137,10 @@ parse_args() {
     fi
 
     case "$arg" in
+      --app)
+        # The wrapper's own flag: the desktop window instead of the browser.
+        APP="yes"
+        ;;
       --port|-p)
         # The port value is optional, so only treat a following run of digits
         # as the value; a path after --port is a document, not a port.
@@ -125,9 +163,11 @@ parse_args() {
         # A document on the internet: the app downloads it. Passed through
         # as is, and never the launch file (that is a local path).
         ARGS+=("$arg")
+        HAS_DOCUMENT="yes"
         ;;
       *)
         ARGS+=("$(abs_path "$arg")")
+        HAS_DOCUMENT="yes"
         [ -n "$FIRST_FILE" ] || FIRST_FILE="$(abs_path "$arg")"
         ;;
     esac
@@ -165,73 +205,77 @@ usage() {
   cat <<'EOF'
 mdrender — MD_RENDER markdown renderer
 
-  mdrender FILE|DIR|URL...        open in the desktop app; several files -> tabs
-  mdrender --port [PORT] PATH...  serve over HTTP instead (headless-friendly)
-  mdrender --mcp                  MCP server over stdio, driving the --port mode
+  mdrender [FILE|DIR|URL]...      serve and open in the browser; several files -> tabs
+                                  (no argument: the current directory)
+  mdrender --app [FILE|DIR|URL]...  open in the desktop app instead
+  mdrender --port [PORT] PATH...  serve over HTTP in the foreground, no browser
+                                  (headless-friendly; ctrl-c stops it)
+  mdrender --mcp                  MCP server over stdio, driving the served tabs
 
 Serving: the default port is 9999, falling forward to the next free port when
 another program holds it. Each directory (or a file's parent directory)
 becomes a workspace at http://127.0.0.1:9999/<dirname>/ with one tab per
-markdown file. Re-running the command against a live server adds to it.
+markdown file. Re-running the command against a live server adds to it. The
+default mode leaves the server running in the background; stop it with the
+MCP stop_server tool, `kill`, or POST /api/shutdown with its token.
 JSON API on the port: /api/health, /api/files, /api/workspaces.
 
 A URL (https://...) is downloaded under /tmp/md-render/remote and opened from
-there, in the window or the browser; GitHub file pages fetch as raw content.
+there, in the browser or the window; GitHub file pages fetch as raw content.
 
 MCP: register with `claude mcp add mdrender -- mdrender --mcp`. Tools cover
 servers, workspaces, tabs, documents, comments and the open browser's view.
+
+Environment: MDRENDER_BIN picks the executable; MDRENDER_BROWSER the opener
+(empty disables it); MDRENDER_FOREGROUND=1 keeps everything in the foreground.
 EOF
 }
 
-main() {
-  # The MCP server owns stdin/stdout from here on; nothing else may print.
-  if [ "${1:-}" = "--mcp" ]; then
-    shift
-    exec_mcp "$@"
+# Serve in the foreground: the banner is visible and ctrl-c stops the server.
+serve_foreground() {
+  local bin
+  bin="$(find_binary)" || not_installed
+  exec "$bin" "${ARGS[@]}"
+}
+
+# The default: start (or join) the server on the default port with the
+# browser opening on the first document, and return once it is up. The server
+# keeps running detached; its startup output is echoed here.
+serve_and_open() {
+  local bin
+  bin="$(find_binary)" || not_installed
+
+  if [ -n "${MDRENDER_FOREGROUND:-}" ]; then
+    exec "$bin" "${ARGS[@]}"
   fi
 
-  local arg
-  for arg in "$@"; do
-    case "$arg" in
-      -h|--help)
-        usage
-        exit 0
-        ;;
-    esac
+  local log pid i status
+  log="$(mktemp "${TMPDIR:-/tmp}/mdrender.XXXXXX")"
+  nohup "$bin" "${ARGS[@]}" >"$log" 2>&1 </dev/null &
+  pid=$!
+
+  # Up to ten seconds for the banner (a fresh server) or for the process to
+  # finish (it joined a running server, or failed).
+  for i in $(seq 1 100); do
+    if grep -q -e '(ctrl-c to stop)' "$log" 2>/dev/null || ! kill -0 "$pid" 2>/dev/null; then
+      break
+    fi
+    sleep 0.1
   done
 
-  parse_args "$@"
-
-  # Serving is a terminal task: run it in the foreground on both platforms so
-  # the banner is visible and ctrl-c stops it.
-  if [ -n "$SERVE" ]; then
-    case "$(uname -s)" in
-      Darwin)
-        local app_bin="/Applications/$APP_NAME.app/Contents/MacOS/md-render"
-        if [ ! -x "$app_bin" ]; then
-          app_bin="$(cd -P "$(dirname "$(self_path)")/.." && pwd)/src-tauri/target/release/md-render"
-        fi
-        if [ ! -x "$app_bin" ]; then
-          echo "mdrender: MD_RENDER is not installed. Run 'make install' from the repo." >&2
-          exit 1
-        fi
-        exec "$app_bin" "${ARGS[@]}"
-        ;;
-      Linux)
-        local bin
-        if ! bin="$(find_linux_binary)"; then
-          echo "mdrender: MD_RENDER is not installed. Run 'make install' from the repo." >&2
-          exit 1
-        fi
-        exec "$bin" "${ARGS[@]}"
-        ;;
-      *)
-        echo "mdrender: unsupported platform '$(uname -s)'" >&2
-        exit 1
-        ;;
-    esac
+  grep -v -e '(ctrl-c to stop)' "$log" || true
+  if kill -0 "$pid" 2>/dev/null; then
+    disown 2>/dev/null || true
+    echo "(server running in the background, pid $pid)"
+    status=0
+  else
+    wait "$pid" && status=0 || status=$?
   fi
+  rm -f "$log"
+  exit "$status"
+}
 
+open_app() {
   case "$(uname -s)" in
     Darwin)
       if [ -z "$FIRST_FILE" ]; then
@@ -245,10 +289,7 @@ main() {
       ;;
     Linux)
       local bin
-      if ! bin="$(find_linux_binary)"; then
-        echo "mdrender: MD_RENDER is not installed. Run 'make install' from the repo." >&2
-        exit 1
-      fi
+      bin="$(find_linux_binary)" || not_installed
 
       # Foreground when asked, otherwise detach so the shell returns like macOS 'open'.
       if [ -n "${MDRENDER_FOREGROUND:-}" ]; then
@@ -271,6 +312,47 @@ main() {
       exit 1
       ;;
   esac
+}
+
+main() {
+  # The MCP server owns stdin/stdout from here on; nothing else may print.
+  if [ "${1:-}" = "--mcp" ]; then
+    shift
+    exec_mcp "$@"
+  fi
+
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      -h|--help)
+        usage
+        exit 0
+        ;;
+    esac
+  done
+
+  case "$(uname -s)" in
+    Darwin|Linux) ;;
+    *)
+      echo "mdrender: unsupported platform '$(uname -s)'" >&2
+      exit 1
+      ;;
+  esac
+
+  parse_args "$@"
+
+  if [ -n "$APP" ]; then
+    open_app
+  elif [ -n "$SERVE" ]; then
+    serve_foreground
+  else
+    # No document named: the directory the command was run from.
+    if [ -z "$HAS_DOCUMENT" ]; then
+      ARGS+=("$(abs_path .)")
+    fi
+    ARGS=(--port --open "${ARGS[@]}")
+    serve_and_open
+  fi
 }
 
 main "$@"

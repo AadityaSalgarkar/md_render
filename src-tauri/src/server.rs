@@ -1040,8 +1040,14 @@ pub fn router(state: Shared) -> Router {
     .with_state(state)
 }
 
-/// Run the server until Ctrl-C.
-pub fn run(host: &str, port: u16, specs: Vec<WorkspaceSpec>) -> Result<(), String> {
+/// Run the server until Ctrl-C. With `open`, the first document is handed to
+/// the browser once the port is bound.
+pub fn run(
+  host: &str,
+  port: u16,
+  specs: Vec<WorkspaceSpec>,
+  open: bool,
+) -> Result<(), String> {
   let token = uuid::Uuid::new_v4().to_string();
   let shared: Shared = Arc::new(RwLock::new(ServerState::new(specs, token.clone())));
 
@@ -1064,7 +1070,7 @@ pub fn run(host: &str, port: u16, specs: Vec<WorkspaceSpec>) -> Result<(), Strin
       eprintln!("warning: could not record server state: {}", err);
     }
 
-    print_banner(host, port, &shared);
+    print_banner(host, port, &shared, open);
 
     let result = serve(listener, shared).await;
 
@@ -1088,7 +1094,7 @@ pub async fn serve(listener: tokio::net::TcpListener, shared: Shared) -> Result<
     .map_err(|err| format!("server error: {}", err))
 }
 
-fn print_banner(host: &str, port: u16, shared: &Shared) {
+fn print_banner(host: &str, port: u16, shared: &Shared, open: bool) {
   let guard = shared.read().unwrap();
   let total: usize = guard.workspaces.iter().map(|ws| ws.documents.len()).sum();
   println!(
@@ -1106,6 +1112,15 @@ fn print_banner(host: &str, port: u16, shared: &Shared) {
   }
   if host != "127.0.0.1" && host != "localhost" {
     println!("warning: bound to {} — file contents are reachable from the network", host);
+  }
+  if open {
+    let first = guard
+      .workspaces
+      .iter()
+      .find_map(|ws| ws.documents.first().map(|doc| (ws.name.clone(), doc.id)));
+    if let Some((workspace, id)) = first {
+      crate::browser::announce_and_open(&crate::browser::document_url(host, port, &workspace, id));
+    }
   }
   println!("(ctrl-c to stop)");
 }
