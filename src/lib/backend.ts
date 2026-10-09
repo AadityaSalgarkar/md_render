@@ -141,6 +141,12 @@ export function desktopBackend(): Backend {
 /** The Tauri commands reject with the same `{error, message}` object the server sends. */
 function desktopExperiments(): ExperimentsApi {
   const call = async <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
+    if (!isTauri()) {
+      throw new ExperimentsError(
+        'unavailable',
+        'Experiment data is not available here. Open this document with mdrender to see the plot.',
+      )
+    }
     try {
       return await invoke<T>(command, args)
     } catch (raw) {
