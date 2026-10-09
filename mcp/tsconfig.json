@@ -16,5 +16,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src", "../src/lib/comments.ts", "../src/lib/themes.ts"]
+  "include": ["src", "../src/lib/comments.ts", "../src/lib/themes.ts", "../src/lib/plots/http.ts", "../src/lib/plots/schema.ts", "../src/lib/plots/types.ts", "../src/lib/plots/views.ts"]
 }

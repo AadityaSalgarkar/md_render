@@ -146,6 +146,81 @@ whose options stay hidden until the reader clicks the eye button:
 The `<answer>` stays hidden until the reader clicks "Show answer" —
 independently of the options — and also works standalone outside a quiz.
 
+## Experiment plots
+
+A `<plot>` block draws a chart from a trackio experiment database
+(wandb-compatible logs; one SQLite file per project under `$TRACKIO_DIR`,
+default `~/.cache/huggingface/trackio/<project>.db`). Write JSON inside the
+tag (or a ```` ```plot ```` fence); the reader gets the chart, a legend that
+toggles series, a dropdown of views and hover values.
+
+Workflow: call `list_projects`, then `list_runs` (runs, metric keys, config
+keys that group runs, and `suggested_views`: the dropdown the reader will
+see), write the block, and call `read_metrics` for numbers to quote in prose.
+
+```html
+<plot>
+{
+  "plot_type": "line",
+  "source": { "project": "distill" },
+  "runs": "^exp_",
+  "metrics": "^(train|val)/loss/",
+  "descriptions": {
+    "*/loss/ce": "Cross entropy of the prediction on that split.",
+    "*/loss/kl_teacher_student": "KL divergence between teacher and student logits."
+  },
+  "views": [
+    { "name": "exp_1: loss components", "runs": "^exp_1$", "metrics": "^train/loss/", "group_by": "metric" },
+    { "name": "val/loss/ce by architecture", "metrics": "^val/loss/ce$", "group_by": "config:model.arch" }
+  ],
+  "default_view": "val/loss/ce by architecture",
+  "y": { "smoothing": 0.6 },
+  "title": "Distillation losses",
+  "caption": "Distillation lowers validation cross entropy for every architecture; the KL term stops helping after step 20."
+}
+</plot>
+```
+
+- `plot_type`: `line` (metric against step, time or elapsed), `bar` (one
+  number per run from `summary`: `last`, `best`, `min`, `max`, `mean`,
+  `first`), `spider` (several metrics per run, axes scaled with
+  `"normalize": "minmax"`), `histogram` (`bins`, `density`), `scatter`
+  (`"scatter": {"x": "config:model.n_params" or a metric, "y": metric,
+  "per": "run" | "step", "log_x", "labels": "always"}`).
+- `source`: `{"project": NAME}` or `{"db": PATH}`, relative to the markdown
+  file. In server mode the database must be in the trackio directory or in a
+  served folder.
+- `runs` and `metrics`: a regex or a list of exact names. Keys starting with
+  `_` are hidden unless listed.
+- `items`: explicit series, each `{run, metric, legend_name, metadata, style:
+  {color, dash, width, points}}`; `metadata` shows on hover. They form the
+  "Series" view, which opens first.
+- `views`: named entries for the dropdown, each with `runs`, `metrics`,
+  `group_by` (`run`, `metric`, `none`, `config:<dotpath>`, or
+  `run:<regex with one capture>`), `legend` (`{run}`, `{metric}`, `{group}`,
+  `{config:<dotpath>}`), `x`, `y`.
+- Without `views`, the dropdown is derived from `split/family/name` keys:
+  "loss/ce: train vs val", "train/loss components", "val/loss/ce across
+  runs", "val/loss/ce by model.arch". Name keys consistently for good views.
+- `caption`: the lesson the plot teaches, printed under the chart as
+  "Figure N: …" (numbered in document order), like a figure caption in a
+  paper. Write one or two sentences that state the finding with its
+  numbers, not a description of the axes: "exp_2 reaches the lowest
+  validation loss (0.55 vs 0.77) but not the best accuracy". Get the
+  numbers from `read_metrics`. Inline markdown and `$math$` work. Give
+  every plot one.
+- `descriptions`: what each metric means, by exact key or glob (`*` is one
+  path segment, `**` any depth); shown only on hover over the legend, the
+  key caption and the table when one is shown.
+- Also: `x` (`axis`, `range`, `label`), `y` (`scale`: `log`, `smoothing`
+  0 to 0.99, `range`), `max_points` (1500), `refresh` (`"auto"` polls every
+  15 s while the database changed in the last ten minutes; seconds; or 0),
+  `height`, `legend` (`auto`, `bottom`, `right`, `none`), `table` (the per-series
+  summary table shows by itself up to 150 rows; `true` always, `false` never), `id` (remember the reader's
+  view).
+- A mistake renders an error card with the message, so check the reader
+  after writing.
+
 ## Review comments
 
 Comments are stored inline in the markdown as
@@ -157,9 +232,10 @@ To read a document without them, strip those blocks — or use the app's
 
 - Ports outside 1–65535 are rejected with an error (there is no clamping).
 - The server binds `127.0.0.1` by default; `--host 0.0.0.0` exposes file
-  contents and editing to the network — do not pass it unless the human
+  contents, editing and experiment logs to the network — do not pass it unless the human
   asked.
 - The server reads and writes only the documents it was told to open;
-  images only from those documents' directories.
+  images only from those documents' directories; experiment databases
+  (read-only) from the trackio directory and the served folders.
 - If `mdrender` is missing, install from the repo:
   `git clone https://github.com/AadityaSalgarkar/md_render && cd md_render && npm install && make install`

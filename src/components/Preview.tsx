@@ -24,6 +24,10 @@ import type { Components } from 'react-markdown'
 import { TableOfContents } from './TableOfContents'
 import { ReadingProgress } from './ReadingProgress'
 import { MermaidDiagram } from './MermaidDiagram'
+import { ExperimentPlot } from './ExperimentPlot'
+import { PlotContext, type PlotEnvironment } from '../lib/plots/context'
+import { isPlotLanguage, preparePlotBlocks } from '../lib/plotBlocks'
+import type { ExperimentsApi } from '../lib/plots/types'
 import { Quiz, Enumerate, Option, Answer } from './Quiz'
 import { resolveImageSrc } from '../lib/resolveImageSrc'
 import { prepareQuizBlocks } from '../lib/quiz'
@@ -40,6 +44,8 @@ interface PreviewProps {
   onTextSelection?: (text: string) => void
   /** Identity of the open document; collapse state resets when it changes. */
   documentKey?: string | null
+  /** Experiment data for `<plot>` blocks; absent where none can be read. */
+  experiments?: ExperimentsApi
 }
 
 /** Collapse state shared with the heading and section renderers. */
@@ -68,7 +74,12 @@ export function Preview({
   assetUrl,
   onTextSelection,
   documentKey,
+  experiments,
 }: PreviewProps) {
+  const plotEnvironment = useMemo<PlotEnvironment>(
+    () => ({ experiments, baseDir, documentKey }),
+    [experiments, baseDir, documentKey],
+  )
   const scrollRef = useRef<HTMLDivElement>(null)
   const articleRef = useRef<HTMLElement>(null)
   const [headings, setHeadings] = useState<Heading[]>([])
@@ -103,7 +114,11 @@ export function Preview({
   // Rewrite <quiz> tags to their parser-safe internal names before parsing.
   // MathJax-style math (bracket delimiters, bare AMS environments, numbering,
   // labels) is normalised for KaTeX before the quiz markup is prepared.
-  const preparedContent = useMemo(() => prepareQuizBlocks(normalizeMath(content)), [content])
+  // Plot blocks become fences first, so the math pass leaves their JSON alone.
+  const preparedContent = useMemo(
+    () => prepareQuizBlocks(normalizeMath(preparePlotBlocks(content))),
+    [content],
+  )
 
   const components: Components = useMemo(() => ({
     pre: ({ children, ...props }) => <PreWithCopy {...props}>{children}</PreWithCopy>,
@@ -260,6 +275,7 @@ export function Preview({
           onKeyUp={handleSelection}
         >
           <CollapseContext.Provider value={collapseState}>
+            <PlotContext.Provider value={plotEnvironment}>
             <Markdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeRaw, rehypeSlug, rehypeSections, rehypeHighlight, rehypeKatex]}
@@ -268,6 +284,7 @@ export function Preview({
             >
               {preparedContent}
             </Markdown>
+            </PlotContext.Provider>
           </CollapseContext.Provider>
         </article>
       </div>
@@ -406,6 +423,10 @@ function PreWithCopy({ children, className }: PreWithCopyProps) {
 
   if (codeBlock && isMermaidLanguage(codeBlock.props.className)) {
     return <MermaidDiagram chart={getTextContent(codeBlock.props.children).trim()} />
+  }
+
+  if (codeBlock && isPlotLanguage(codeBlock.props.className)) {
+    return <ExperimentPlot source={getTextContent(codeBlock.props.children)} />
   }
 
   return (

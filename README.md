@@ -41,12 +41,18 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
 - Quiz blocks: `<quiz>question <enumerate><option>…</option></enumerate></quiz>`
   renders a card whose options stay hidden until the eye button reveals them;
   an `<answer>…</answer>` inside (or anywhere) stays hidden until clicked
+- Experiment plots: a `<plot>` block with a little JSON draws line, bar,
+  spider, histogram and scatter charts from trackio (wandb-compatible)
+  logs, with a dropdown of views ("loss/ce: train vs val", "val/loss by
+  architecture") derived from the metric names, hover metadata and metric
+  descriptions, theme colours, and live refresh while training writes
 - Server mode with full parity: editing and saving work in the browser too
 - Markdown from the internet: `mdrender https://…/README.md` downloads the
   file (GitHub pages as raw content) and opens it like a local one
 - An MCP server (`mdrender --mcp`) so agents can start and stop servers,
   open and close workspaces and tabs, read, write, comment on and export
-  documents, and focus a tab or switch the theme in the reader's browser
+  documents, focus a tab or switch the theme in the reader's browser, and
+  list the runs and metrics of trackio projects to write plot blocks
 
 ## Install
 

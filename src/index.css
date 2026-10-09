@@ -41,6 +41,16 @@
   --code-comment: #8A8A8A;
   --code-function: #5A7A9A;
   --code-builtin: #8959A8;
+
+  /* Plot series hues */
+  --chart-1: #C9553D;
+  --chart-2: #2D5A4A;
+  --chart-3: #5A7A9A;
+  --chart-4: #B07D48;
+  --chart-5: #8959A8;
+  --chart-6: #6B8E4E;
+  --chart-7: #A23B5E;
+  --chart-8: #7A7A7A;
 }
 
 /* ===================================================================
@@ -982,6 +992,363 @@ body {
   border-color: var(--accent-secondary);
   color: white;
   opacity: 1;
+}
+
+/* Experiment plots: <plot> blocks, numbered in document order */
+.markdown-body {
+  counter-reset: md-figure;
+}
+
+.markdown-body .experiment-plot:not(.experiment-plot--error) {
+  counter-increment: md-figure;
+}
+
+.markdown-body .experiment-plot {
+  margin: 1.75em 0;
+  padding: 0.9rem 1rem 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.markdown-body .experiment-plot-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.markdown-body .experiment-plot-title {
+  font-family: var(--font-head);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.markdown-body .experiment-plot-key {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.markdown-body .experiment-plot-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.markdown-body .plot-view-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.markdown-body .plot-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.markdown-body .plot-control-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: var(--text-muted);
+}
+
+.markdown-body .experiment-plot select,
+.markdown-body .plot-custom-form input {
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  background: var(--bg-preview);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.2rem 0.4rem;
+  max-width: 22rem;
+}
+
+.markdown-body .plot-control--range input {
+  width: 6rem;
+  accent-color: var(--accent);
+}
+
+.markdown-body .plot-control--check input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.markdown-body .plot-custom-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.5rem 0.75rem;
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  background: var(--bg-preview);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.markdown-body .plot-custom-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.markdown-body .plot-custom-form input {
+  max-width: none;
+  font-family: var(--font-mono);
+}
+
+.markdown-body .plot-custom-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--accent);
+}
+
+.markdown-body .plot-custom-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.markdown-body .plot-custom-actions button {
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 5px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.markdown-body .plot-custom-actions button[type='submit'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.markdown-body .experiment-plot-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.markdown-body .experiment-plot-body--legend-right {
+  flex-direction: row;
+}
+
+.markdown-body .experiment-plot-body--legend-right .experiment-plot-canvas {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.markdown-body .experiment-plot-canvas {
+  position: relative;
+  width: 100%;
+}
+
+.markdown-body .experiment-plot-canvas canvas {
+  display: block;
+}
+
+.markdown-body .experiment-plot-loading {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.markdown-body .experiment-plot-status {
+  margin: 0.4rem 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.markdown-body .plot-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.markdown-body .plot-legend--right {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  max-width: 14rem;
+}
+
+.markdown-body .plot-legend li {
+  margin: 0;
+}
+
+.markdown-body .plot-legend-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.1rem 0;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.markdown-body .plot-legend-entry.is-hidden {
+  opacity: 0.4;
+}
+
+.markdown-body .plot-legend-entry.is-hidden .plot-legend-label {
+  text-decoration: line-through;
+}
+
+.markdown-body .plot-legend-swatch {
+  flex: none;
+}
+
+/* The figure caption: the lesson of the plot, as in a paper */
+.markdown-body .experiment-plot-label {
+  margin-top: 0.8rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-body);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  text-align: justify;
+  hyphens: auto;
+}
+
+.markdown-body .experiment-plot-label::before {
+  content: "Figure " counter(md-figure) ":";
+  margin-right: 0.4em;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.markdown-body .experiment-plot-label code {
+  font-size: 0.8em;
+  padding: 0.05em 0.25em;
+}
+
+/* Metric descriptions, on hover or focus only */
+.markdown-body .metric-hint {
+  position: relative;
+  display: inline-block;
+}
+
+.markdown-body .metric-hint-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: max-content;
+  max-width: 18rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--bg-preview);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  pointer-events: none;
+}
+
+.markdown-body .metric-hint-key {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.markdown-body .metric-hint-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.markdown-body .experiment-plot-table {
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+}
+
+.markdown-body .experiment-plot-table summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.markdown-body .experiment-plot-table-scroll {
+  overflow-x: auto;
+}
+
+.markdown-body .experiment-plot-table table {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+}
+
+.markdown-body .experiment-plot-table td:nth-child(n + 3) {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.markdown-body .experiment-plot-notes {
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.markdown-body .experiment-plot--error {
+  border-left: 3px solid var(--accent-secondary);
+}
+
+.markdown-body .experiment-plot--error figcaption {
+  font-family: var(--font-head);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.markdown-body .experiment-plot-error-message {
+  margin: 0.35rem 0 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .markdown-body .experiment-plot-body--legend-right {
+    flex-direction: column;
+  }
+
+  .markdown-body .plot-legend--right {
+    flex-direction: row;
+    flex-wrap: wrap;
+    max-width: none;
+  }
 }
 
 /* Mermaid diagrams */

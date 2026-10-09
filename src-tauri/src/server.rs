@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use crate::cli::{Document, WorkspaceSpec};
+use crate::experiments::{self, DbSource, ExpError, SeriesRequest};
 use crate::state::{self, ServerRecord};
 
 #[derive(RustEmbed)]
@@ -292,6 +293,22 @@ impl ServerState {
 
     has_image_extension && self.roots.iter().any(|root| path.starts_with(root))
   }
+
+  /// Whether an experiment database may be read: a database extension, and
+  /// either inside the trackio directory or under a served root or workspace.
+  /// `path` must already be canonical.
+  fn allows_db(&self, path: &Path) -> bool {
+    if !experiments::has_db_extension(path) {
+      return false;
+    }
+    let in_trackio = experiments::trackio_dir()
+      .canonicalize()
+      .map(|dir| path.starts_with(dir))
+      .unwrap_or(false);
+    in_trackio
+      || self.roots.iter().any(|root| path.starts_with(root))
+      || self.workspaces.iter().any(|ws| path.starts_with(&ws.dir))
+  }
 }
 
 type Shared = Arc<RwLock<ServerState>>;
@@ -556,6 +573,148 @@ async fn export_by_path(
     )
       .into_response(),
   }
+}
+
+/// An experiments error as JSON with its status.
+fn experiment_error(err: ExpError) -> Response {
+  let status = StatusCode::from_u16(err.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+  let mut response = (status, Json(&err)).into_response();
+  if err.error == "locked" {
+    response
+      .headers_mut()
+      .insert(header::RETRY_AFTER, header::HeaderValue::from_static("2"));
+  }
+  response
+}
+
+/// Which database a request means: `project=` or `db=`, with `base=` (the
+/// directory of the markdown file) to resolve a relative `db`.
+#[derive(Deserialize)]
+struct SourceQuery {
+  #[serde(default)]
+  project: Option<String>,
+  #[serde(default)]
+  db: Option<String>,
+  #[serde(default)]
+  base: Option<String>,
+}
+
+/// The source fields are repeated rather than flattened: flattening breaks
+/// numeric fields in query strings.
+#[derive(Deserialize)]
+struct SeriesQuery {
+  #[serde(default)]
+  project: Option<String>,
+  #[serde(default)]
+  db: Option<String>,
+  #[serde(default)]
+  base: Option<String>,
+  /// Comma-separated run names.
+  runs: String,
+  /// Comma-separated metric keys.
+  keys: String,
+  #[serde(default)]
+  max_points: Option<usize>,
+  #[serde(default)]
+  if_version: Option<String>,
+  #[serde(default)]
+  keep_duplicate_steps: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct SeriesBody {
+  source: DbSource,
+  #[serde(default)]
+  base: Option<String>,
+  #[serde(flatten)]
+  request: SeriesRequest,
+}
+
+/// Resolve a source and check it against the allowlist. The base directory
+/// only helps resolve a relative path; it never widens what may be read.
+fn allowed_db(state: &Shared, source: &DbSource, base: Option<&str>) -> Result<PathBuf, ExpError> {
+  let path = experiments::resolve_source(source, base.map(Path::new))?;
+  if !state.read().unwrap().allows_db(&path) {
+    return Err(ExpError::forbidden(
+      format!(
+        "{} is outside the served directories and the trackio directory; serve its folder, or move it under {}",
+        path.display(),
+        experiments::trackio_dir().display()
+      ),
+      &path,
+    ));
+  }
+  Ok(path)
+}
+
+async fn experiment_projects() -> Response {
+  match tokio::task::spawn_blocking(experiments::list_projects).await {
+    Ok(projects) => Json(projects).into_response(),
+    Err(err) => experiment_error(ExpError::bad_request(err.to_string())),
+  }
+}
+
+async fn experiment_runs(State(state): State<Shared>, Query(query): Query<SourceQuery>) -> Response {
+  let source = DbSource {
+    project: query.project,
+    db: query.db,
+  };
+  let result = tokio::task::spawn_blocking(move || {
+    let path = allowed_db(&state, &source, query.base.as_deref())?;
+    experiments::list_runs(&path)
+  })
+  .await;
+  match result {
+    Ok(Ok(runs)) => Json(runs).into_response(),
+    Ok(Err(err)) => experiment_error(err),
+    Err(err) => experiment_error(ExpError::bad_request(err.to_string())),
+  }
+}
+
+async fn series_response(
+  state: Shared,
+  source: DbSource,
+  base: Option<String>,
+  request: SeriesRequest,
+) -> Response {
+  let result = tokio::task::spawn_blocking(move || {
+    let path = allowed_db(&state, &source, base.as_deref())?;
+    experiments::fetch_series(&path, &request)
+  })
+  .await;
+  match result {
+    Ok(Ok(series)) => Json(series).into_response(),
+    Ok(Err(err)) => experiment_error(err),
+    Err(err) => experiment_error(ExpError::bad_request(err.to_string())),
+  }
+}
+
+async fn experiment_series(State(state): State<Shared>, Query(query): Query<SeriesQuery>) -> Response {
+  let split = |text: &str| -> Vec<String> {
+    text
+      .split(',')
+      .map(str::trim)
+      .filter(|s| !s.is_empty())
+      .map(String::from)
+      .collect()
+  };
+  let request = SeriesRequest {
+    runs: split(&query.runs),
+    keys: split(&query.keys),
+    max_points: query.max_points,
+    keep_duplicate_steps: query.keep_duplicate_steps.unwrap_or(false),
+    if_version: query.if_version,
+  };
+  let source = DbSource {
+    project: query.project,
+    db: query.db,
+  };
+  series_response(state, source, query.base, request).await
+}
+
+/// The same as the GET route, for run names holding commas or long lists.
+async fn experiment_series_post(State(state): State<Shared>, Json(body): Json<SeriesBody>) -> Response {
+  series_response(state, body.source, body.base, body.request).await
 }
 
 async fn read_asset(State(state): State<Shared>, Query(query): Query<PathQuery>) -> Response {
@@ -1032,6 +1191,12 @@ pub fn router(state: Shared) -> Router {
     .route("/api/documents", post(add_documents))
     .route("/api/view", get(get_view).put(put_view))
     .route("/api/shutdown", post(shutdown))
+    .route("/api/experiments/projects", get(experiment_projects))
+    .route("/api/experiments/runs", get(experiment_runs))
+    .route(
+      "/api/experiments/series",
+      get(experiment_series).post(experiment_series_post),
+    )
     .route(
       "/api/workspaces",
       get(list_workspaces).delete(remove_workspace),
@@ -1285,6 +1450,105 @@ mod tests {
       body.len(),
       body
     )
+  }
+
+  #[test]
+  fn experiment_databases_are_read_only_beside_documents_or_in_trackio() {
+    let dir = temp_dir("experiments");
+    let served = dir.join("served");
+    let elsewhere = dir.join("elsewhere");
+    let trackio = dir.join("trackio");
+    for d in [&served, &elsewhere, &trackio] {
+      fs::create_dir_all(d).unwrap();
+    }
+    fs::write(served.join("report.md"), "# report").unwrap();
+    experiments::fixture::standard(&served.join("runs.db"), 2, false);
+    experiments::fixture::standard(&elsewhere.join("hidden.db"), 2, false);
+    experiments::fixture::standard(&trackio.join("demo.db"), 1, false);
+    fs::write(served.join("notes.txt"), "not a database").unwrap();
+    std::env::set_var("TRACKIO_DIR", &trackio);
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[served.join("report.md")]),
+      "test-token".to_string(),
+    )));
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+    let base = urlencoding::encode(&served.to_string_lossy()).to_string();
+    let hidden = urlencoding::encode(&elsewhere.join("hidden.db").to_string_lossy()).to_string();
+    let notes = urlencoding::encode(&served.join("notes.txt").to_string_lossy()).to_string();
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      tokio::spawn(async move {
+        let _ = axum::serve(listener, router(shared)).await;
+      });
+
+      // A relative db beside the open document.
+      let runs_path = format!("/api/experiments/runs?db=runs.db&base={}", base);
+      let (status, body) = http(addr, get(addr, &runs_path)).await;
+      assert_eq!(status, 200, "{}", body);
+      let runs: serde_json::Value = serde_json::from_str(&body).unwrap();
+      assert_eq!(runs["schema"], 2);
+      assert_eq!(runs["runs"][0]["name"], "exp_1");
+      assert_eq!(runs["runs"][0]["config"]["model.arch"], "conv");
+
+      // A project in the trackio directory, schema 1.
+      let (status, body) = http(addr, get(addr, "/api/experiments/runs?project=demo")).await;
+      assert_eq!(status, 200, "{}", body);
+      assert!(body.contains("\"schema\":1"));
+      let (status, body) = http(addr, get(addr, "/api/experiments/projects")).await;
+      assert_eq!(status, 200);
+      assert!(body.contains("\"name\":\"demo\""));
+
+      // Outside every root, and a non-database beside the document.
+      let outside = format!("/api/experiments/runs?db={}", hidden);
+      let (status, body) = http(addr, get(addr, &outside)).await;
+      assert_eq!(status, 403);
+      assert!(body.contains("\"error\":\"forbidden\""));
+      let not_db = format!("/api/experiments/runs?db={}", notes);
+      let (status, _) = http(addr, get(addr, &not_db)).await;
+      assert_eq!(status, 403);
+
+      // Bad sources.
+      let (status, body) = http(addr, get(addr, "/api/experiments/runs?project=nope")).await;
+      assert_eq!(status, 404);
+      assert!(body.contains("not_found"));
+      let both = "/api/experiments/runs?project=demo&db=x.db";
+      let (status, _) = http(addr, get(addr, both)).await;
+      assert_eq!(status, 400);
+
+      // Series, downsampled, then unchanged for the same version.
+      let path = format!(
+        "/api/experiments/series?db=runs.db&base={}&runs=exp_1,exp_2&keys=train/loss/ce&max_points=3",
+        base
+      );
+      let (status, body) = http(addr, get(addr, &path)).await;
+      assert_eq!(status, 200, "{}", body);
+      let series: serde_json::Value = serde_json::from_str(&body).unwrap();
+      assert_eq!(series["series"].as_array().unwrap().len(), 2);
+      assert_eq!(series["series"][0]["points"].as_array().unwrap().len(), 3);
+      assert_eq!(series["series"][0]["summary"]["min"], 1.0);
+      let version = series["version"].as_str().unwrap().to_string();
+      let again = format!("{}&if_version={}", path, urlencoding::encode(&version));
+      let (status, body) = http(addr, get(addr, &again)).await;
+      assert_eq!(status, 200);
+      assert!(body.contains("\"unchanged\":true"));
+
+      // The POST form takes names with commas.
+      let payload = format!(
+        "{{\"source\":{{\"db\":\"runs.db\"}},\"base\":{},\"runs\":[\"exp_2\"],\"keys\":[\"val/loss/ce\"],\"max_points\":0}}",
+        serde_json::to_string(&served.to_string_lossy()).unwrap()
+      );
+      let request = with_token(addr, "POST", "/api/experiments/series", None, Some(&payload));
+      let (status, body) = http(addr, request).await;
+      assert_eq!(status, 200, "{}", body);
+      let series: serde_json::Value = serde_json::from_str(&body).unwrap();
+      assert_eq!(series["series"][0]["n_nonfinite"], 1);
+      assert_eq!(series["series"][0]["points"].as_array().unwrap().len(), 0);
+    });
   }
 
   #[test]

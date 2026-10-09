@@ -1,5 +1,6 @@
 // @vitest-environment node
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -47,6 +48,9 @@ const ALL_TOOLS = [
   'export_clean',
   'focus_tab',
   'set_theme',
+  'list_projects',
+  'list_runs',
+  'read_metrics',
 ]
 
 function pickPort(): number {
@@ -101,13 +105,23 @@ beforeAll(async () => {
   writeFileSync(notes, '# Notes\n\nThe quick brown fox.\n\nAnother paragraph.\n')
   writeFileSync(api, '# API\n')
   writeFileSync(setup, '# Setup\n')
+  // A trackio directory for the experiment tools, and a database beside the docs.
+  const fixture = path.join(REPO, 'src/test/fixtures/trackio/demo.db')
+  mkdirSync(path.join(work, 'trackio'))
+  copyFileSync(fixture, path.join(work, 'trackio', 'demo.db'))
+  copyFileSync(fixture, path.join(project, 'runs.db'))
 
   client = new Client({ name: 'mcp-test', version: '0' })
   await client.connect(
     new StdioClientTransport({
       command: process.execPath,
       args: [bundle],
-      env: { ...process.env, XDG_STATE_HOME: stateDir, MDRENDER_BIN: binary } as Record<string, string>,
+      env: {
+        ...process.env,
+        XDG_STATE_HOME: stateDir,
+        MDRENDER_BIN: binary,
+        TRACKIO_DIR: path.join(work, 'trackio'),
+      } as Record<string, string>,
       stderr: 'pipe',
     }),
   )
@@ -411,6 +425,62 @@ describe.skipIf(!binary || !bundle)('mdrender MCP server', () => {
     expect(result.ok).toBe(false)
     expect(result.text).toContain('nocturne')
     expect(result.text).toContain('warm-paper')
+  })
+
+  it('list_projects and list_runs describe trackio databases for plot blocks', async () => {
+    const projects = await expectOk('list_projects', { port: portA })
+    expect((projects.projects as Array<{ name: string }>).map((p) => p.name)).toEqual(['demo'])
+    expect(projects.note).toContain('<plot>')
+
+    const runs = await expectOk('list_runs', { project: 'demo', port: portA })
+    const listed = runs.runs as Array<{ name: string; keys: string[]; config: Record<string, unknown>; steps: number[] }>
+    expect(listed.map((r) => r.name)).toEqual(['exp_1', 'exp_2', 'exp_3'])
+    expect(listed[0].steps).toEqual([0, 49])
+    expect(listed[1].config).toEqual({ lr: 0.001, 'model.arch': 'vit' })
+    expect(runs.grouping_config_keys).toEqual(['lr', 'model.arch'])
+    const views = (runs.suggested_views as Array<{ name: string }>).map((v) => v.name)
+    expect(views.slice(0, 2)).toEqual(['loss/ce: train vs val', 'train/loss components'])
+
+    // A relative db beside the documents, resolved against the report directory.
+    const beside = await expectOk('list_runs', { db: 'runs.db', base: project, metrics: '^val/', port: portA })
+    expect(beside.keys).toEqual(['val/acc/top1', 'val/loss/ce'])
+
+    const both = await call('list_runs', { project: 'demo', db: 'runs.db', port: portA })
+    expect(both.ok).toBe(false)
+    const outside = await call('list_runs', { db: path.join(work, 'trackio', '..', 'nope.db'), port: portA })
+    expect(outside.text).toContain('not_found')
+  })
+
+  it('read_metrics returns summaries, points on request, and the nearest names for a typo', async () => {
+    const data = await expectOk('read_metrics', {
+      project: 'demo',
+      runs: ['exp_1', 'exp_2'],
+      keys: ['val/acc/top1'],
+      port: portA,
+    })
+    const series = data.series as Array<{ run: string; n: number; summary: { last: number; max: number }; points?: unknown }>
+    expect(series.map((s) => [s.run, s.n])).toEqual([['exp_1', 10], ['exp_2', 10]])
+    expect(series[0].summary.max).toBeGreaterThan(0.8)
+    expect(series[0].points).toBeUndefined()
+
+    const points = await expectOk('read_metrics', {
+      project: 'demo',
+      runs: ['exp_1'],
+      keys: ['train/loss/ce'],
+      max_points: 5,
+      port: portA,
+    })
+    expect((points.series as Array<{ points: unknown[] }>)[0].points).toHaveLength(5)
+
+    const typo = await expectOk('read_metrics', {
+      project: 'demo',
+      runs: ['exp_1', 'exp_9'],
+      keys: ['val/acc/top5'],
+      port: portA,
+    })
+    const missing = typo.missing as Array<{ run: string; nearest_runs?: string[]; nearest_keys?: string[] }>
+    expect(missing.find((m) => m.run === 'exp_9')?.nearest_runs?.[0]).toMatch(/^exp_/)
+    expect(missing.find((m) => m.run === 'exp_1')?.nearest_keys?.[0]).toBe('val/acc/top1')
   })
 
   it('close_workspace removes it and frees the name', async () => {

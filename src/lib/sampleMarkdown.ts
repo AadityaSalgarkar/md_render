@@ -129,5 +129,24 @@ $$
 
 ---
 
+## Experiment Plots
+
+A plot block draws charts from [trackio](https://github.com/gradio-app/trackio) experiment logs, with a dropdown of views such as *loss/ce: train vs val* or *val/loss by architecture*:
+
+\`\`\`html
+<plot>
+{
+  "plot_type": "line",
+  "source": { "project": "my-project" },
+  "metrics": "^(train|val)/loss/",
+  "descriptions": { "*/loss/ce": "Cross entropy on that split." }
+}
+</plot>
+\`\`\`
+
+Line, bar, spider, histogram and scatter plots are supported; hover a legend entry to read what a metric means.
+
+---
+
 *Start writing in the editor on the left, and watch your prose transform into beautifully typeset text on the right.*
 `

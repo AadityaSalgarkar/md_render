@@ -765,6 +765,7 @@ export default function App() {
             assetUrl={backend.assetUrl}
             onTextSelection={handleTextSelection}
             documentKey={filePath}
+            experiments={backend.experiments}
           />
         </motion.div>
         <CommentPane

@@ -1,5 +1,15 @@
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { dirname } from './resolveImageSrc'
+import {
+  ExperimentsError,
+  type ExperimentsApi,
+  type ProjectsResponse,
+  type RunsResponse,
+  type SeriesResponse,
+} from './plots/types'
+import { serverExperiments } from './plots/http'
+
+export { serverExperiments }
 
 /** One open document — a tab. */
 export interface DocumentMeta {
@@ -52,6 +62,8 @@ export interface Backend {
   getLaunchFile(): Promise<string | null>
   /** The view the server is asking for; `null` where nothing can ask. */
   getViewState(): Promise<ViewState | null>
+  /** Read-only access to trackio experiment databases, for `<plot>` blocks. */
+  experiments: ExperimentsApi
 }
 
 export function isTauri(): boolean {
@@ -124,6 +136,41 @@ export function desktopBackend(): Backend {
       invoke<string>('export_markdown', { path, content }),
     getLaunchFile: () => invoke<string | null>('get_launch_file'),
     getViewState: async () => null,
+    experiments: desktopExperiments(),
+  }
+}
+
+/** The Tauri commands reject with the same `{error, message}` object the server sends. */
+function desktopExperiments(): ExperimentsApi {
+  const call = async <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
+    if (!isTauri()) {
+      throw new ExperimentsError(
+        'unavailable',
+        'Experiment data is not available here. Open this document with mdrender to see the plot.',
+      )
+    }
+    try {
+      return await invoke<T>(command, args)
+    } catch (raw) {
+      throw ExperimentsError.from(raw)
+    }
+  }
+  return {
+    listProjects: () => call<ProjectsResponse>('list_experiment_projects'),
+    listRuns: (source, baseDir) =>
+      call<RunsResponse>('list_experiment_runs', { source, baseDir: baseDir ?? null }),
+    fetchSeries: (request) =>
+      call<SeriesResponse>('fetch_experiment_series', {
+        source: request.source,
+        baseDir: request.baseDir ?? null,
+        request: {
+          runs: request.runs,
+          keys: request.keys,
+          max_points: request.maxPoints,
+          keep_duplicate_steps: request.keepDuplicateSteps ?? false,
+          if_version: request.ifVersion,
+        },
+      }),
   }
 }
 
@@ -247,6 +294,7 @@ export function serverBackend(base = ''): Backend {
         seq: body.seq,
       }
     },
+    experiments: serverExperiments(base),
   }
 }
 
