@@ -1,5 +1,6 @@
 mod attach;
 mod cli;
+mod experiments;
 mod remote;
 mod server;
 mod state;
@@ -184,6 +185,42 @@ pub(crate) fn export_path(path: &str) -> PathBuf {
     .unwrap_or_else(|| PathBuf::from(file_name))
 }
 
+/// Experiment databases in the trackio directory.
+#[tauri::command]
+fn list_experiment_projects() -> experiments::ProjectsResponse {
+  experiments::list_projects()
+}
+
+/// Runs, metric keys and configs of one experiment database. The desktop
+/// window reads any path, as `read_file` does.
+#[tauri::command]
+async fn list_experiment_runs(
+  source: experiments::DbSource,
+  base_dir: Option<String>,
+) -> Result<experiments::RunsResponse, experiments::ExpError> {
+  tauri::async_runtime::spawn_blocking(move || {
+    let path = experiments::resolve_source(&source, base_dir.as_deref().map(Path::new))?;
+    experiments::list_runs(&path)
+  })
+  .await
+  .map_err(|e| experiments::ExpError::bad_request(e.to_string()))?
+}
+
+/// Series for (runs x keys) from one experiment database.
+#[tauri::command]
+async fn fetch_experiment_series(
+  source: experiments::DbSource,
+  base_dir: Option<String>,
+  request: experiments::SeriesRequest,
+) -> Result<experiments::SeriesResponse, experiments::ExpError> {
+  tauri::async_runtime::spawn_blocking(move || {
+    let path = experiments::resolve_source(&source, base_dir.as_deref().map(Path::new))?;
+    experiments::fetch_series(&path, &request)
+  })
+  .await
+  .map_err(|e| experiments::ExpError::bad_request(e.to_string()))?
+}
+
 #[tauri::command]
 fn get_launch_file() -> Option<String> {
   // First check the global state (set from command-line args)
@@ -326,7 +363,10 @@ pub fn run() {
       list_documents,
       refresh_documents,
       add_document,
-      remove_document
+      remove_document,
+      list_experiment_projects,
+      list_experiment_runs,
+      fetch_experiment_series
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
