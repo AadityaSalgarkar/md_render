@@ -37,10 +37,10 @@ jobs:
 
       - name: Serve a document and compile a diagram
         run: |
-          mkdir -p docs
-          printf '# Hello\n\n```tikz\n\\draw (0,0) -- (1,1);\n```\n' > docs/hello.md
-          chmod -R a+rX docs
-          docker run -d --name md -p 127.0.0.1:9999:9999 -v "$PWD/docs:/docs" md-render:ci
+          mkdir -p smoke
+          printf '# Hello\n\n```tikz\n\\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}\n```\n' > smoke/hello.md
+          chmod -R a+rX smoke
+          docker run -d --name md -p 127.0.0.1:9999:9999 -v "$PWD/smoke:/docs" md-render:ci
           for i in $(seq 1 60); do curl -fs http://127.0.0.1:9999/api/health && break; sleep 1; done
           echo; echo "--- files"
           curl -s http://127.0.0.1:9999/api/files | tee files.json; echo
@@ -52,7 +52,7 @@ jobs:
           echo "--- tikz"
           curl -s -o tikz.json -w "%{http_code}\n" -X POST http://127.0.0.1:9999/api/tikz \
             -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
-            -d '{"source":"\\draw (0,0) -- (1,1);"}'
+            -d '{"source":"\\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}"}'
           head -c 300 tikz.json; echo
           grep -q '"svg":"<svg' tikz.json
 
