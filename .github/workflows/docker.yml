@@ -83,6 +83,9 @@ jobs:
       # run by the real mdrender wrapper as the runner's own user.
       - name: Serve through bin/md-render-docker and the mdrender wrapper
         run: |
+          # Free port 9999: the first container still holds it.
+          docker logs md
+          docker rm -f md
           mkdir -p "$HOME/shim-docs"
           printf '# Shim\n\n```tikz\n%%! packages: tikz-cd\n\\begin{tikzcd} A \\arrow[r] & B \\end{tikzcd}\n```\n' > "$HOME/shim-docs/shim.md"
           export MDRENDER_IMAGE=md-render:ci MDRENDER_BIN="$PWD/bin/md-render-docker" MDRENDER_BROWSER=
@@ -105,7 +108,7 @@ jobs:
           curl -fs -X POST -H "Authorization: Bearer $token" http://127.0.0.1:9999/api/shutdown
 
       - name: Container logs
-        if: always()
+        if: failure()
         run: docker logs md || true
 
       - name: Log in to the GitHub Container Registry
