@@ -1367,4 +1367,30 @@ mod tests {
     .unwrap();
     assert!(list_runs(&text).is_err());
   }
+
+  /// The database the TypeScript tests use, written by
+  /// `scripts/trackio_fixture.py`. This keeps the two in step.
+  #[test]
+  fn the_committed_fixture_matches_its_generator() {
+    let db = Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/test/fixtures/trackio/demo.db");
+    let runs = list_runs(&db.canonicalize().unwrap()).unwrap();
+    assert_eq!(runs.schema, 2);
+    let names: Vec<_> = runs.runs.iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(names, ["exp_1", "exp_2", "exp_3"]);
+    for run in &runs.runs {
+      assert_eq!((run.rows, run.first_step, run.last_step), (60, 0, 49));
+      let keys: Vec<_> = run.keys.iter().map(|k| k.key.as_str()).collect();
+      assert_eq!(
+        keys,
+        [
+          "train/loss/ce",
+          "train/loss/kl_teacher_student",
+          "train/lr",
+          "val/acc/top1",
+          "val/loss/ce"
+        ]
+      );
+    }
+    assert_eq!(runs.runs[1].config.get("model.arch"), Some(&json!("vit")));
+  }
 }
