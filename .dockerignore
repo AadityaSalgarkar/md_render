@@ -1,0 +1,8 @@
+node_modules
+dist
+mcp/dist
+src-tauri/target
+to-delete
+.llm
+.git
+*.log
