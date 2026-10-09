@@ -23,7 +23,12 @@ use std::time::{Duration, Instant};
 /// Bumped whenever the document template or SVG post-processing changes,
 /// so cached diagrams from an older version are not reused.
 const RENDER_VERSION: &str = "1";
+/// CPU seconds a compile may use. CPU time, not wall time: Tectonic
+/// downloads TeX files on first use, which waits on the network rather than
+/// burning CPU, while a TeX loop that never ends burns CPU the whole time.
 const DEFAULT_TIMEOUT_SECS: u64 = 20;
+/// Wall-clock ceiling, for a download that hangs.
+const WALL_LIMIT: Duration = Duration::from_secs(600);
 /// Lines of TeX log shown for an error.
 const MAX_ERROR_LINES: usize = 20;
 /// Longest diagram source accepted.
@@ -306,7 +311,9 @@ fn compile_in_child(document: &str, key: &str) -> Result<String, TikzError> {
 }
 
 fn run_child(input: &Path, output: &Path, log: &Path, key: &str) -> Result<String, TikzError> {
+  let limit = timeout();
   let mut child = Command::new(helper()?)
+    .env("MDRENDER_TIKZ_CPU_SECONDS", limit.as_secs().to_string())
     .arg("--render-tikz")
     .arg(input)
     .arg(output)
@@ -317,19 +324,27 @@ fn run_child(input: &Path, output: &Path, log: &Path, key: &str) -> Result<Strin
     .spawn()
     .map_err(|e| TikzError::new("engine", format!("cannot start the TikZ compiler: {}", e)))?;
 
-  let limit = timeout();
   let started = Instant::now();
+  let too_long = || {
+    TikzError::new(
+      "timeout",
+      format!(
+        "the diagram used more than {} s of computing time and was stopped (a loop that never ends?)",
+        limit.as_secs()
+      ),
+    )
+  };
   let status = loop {
     match child.try_wait() {
       Ok(Some(status)) => break status,
-      Ok(None) if started.elapsed() >= limit => {
+      Ok(None) if started.elapsed() >= WALL_LIMIT => {
         let _ = child.kill();
         let _ = child.wait();
         return Err(TikzError::new(
           "timeout",
           format!(
-            "the diagram took longer than {} s to compile and was stopped (a loop that never ends?)",
-            limit.as_secs()
+            "the compiler did not finish within {} minutes (a stalled download of TeX files?)",
+            WALL_LIMIT.as_secs() / 60
           ),
         ));
       }
@@ -338,6 +353,14 @@ fn run_child(input: &Path, output: &Path, log: &Path, key: &str) -> Result<Strin
     }
   };
 
+  // The CPU limit ends the child with a signal (SIGXCPU, or SIGKILL at the
+  // hard limit).
+  {
+    use std::os::unix::process::ExitStatusExt;
+    if status.signal().is_some() {
+      return Err(too_long());
+    }
+  }
   if status.success() {
     let svg = std::fs::read_to_string(output).map_err(|e| TikzError::new("io", e.to_string()))?;
     return Ok(postprocess(&svg, key));
@@ -394,6 +417,7 @@ pub fn error_lines(log: &str) -> Vec<String> {
 /// failure (no network for the first download, say) the message goes to
 /// stderr and the exit code is 2.
 pub fn child_main(input: &Path, output: &Path, log: &Path) -> i32 {
+  limit_cpu();
   let source = match std::fs::read_to_string(input) {
     Ok(text) => text,
     Err(e) => {
@@ -423,6 +447,26 @@ pub fn child_main(input: &Path, output: &Path, log: &Path) -> i32 {
       eprintln!("{}", message);
       2
     }
+  }
+}
+
+/// Cap this process's CPU time at `$MDRENDER_TIKZ_CPU_SECONDS`: the kernel
+/// sends SIGXCPU at the soft limit and SIGKILL a second later.
+fn limit_cpu() {
+  let Some(seconds) = std::env::var("MDRENDER_TIKZ_CPU_SECONDS")
+    .ok()
+    .and_then(|v| v.parse::<u64>().ok())
+    .filter(|v| *v > 0)
+  else {
+    return;
+  };
+  let limit = libc::rlimit {
+    rlim_cur: seconds as libc::rlim_t,
+    rlim_max: (seconds + 1) as libc::rlim_t,
+  };
+  // SAFETY: setrlimit reads a valid rlimit for this process only.
+  unsafe {
+    libc::setrlimit(libc::RLIMIT_CPU, &limit);
   }
 }
 

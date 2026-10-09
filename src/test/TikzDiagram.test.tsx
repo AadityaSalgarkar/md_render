@@ -135,7 +135,7 @@ describe.skipIf(!binary)('tikz blocks against the real server', () => {
   it('stops a diagram that never finishes', async () => {
     show('```tikz\n\\loop\\iftrue\\repeat\n```')
     const card = await screen.findByRole('alert', { name: 'TikZ error' }, { timeout: 30_000 })
-    expect(card).toHaveTextContent('took longer than 8 s')
+    expect(card).toHaveTextContent('more than 8 s of computing time')
   }, 40_000)
 
   it('refuses to compile without the page token', async () => {
