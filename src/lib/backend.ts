@@ -8,6 +8,7 @@ import {
   type SeriesResponse,
 } from './plots/types'
 import { serverExperiments } from './plots/http'
+import { TikzError, serverTikz, type TikzApi, type TikzRendered } from './tikz'
 
 export { serverExperiments }
 
@@ -64,6 +65,8 @@ export interface Backend {
   getViewState(): Promise<ViewState | null>
   /** Read-only access to trackio experiment databases, for `<plot>` blocks. */
   experiments: ExperimentsApi
+  /** Compiles TikZ blocks to SVG. */
+  tikz: TikzApi
 }
 
 export function isTauri(): boolean {
@@ -137,6 +140,18 @@ export function desktopBackend(): Backend {
     getLaunchFile: () => invoke<string | null>('get_launch_file'),
     getViewState: async () => null,
     experiments: desktopExperiments(),
+    tikz: {
+      render: async (source) => {
+        if (!isTauri()) {
+          throw new TikzError('unavailable', 'TikZ diagrams need mdrender to compile them. Open this document with mdrender.')
+        }
+        try {
+          return await invoke<TikzRendered>('render_tikz', { source })
+        } catch (raw) {
+          throw TikzError.from(raw)
+        }
+      },
+    },
   }
 }
 
@@ -295,6 +310,7 @@ export function serverBackend(base = ''): Backend {
       }
     },
     experiments: serverExperiments(base),
+    tikz: serverTikz(base, serverToken),
   }
 }
 

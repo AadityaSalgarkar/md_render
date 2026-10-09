@@ -766,6 +766,7 @@ export default function App() {
             onTextSelection={handleTextSelection}
             documentKey={filePath}
             experiments={backend.experiments}
+            tikz={backend.tikz}
           />
         </motion.div>
         <CommentPane

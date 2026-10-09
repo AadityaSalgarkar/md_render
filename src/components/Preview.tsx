@@ -27,6 +27,9 @@ import { MermaidDiagram } from './MermaidDiagram'
 import { ExperimentPlot } from './ExperimentPlot'
 import { PlotContext, type PlotEnvironment } from '../lib/plots/context'
 import { isPlotLanguage, preparePlotBlocks } from '../lib/plotBlocks'
+import { TikzDiagram } from './TikzDiagram'
+import { isTikzLanguage, prepareTikzBlocks } from '../lib/tikz'
+import type { TikzApi } from '../lib/tikz'
 import type { ExperimentsApi } from '../lib/plots/types'
 import { Quiz, Enumerate, Option, Answer } from './Quiz'
 import { resolveImageSrc } from '../lib/resolveImageSrc'
@@ -46,6 +49,8 @@ interface PreviewProps {
   documentKey?: string | null
   /** Experiment data for `<plot>` blocks; absent where none can be read. */
   experiments?: ExperimentsApi
+  /** Compiles TikZ blocks; absent where nothing can compile. */
+  tikz?: TikzApi
 }
 
 /** Collapse state shared with the heading and section renderers. */
@@ -75,10 +80,11 @@ export function Preview({
   onTextSelection,
   documentKey,
   experiments,
+  tikz,
 }: PreviewProps) {
   const plotEnvironment = useMemo<PlotEnvironment>(
-    () => ({ experiments, baseDir, documentKey }),
-    [experiments, baseDir, documentKey],
+    () => ({ experiments, tikz, baseDir, documentKey }),
+    [experiments, tikz, baseDir, documentKey],
   )
   const scrollRef = useRef<HTMLDivElement>(null)
   const articleRef = useRef<HTMLElement>(null)
@@ -116,7 +122,7 @@ export function Preview({
   // labels) is normalised for KaTeX before the quiz markup is prepared.
   // Plot blocks become fences first, so the math pass leaves their JSON alone.
   const preparedContent = useMemo(
-    () => prepareQuizBlocks(normalizeMath(preparePlotBlocks(content))),
+    () => prepareQuizBlocks(normalizeMath(prepareTikzBlocks(preparePlotBlocks(content)))),
     [content],
   )
 
@@ -423,6 +429,10 @@ function PreWithCopy({ children, className }: PreWithCopyProps) {
 
   if (codeBlock && isMermaidLanguage(codeBlock.props.className)) {
     return <MermaidDiagram chart={getTextContent(codeBlock.props.children).trim()} />
+  }
+
+  if (codeBlock && isTikzLanguage(codeBlock.props.className)) {
+    return <TikzDiagram source={getTextContent(codeBlock.props.children)} />
   }
 
   if (codeBlock && isPlotLanguage(codeBlock.props.className)) {
