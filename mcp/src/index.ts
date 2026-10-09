@@ -3,12 +3,14 @@
  *
  * Everything a reader can do by hand in the browser — open and close
  * directories and tabs, read and save documents, comment, export — plus
- * starting and stopping servers and steering an open page, as tools.
+ * starting and stopping servers, steering an open page, and reading the
+ * trackio experiment databases that <plot> blocks draw from, as tools.
  * Nothing here writes to stdout except the protocol itself.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { registerDocumentTools } from './tools/documents.ts'
+import { registerExperimentTools } from './tools/experiments.ts'
 import { registerServerTools } from './tools/servers.ts'
 import { registerTabTools } from './tools/tabs.ts'
 import { registerViewTools } from './tools/view.ts'
@@ -24,6 +26,7 @@ registerWorkspaceTools(server)
 registerTabTools(server)
 registerDocumentTools(server)
 registerViewTools(server)
+registerExperimentTools(server)
 
 const transport = new StdioServerTransport()
 await server.connect(transport)
