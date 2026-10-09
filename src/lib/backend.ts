@@ -1,5 +1,13 @@
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { dirname } from './resolveImageSrc'
+import {
+  ExperimentsError,
+  type DbSource,
+  type ExperimentsApi,
+  type ProjectsResponse,
+  type RunsResponse,
+  type SeriesResponse,
+} from './plots/types'
 
 /** One open document — a tab. */
 export interface DocumentMeta {
@@ -52,6 +60,8 @@ export interface Backend {
   getLaunchFile(): Promise<string | null>
   /** The view the server is asking for; `null` where nothing can ask. */
   getViewState(): Promise<ViewState | null>
+  /** Read-only access to trackio experiment databases, for `<plot>` blocks. */
+  experiments: ExperimentsApi
 }
 
 export function isTauri(): boolean {
@@ -124,6 +134,101 @@ export function desktopBackend(): Backend {
       invoke<string>('export_markdown', { path, content }),
     getLaunchFile: () => invoke<string | null>('get_launch_file'),
     getViewState: async () => null,
+    experiments: desktopExperiments(),
+  }
+}
+
+/** The Tauri commands reject with the same `{error, message}` object the server sends. */
+function desktopExperiments(): ExperimentsApi {
+  const call = async <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
+    try {
+      return await invoke<T>(command, args)
+    } catch (raw) {
+      throw ExperimentsError.from(raw)
+    }
+  }
+  return {
+    listProjects: () => call<ProjectsResponse>('list_experiment_projects'),
+    listRuns: (source, baseDir) =>
+      call<RunsResponse>('list_experiment_runs', { source, baseDir: baseDir ?? null }),
+    fetchSeries: (request) =>
+      call<SeriesResponse>('fetch_experiment_series', {
+        source: request.source,
+        baseDir: request.baseDir ?? null,
+        request: {
+          runs: request.runs,
+          keys: request.keys,
+          max_points: request.maxPoints,
+          keep_duplicate_steps: request.keepDuplicateSteps ?? false,
+          if_version: request.ifVersion,
+        },
+      }),
+  }
+}
+
+/** Query parameters naming a source. */
+function sourceParams(source: DbSource, baseDir?: string | null): URLSearchParams {
+  const params = new URLSearchParams()
+  if (source.project !== undefined) params.set('project', source.project)
+  if (source.db !== undefined) params.set('db', source.db)
+  if (baseDir) params.set('base', baseDir)
+  return params
+}
+
+/** The `/api/experiments` routes. Non-2xx answers carry a JSON error object. */
+export function serverExperiments(base = ''): ExperimentsApi {
+  const read = async <T>(response: Response): Promise<T> => {
+    const text = await response.text()
+    if (!response.ok) throw ExperimentsError.from(text, `request failed (${response.status})`)
+    return JSON.parse(text) as T
+  }
+  const get = async <T>(path: string): Promise<T> => {
+    let response: Response
+    try {
+      response = await fetch(`${base}${path}`)
+    } catch (err) {
+      throw new ExperimentsError('unavailable', `could not reach the server: ${String(err)}`)
+    }
+    return read<T>(response)
+  }
+
+  return {
+    listProjects: () => get<ProjectsResponse>('/api/experiments/projects'),
+    listRuns: (source, baseDir) =>
+      get<RunsResponse>(`/api/experiments/runs?${sourceParams(source, baseDir)}`),
+    fetchSeries: async (request) => {
+      const params = sourceParams(request.source, request.baseDir)
+      params.set('runs', request.runs.join(','))
+      params.set('keys', request.keys.join(','))
+      if (request.maxPoints !== undefined) params.set('max_points', String(request.maxPoints))
+      if (request.keepDuplicateSteps) params.set('keep_duplicate_steps', 'true')
+      if (request.ifVersion) params.set('if_version', request.ifVersion)
+      const query = params.toString()
+      const hasComma = [...request.runs, ...request.keys].some((name) => name.includes(','))
+      if (!hasComma && query.length < 6000) {
+        return get<SeriesResponse>(`/api/experiments/series?${query}`)
+      }
+      // Names with commas, or a long list: the JSON form.
+      let response: Response
+      try {
+        response = await fetch(`${base}/api/experiments/series`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source: request.source,
+            base: request.baseDir ?? null,
+            runs: request.runs,
+            keys: request.keys,
+            max_points: request.maxPoints,
+            keep_duplicate_steps: request.keepDuplicateSteps ?? false,
+            if_version: request.ifVersion,
+          }),
+        })
+      } catch (err) {
+        throw new ExperimentsError('unavailable', `could not reach the server: ${String(err)}`)
+      }
+      return read<SeriesResponse>(response)
+    },
   }
 }
 
@@ -247,6 +352,7 @@ export function serverBackend(base = ''): Backend {
         seq: body.seq,
       }
     },
+    experiments: serverExperiments(base),
   }
 }
 
