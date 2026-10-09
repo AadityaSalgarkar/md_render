@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.7.0...v0.8.0) (2026-10-09)
+
+
+### Features
+
+* **install:** install from the published Docker image, nothing compiled ([dfe1b94](https://github.com/AadityaSalgarkar/md_render/commit/dfe1b9458f5516efd668b2eff5eb23f6aae73b39))
+* **install:** md-render from the published Docker image, nothing compiled ([85af85d](https://github.com/AadityaSalgarkar/md_render/commit/85af85d36e8c5f3c4abbfe234b3027ae5c14e6ea))
+
 ## [0.7.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.6.0...v0.7.0) (2026-10-09)
 
 
