@@ -13,6 +13,7 @@ import { registerDocumentTools } from './tools/documents.ts'
 import { registerExperimentTools } from './tools/experiments.ts'
 import { registerServerTools } from './tools/servers.ts'
 import { registerTabTools } from './tools/tabs.ts'
+import { registerTikzTools } from './tools/tikz.ts'
 import { registerViewTools } from './tools/view.ts'
 import { registerWorkspaceTools } from './tools/workspaces.ts'
 
@@ -27,6 +28,7 @@ registerTabTools(server)
 registerDocumentTools(server)
 registerViewTools(server)
 registerExperimentTools(server)
+registerTikzTools(server)
 
 const transport = new StdioServerTransport()
 await server.connect(transport)
