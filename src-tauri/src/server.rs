@@ -16,6 +16,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::cli::{Document, WorkspaceSpec};
 use crate::experiments::{self, DbSource, ExpError, SeriesRequest};
+use crate::tikz;
 use crate::state::{self, ServerRecord};
 
 #[derive(RustEmbed)]
@@ -572,6 +573,44 @@ async fn export_by_path(
       format!("could not export document: {}", err),
     )
       .into_response(),
+  }
+}
+
+#[derive(Deserialize)]
+struct TikzBody {
+  source: String,
+}
+
+/// Compile a TikZ block. Needs the token: it runs TeX, which costs CPU and
+/// time, so only the pages this server handed out may ask.
+async fn render_tikz(State(state): State<Shared>, headers: HeaderMap, Json(body): Json<TikzBody>) -> Response {
+  if !authorised(&headers, &state) {
+    return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
+  }
+  match tokio::task::spawn_blocking(move || tikz::render(&body.source)).await {
+    Ok(Ok(rendered)) => Json(rendered).into_response(),
+    Ok(Err(err)) => {
+      let status = StatusCode::from_u16(err.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+      (status, Json(err)).into_response()
+    }
+    Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
+  }
+}
+
+/// A rendered diagram by key. The key is a hash of the document, so the
+/// answer never changes and the browser may keep it forever.
+async fn cached_tikz(axum::extract::Path(file): axum::extract::Path<String>) -> Response {
+  let key = file.strip_suffix(".svg").unwrap_or(&file);
+  match tikz::cached_svg(key) {
+    Some(svg) => (
+      [
+        (header::CONTENT_TYPE, "image/svg+xml"),
+        (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+      ],
+      svg,
+    )
+      .into_response(),
+    None => (StatusCode::NOT_FOUND, "no such diagram").into_response(),
   }
 }
 
@@ -1191,6 +1230,8 @@ pub fn router(state: Shared) -> Router {
     .route("/api/documents", post(add_documents))
     .route("/api/view", get(get_view).put(put_view))
     .route("/api/shutdown", post(shutdown))
+    .route("/api/tikz", post(render_tikz))
+    .route("/api/tikz/{file}", get(cached_tikz))
     .route("/api/experiments/projects", get(experiment_projects))
     .route("/api/experiments/runs", get(experiment_runs))
     .route(
@@ -1450,6 +1491,67 @@ mod tests {
       body.len(),
       body
     )
+  }
+
+  #[test]
+  fn tikz_compiles_need_the_token_and_cached_diagrams_are_immutable() {
+    let dir = temp_dir("tikz");
+    fs::write(dir.join("report.md"), "# report").unwrap();
+    let cache = dir.join("cache");
+    fs::create_dir_all(&cache).unwrap();
+    let key = "0123456789abcdef0123456789abcdef";
+    fs::write(cache.join(format!("{}.svg", key)), "<svg>cached</svg>").unwrap();
+    std::env::set_var("MDRENDER_TIKZ_CACHE", &cache);
+
+    let shared: Shared = Arc::new(RwLock::new(ServerState::new(
+      specs_for(&[dir.join("report.md")]),
+      "test-token".to_string(),
+    )));
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+    runtime.block_on(async move {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let addr = listener.local_addr().unwrap();
+      tokio::spawn(async move {
+        let _ = axum::serve(listener, router(shared)).await;
+      });
+
+      let body = "{\"source\":\"\\\\draw (0,0) -- (1,1);\"}";
+      let (status, _) = http(addr, with_token(addr, "POST", "/api/tikz", None, Some(body))).await;
+      assert_eq!(status, 401);
+      let (status, _) = http(addr, with_token(addr, "POST", "/api/tikz", Some("wrong"), Some(body))).await;
+      assert_eq!(status, 401);
+
+      let too_big = format!("{{\"source\":\"{}\"}}", "x".repeat(tikz::MAX_SOURCE_BYTES + 1));
+      let request = with_token(addr, "POST", "/api/tikz", Some("test-token"), Some(&too_big));
+      let (status, body) = http(addr, request).await;
+      assert_eq!(status, 413);
+      assert!(body.contains("\"error\":\"too_large\""));
+
+      let raw = format!(
+        "GET /api/tikz/{}.svg HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
+        key, addr
+      );
+      let response = {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        stream.write_all(raw.as_bytes()).await.unwrap();
+        let mut bytes = Vec::new();
+        stream.read_to_end(&mut bytes).await.unwrap();
+        String::from_utf8_lossy(&bytes).to_string()
+      };
+      assert!(response.starts_with("HTTP/1.1 200"));
+      assert!(response.to_ascii_lowercase().contains("content-type: image/svg+xml"));
+      assert!(response.contains("immutable"));
+      assert!(response.ends_with("<svg>cached</svg>"));
+
+      let (status, _) = http(addr, get(addr, "/api/tikz/ffffffffffffffffffffffffffffffff.svg")).await;
+      assert_eq!(status, 404);
+      let (status, _) = http(addr, get(addr, "/api/tikz/..%2F..%2Fetc%2Fpasswd")).await;
+      assert_eq!(status, 404);
+    });
   }
 
   #[test]

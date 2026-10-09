@@ -107,6 +107,8 @@ Usage:
   md-render --open [FILE|DIR|URL]...         serve, and open the first document in
                                              the browser (what the mdrender wrapper
                                              does by default)
+  md-render --warm-tikz                      fetch the TeX files TikZ diagrams need,
+                                             so the first diagram renders quickly
 
   A URL (https://...) is downloaded under /tmp/md-render/remote and opened
   from there; GitHub file pages are fetched as their raw content.

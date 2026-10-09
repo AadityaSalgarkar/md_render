@@ -5,6 +5,7 @@ mod experiments;
 mod remote;
 mod server;
 mod state;
+mod tikz;
 
 use std::collections::HashSet;
 use std::fs;
@@ -222,6 +223,19 @@ async fn fetch_experiment_series(
   .map_err(|e| experiments::ExpError::bad_request(e.to_string()))?
 }
 
+/// Compile a TikZ block to SVG (cached). Runs off the main thread: a first
+/// compile can take seconds.
+#[tauri::command]
+async fn render_tikz(source: String) -> Result<tikz::Rendered, tikz::TikzError> {
+  tauri::async_runtime::spawn_blocking(move || tikz::render(&source))
+    .await
+    .map_err(|e| tikz::TikzError {
+      error: "engine",
+      message: e.to_string(),
+      log: Vec::new(),
+    })?
+}
+
 #[tauri::command]
 fn get_launch_file() -> Option<String> {
   // First check the global state (set from command-line args)
@@ -323,6 +337,29 @@ fn run_server(
 pub fn run() {
   let args: Vec<String> = std::env::args().skip(1).collect();
 
+  // The child that compiles one TikZ diagram (see tikz.rs). Internal: the
+  // server and window start it; it prints nothing on stdout.
+  if args.first().map(String::as_str) == Some("--render-tikz") {
+    if args.len() != 4 {
+      eprintln!("usage: md-render --render-tikz IN.tex OUT.svg OUT.log");
+      std::process::exit(2);
+    }
+    std::process::exit(tikz::child_main(
+      Path::new(&args[1]),
+      Path::new(&args[2]),
+      Path::new(&args[3]),
+    ));
+  }
+  if args.first().map(String::as_str) == Some("--warm-tikz") {
+    match tikz::warm() {
+      Ok(()) => return,
+      Err(err) => {
+        eprintln!("md-render: {}", err);
+        std::process::exit(1);
+      }
+    }
+  }
+
   let mode = match cli::parse(&args) {
     Ok(mode) => mode,
     Err(err) => {
@@ -378,7 +415,8 @@ pub fn run() {
       remove_document,
       list_experiment_projects,
       list_experiment_runs,
-      fetch_experiment_series
+      fetch_experiment_series,
+      render_tikz
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

@@ -211,6 +211,7 @@ mdrender — MD_RENDER markdown renderer
   mdrender --port [PORT] PATH...  serve over HTTP in the foreground, no browser
                                   (headless-friendly; ctrl-c stops it)
   mdrender --mcp                  MCP server over stdio, driving the served tabs
+  mdrender --warm-tikz            fetch the TeX files TikZ diagrams need (once)
 
 Serving: the default port is 9999, falling forward to the next free port when
 another program holds it. Each directory (or a file's parent directory)
@@ -319,6 +320,13 @@ main() {
   if [ "${1:-}" = "--mcp" ]; then
     shift
     exec_mcp "$@"
+  fi
+
+  # Fetch the TeX files TikZ diagrams need, ahead of the first diagram.
+  if [ "${1:-}" = "--warm-tikz" ]; then
+    local bin
+    bin="$(find_binary)" || not_installed
+    exec "$bin" --warm-tikz
   fi
 
   local arg

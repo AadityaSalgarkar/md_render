@@ -146,6 +146,32 @@ export class MdRenderClient {
     return body.path
   }
 
+  /**
+   * Compile a TikZ block. A first compile on a machine downloads TeX files,
+   * so this waits up to ten minutes, as the server does.
+   */
+  async tikz(source: string): Promise<{ key: string; svg: string; cached: boolean }> {
+    const response = await fetch(`${baseUrl(this.port)}/api/tikz`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.token}` },
+      body: JSON.stringify({ source }),
+      signal: AbortSignal.timeout(610_000),
+    })
+    const text = await response.text()
+    if (response.status === 401) throw new ToolError(`the server on port ${this.port} rejected the token`)
+    if (!response.ok) {
+      let detail = text
+      try {
+        const body = JSON.parse(text) as { error: string; message: string; log?: string[] }
+        detail = [`${body.error}: ${body.message}`, ...(body.log ?? [])].join('\n')
+      } catch {
+        // plain text answer
+      }
+      throw new ToolError(`the diagram did not compile (${response.status}):\n${detail}`)
+    }
+    return JSON.parse(text) as { key: string; svg: string; cached: boolean }
+  }
+
   addDocuments(paths: string[], workspace?: string) {
     const body: { paths: string[]; ws?: string } = { paths }
     if (workspace) body.ws = workspace

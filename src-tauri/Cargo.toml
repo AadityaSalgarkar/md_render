@@ -6,7 +6,7 @@ authors = ["you"]
 license = ""
 repository = ""
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.92"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -36,3 +36,11 @@ uuid = { version = "1", features = ["v4"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 dirs = "6"
 rusqlite = { version = "0.37", features = ["bundled"] }
+# TikZ diagrams: Tectonic compiles LaTeX to PDF (in a child process, see
+# tikz.rs), hayro-svg turns the page into SVG. Tectonic needs ICU, freetype,
+# fontconfig, graphite2, harfbuzz and libpng from the system.
+tectonic = "0.17"
+hayro-svg = "0.8"
+hayro-interpret = "0.8"
+sha2 = "0.10"
+libc = "0.2"

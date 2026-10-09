@@ -221,6 +221,47 @@ see), write the block, and call `read_metrics` for numbers to quote in prose.
 - A mistake renders an error card with the message, so check the reader
   after writing.
 
+## TikZ diagrams
+
+A ```` ```tikz ```` fence (or a `<tikz>…</tikz>` tag) compiles to an SVG
+figure with the LaTeX engine built into mdrender: no TeX installation is
+needed. Write one or more `tikzpicture` (or `tikzcd`) environments, with
+optional header lines first. They are TeX comments, so the block stays
+valid LaTeX:
+
+````markdown
+```tikz
+%! packages: pgfplots
+%! libraries: arrows.meta, positioning
+%! caption: The decoder only sees $z$, so everything it needs must pass through the bottleneck.
+\begin{tikzpicture}[node distance=2.4cm, box/.style={draw, rounded corners, minimum width=2cm}]
+  \node[box] (enc) {encoder};
+  \node[box, right=of enc] (dec) {decoder};
+  \draw[-Stealth] (enc) -- node[above] {$z$} (dec);
+\end{tikzpicture}
+```
+````
+
+- `%! packages:` loads packages (`pgfplots`, `tikz-cd`, `circuitikz`, …;
+  `[opts]{name}` for options). pgfplots gets `compat=1.18` unless the
+  preamble sets it.
+- `%! libraries:` loads TikZ libraries; `%! preamble:` adds a line to the
+  preamble (repeatable).
+- `%! caption:` is the lesson of the figure, printed under it as
+  "Figure N: …" and numbered together with plots. Inline markdown and math
+  work.
+- A whole `\documentclass … \end{document}` is also accepted, for full
+  control.
+- Leave colours out unless they carry meaning: black follows the theme's
+  text colour and white the figure background, so diagrams read in dark
+  themes too.
+- Check a diagram with the MCP tool `render_tikz` before writing it into a
+  document: it returns the TeX error lines when the diagram does not
+  compile. Compiled diagrams are cached, so the reader sees them at once.
+- A diagram that computes for more than 20 seconds is stopped. The first
+  diagram on a machine downloads TeX files (minutes, once);
+  `mdrender --warm-tikz` does that ahead of time.
+
 ## Review comments
 
 Comments are stored inline in the markdown as

@@ -51,6 +51,7 @@ const ALL_TOOLS = [
   'list_projects',
   'list_runs',
   'read_metrics',
+  'render_tikz',
 ]
 
 function pickPort(): number {
@@ -482,6 +483,21 @@ describe.skipIf(!binary || !bundle)('mdrender MCP server', () => {
     expect(missing.find((m) => m.run === 'exp_9')?.nearest_runs?.[0]).toMatch(/^exp_/)
     expect(missing.find((m) => m.run === 'exp_1')?.nearest_keys?.[0]).toBe('val/acc/top1')
   })
+
+  it('render_tikz compiles a diagram, and returns the TeX error for a broken one', async () => {
+    const ok = await expectOk('render_tikz', {
+      source: '%! packages: tikz-cd\n\\begin{tikzcd} A \\arrow[r] & B \\end{tikzcd}',
+      port: portA,
+    })
+    expect(ok.compiled).toBe(true)
+    expect(ok.svg_bytes).toBeGreaterThan(100)
+    const svg = await fetch(ok.url as string)
+    expect(svg.headers.get('content-type')).toBe('image/svg+xml')
+
+    const broken = await call('render_tikz', { source: '\\begin{tikzpicture}\\drwa;\\end{tikzpicture}', port: portA })
+    expect(broken.ok).toBe(false)
+    expect(broken.text).toContain('Undefined control sequence')
+  }, 120_000)
 
   it('close_workspace removes it and frees the name', async () => {
     const data = await expectOk('close_workspace', { workspace: 'second' })

@@ -146,6 +146,21 @@ A plot block draws charts from [trackio](https://github.com/gradio-app/trackio) 
 
 Line, bar, spider, histogram and scatter plots are supported; hover a legend entry to read what a metric means.
 
+## TikZ Diagrams
+
+A tikz fence compiles to a figure with the LaTeX engine built into the app, no TeX installation needed:
+
+\`\`\`\`markdown
+\`\`\`tikz
+%! packages: tikz-cd
+%! caption: The square commutes: $h \\circ f = k \\circ g$.
+\\begin{tikzcd}
+A \\arrow[r, "f"] \\arrow[d, "g"'] & B \\arrow[d, "h"] \\\\
+C \\arrow[r, "k"'] & D
+\\end{tikzcd}
+\`\`\`
+\`\`\`\`
+
 ---
 
 *Start writing in the editor on the left, and watch your prose transform into beautifully typeset text on the right.*

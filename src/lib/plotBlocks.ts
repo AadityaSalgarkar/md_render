@@ -23,7 +23,19 @@ const PLOT_INFO = /^\s*(?:language-)?plot\s*$/i
 
 /** Rewrite plot tags and plot fences to `md-plot` fences. */
 export function preparePlotBlocks(markdown: string): string {
-  if (!markdown.includes('plot')) return markdown
+  return rewriteTagBlocks(markdown, 'plot', PLOT_INFO, PLOT_LANGUAGE)
+}
+
+/**
+ * Rewrite `<TAG>…</TAG>` blocks, and fences whose info string matches
+ * `info`, into fences of `language`. Fences of any other language are
+ * skipped whole, so an example inside a code block stays as written. A tag
+ * without its closing tag is left alone.
+ */
+export function rewriteTagBlocks(markdown: string, tag: string, info: RegExp, language: string): string {
+  if (!markdown.includes(tag)) return markdown
+  const openTag = new RegExp(`^\\s{0,3}<${tag}>(.*)$`)
+  const closeTag = `</${tag}>`
   const lines = markdown.split('\n')
   const out: string[] = []
   let fence: { marker: string; length: number } | null = null
@@ -41,8 +53,8 @@ export function preparePlotBlocks(markdown: string): string {
     const open = FENCE_OPEN.exec(line)
     if (open) {
       const marker = open[2]
-      if (PLOT_INFO.test(open[3])) {
-        out.push(`${open[1]}${marker}${PLOT_LANGUAGE}`)
+      if (info.test(open[3])) {
+        out.push(`${open[1]}${marker}${language}`)
       } else {
         out.push(line)
       }
@@ -50,19 +62,19 @@ export function preparePlotBlocks(markdown: string): string {
       continue
     }
 
-    const tag = /^\s{0,3}<plot>(.*)$/.exec(line)
-    if (tag) {
+    const opened = openTag.exec(line)
+    if (opened) {
       // Collect up to the closing tag; without one the line stays as written.
       const body: string[] = []
-      let rest = tag[1]
+      let rest = opened[1]
       let closed = false
       let after = ''
       let j = i
       for (;;) {
-        const end = rest.indexOf('</plot>')
+        const end = rest.indexOf(closeTag)
         if (end >= 0) {
           body.push(rest.slice(0, end))
-          after = rest.slice(end + '</plot>'.length)
+          after = rest.slice(end + closeTag.length)
           closed = true
           break
         }
@@ -77,7 +89,7 @@ export function preparePlotBlocks(markdown: string): string {
       }
       const longest = Math.max(2, ...body.join('\n').match(/`+/g)?.map((m) => m.length) ?? [0])
       const ticks = '`'.repeat(longest + 1)
-      out.push(`${ticks}${PLOT_LANGUAGE}`, body.join('\n').trim(), ticks)
+      out.push(`${ticks}${language}`, body.join('\n').trim(), ticks)
       if (after.trim()) out.push(after)
       i = j
       continue

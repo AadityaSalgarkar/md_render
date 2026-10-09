@@ -30,13 +30,30 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential curl wget file pkg-config \
             libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
-            libayatana-appindicator3-dev librsvg2-dev libgtk-3-dev
+            libayatana-appindicator3-dev librsvg2-dev libgtk-3-dev \
+            libicu-dev libfontconfig1-dev libfreetype-dev libgraphite2-dev \
+            libharfbuzz-dev libpng-dev zlib1g-dev
+
+      # Tectonic (TikZ diagrams) links ICU, freetype, graphite2, harfbuzz and
+      # libpng; ICU is keg-only, found through src-tauri/.cargo/config.toml.
+      - name: Install Tectonic build deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install icu4c freetype graphite2 harfbuzz libpng pkgconf
 
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+
+      # TeX files Tectonic downloads on first use; minutes to fetch, so keep them.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/Tectonic
+            ~/Library/Caches/TectonicProject.Tectonic
+          key: tectonic-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: tectonic-${{ runner.os }}-
 
       - run: npm ci
 
@@ -58,6 +75,10 @@ jobs:
       - name: Build debug binary for end-to-end tests
         working-directory: src-tauri
         run: cargo build
+
+      # Fetch the TeX files the TikZ tests use before they run.
+      - name: Warm the TikZ compiler
+        run: src-tauri/target/debug/app --warm-tikz
 
       - name: Frontend tests
         run: npx vitest run
