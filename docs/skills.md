@@ -201,7 +201,8 @@ see), write the block, and call `read_metrics` for numbers to quote in prose.
   paper. Write one or two sentences that state the finding with its
   numbers, not a description of the axes: "exp_2 reaches the lowest
   validation loss (0.55 vs 0.77) but not the best accuracy". Get the
-  numbers from `read_metrics`. Inline markdown and `$math$` work.
+  numbers from `read_metrics`. Inline markdown and `$math$` work. Give
+  every plot one.
 - `descriptions`: what each metric means, by exact key or glob (`*` is one
   path segment, `**` any depth); shown only on hover over the legend, the
   key caption and the table when one is shown.
