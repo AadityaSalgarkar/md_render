@@ -201,8 +201,8 @@ see), write the block, and call `read_metrics` for numbers to quote in prose.
 - Also: `x` (`axis`, `range`, `label`), `y` (`scale`: `log`, `smoothing`
   0 to 0.99, `range`), `max_points` (1500), `refresh` (`"auto"` polls every
   15 s while the database changed in the last ten minutes; seconds; or 0),
-  `height`, `legend` (`auto`, `bottom`, `right`, `none`), `table` (`true` adds
-  a per-series summary table under the chart), `id` (remember the reader's
+  `height`, `legend` (`auto`, `bottom`, `right`, `none`), `table` (the per-series
+  summary table shows by itself up to 150 rows; `true` always, `false` never), `id` (remember the reader's
   view).
 - A mistake renders an error card with the message, so check the reader
   after writing.

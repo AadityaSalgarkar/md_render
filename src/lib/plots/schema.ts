@@ -108,9 +108,21 @@ export interface PlotSpec {
   title: string
   height: number
   legend: 'auto' | 'bottom' | 'right' | 'none'
-  /** Show the per-series summary table under the chart. */
-  table: boolean
+  /**
+   * The per-series summary table under the chart: "auto" shows it up to
+   * MAX_TABLE_ROWS rows, true always, false never.
+   */
+  table: 'auto' | boolean
   id: string | null
+}
+
+/** Most rows the summary table shows by itself; `"table": true` lifts the limit. */
+export const MAX_TABLE_ROWS = 150
+
+/** Whether a plot shows its summary table, given the block setting and the row count. */
+export function showsTable(setting: PlotSpec['table'], rows: number): boolean {
+  if (setting === 'auto') return rows > 0 && rows <= MAX_TABLE_ROWS
+  return setting
 }
 
 export type ParseResult =
@@ -127,6 +139,11 @@ const KNOWN_KEYS = new Set([
 ])
 
 class SpecError extends Error {}
+
+function tableSetting(value: unknown): boolean {
+  if (typeof value !== 'boolean') throw new SpecError('"table" must be true, false or "auto"')
+  return value
+}
 
 /** Compile a regex from the document, or explain why it cannot be used. */
 export function compilePattern(pattern: string, where: string): RegExp {
@@ -360,7 +377,7 @@ function parseSpec(raw: unknown): { spec: PlotSpec; warnings: string[] } {
     title: raw.title === undefined ? '' : str(raw.title, '"title"'),
     height: raw.height === undefined ? 320 : Math.round(num(raw.height, '"height"', 160, 1200)),
     legend: raw.legend === undefined ? 'auto' : oneOf(raw.legend, ['auto', 'bottom', 'right', 'none'], '"legend"'),
-    table: raw.table === undefined ? false : Boolean(raw.table),
+    table: raw.table === undefined || raw.table === 'auto' ? 'auto' : tableSetting(raw.table),
     id: raw.id === undefined || raw.id === null ? null : str(raw.id, '"id"'),
   }
 

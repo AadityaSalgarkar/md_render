@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parsePlotBlock, type PlotSpec } from '../../lib/plots/schema'
+import { MAX_TABLE_ROWS, parsePlotBlock, showsTable, type PlotSpec } from '../../lib/plots/schema'
 
 function parsed(json: unknown): PlotSpec {
   const result = parsePlotBlock(JSON.stringify(json))
@@ -12,6 +12,17 @@ function error(json: unknown): string {
   if (result.ok) throw new Error('expected an error')
   return result.error
 }
+
+describe('summary table', () => {
+  it('shows up to 150 rows by itself, and the block can force it either way', () => {
+    expect(MAX_TABLE_ROWS).toBe(150)
+    expect(showsTable('auto', 150)).toBe(true)
+    expect(showsTable('auto', 151)).toBe(false)
+    expect(showsTable('auto', 0)).toBe(false)
+    expect(showsTable(true, 5000)).toBe(true)
+    expect(showsTable(false, 3)).toBe(false)
+  })
+})
 
 describe('plot block schema', () => {
   it('fills every default', () => {
@@ -34,7 +45,7 @@ describe('plot block schema', () => {
       refresh: 'auto',
       height: 320,
       legend: 'auto',
-      table: false,
+      table: 'auto',
       id: null,
       scatter: null,
     })
@@ -69,6 +80,7 @@ describe('plot block schema', () => {
     expect(spec.descriptions).toEqual({ '*/loss/ce': 'Cross entropy.' })
     expect(spec.refresh).toBe(10)
     expect(parsed({ plot_type: 'bar', source: { project: 'p' }, table: true }).table).toBe(true)
+    expect(parsed({ plot_type: 'bar', source: { project: 'p' }, table: false }).table).toBe(false)
   })
 
   it('needs scatter axes for a scatter plot', () => {
@@ -91,6 +103,7 @@ describe('plot block schema', () => {
     expect(error({ plot_type: 'line', source: { project: 'p' }, views: [{ name: 'a' }, { name: 'a' }] })).toMatch(/two views/)
     expect(error({ plot_type: 'line', source: { project: 'p' }, y: { smoothing: 1.5 } })).toMatch(/smoothing/)
     expect(error({ plot_type: 'line', source: { project: 'p' }, refresh: 1 })).toMatch(/refresh/)
+    expect(error({ plot_type: 'line', source: { project: 'p' }, table: 'yes' })).toMatch(/"table"/)
   })
 
   it('warns about unknown fields instead of failing', () => {

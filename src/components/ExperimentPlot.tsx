@@ -1,6 +1,6 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { Chart } from 'chart.js'
-import { parsePlotBlock, type PlotSpec } from '../lib/plots/schema'
+import { parsePlotBlock, showsTable, type PlotSpec } from '../lib/plots/schema'
 import { configCandidates, defaultView, deriveViews, resolveView, type View } from '../lib/plots/views'
 import { describer } from '../lib/plots/descriptions'
 import { buildChart, effectiveAxes, plannedRequest, type Overrides } from '../lib/plots/chartConfig'
@@ -418,8 +418,9 @@ function LoadedPlot({ spec, warnings }: { spec: PlotSpec; warnings: string[] }) 
         </div>
       )}
 
-      {/* The table is opt-in; it stands in for the chart where no canvas can draw. */}
-      {built && (spec.table || canvasReady === false) && (
+      {/* Shown for up to MAX_TABLE_ROWS series unless the block decides; it
+          also stands in for the chart where no canvas can draw. */}
+      {built && (showsTable(spec.table, built.table.length) || canvasReady === false) && (
         <details className="experiment-plot-table" open={canvasReady === false}>
           <summary>Data</summary>
           <div className="experiment-plot-table-scroll">
