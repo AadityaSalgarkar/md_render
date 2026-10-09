@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.6.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.5.1...v0.6.0) (2026-10-09)
+
+
+### Features
+
+* **backend:** experiments api in desktop and server modes ([7c4e328](https://github.com/AadityaSalgarkar/md_render/commit/7c4e328bd2b01946ff6b55ce50f6b159a88b5e9e))
+* **cli:** --open hands the first document to the browser ([479fc81](https://github.com/AadityaSalgarkar/md_render/commit/479fc8140740e2e7f49cabf463121a60c128fe8d))
+* **experiments:** read trackio databases read-only ([c27af8e](https://github.com/AadityaSalgarkar/md_render/commit/c27af8e1d74258a8378efff6cf50eaa10b94462a))
+* **mcp:** list_projects, list_runs and read_metrics ([00fd92e](https://github.com/AadityaSalgarkar/md_render/commit/00fd92e801dc9aa682aed720ce89af10c1d4381a))
+* **plots:** block schema, views, series transforms and chart configs ([99a629c](https://github.com/AadityaSalgarkar/md_render/commit/99a629cad289756035fb6171a6f4596060931826))
+* **plots:** charts of trackio experiment logs from &lt;plot&gt; blocks ([c5c486b](https://github.com/AadityaSalgarkar/md_render/commit/c5c486b34a035c983e2fc8ceb085ca3bce73613d))
+* **plots:** figure captions that state the lesson ([d0e4efe](https://github.com/AadityaSalgarkar/md_render/commit/d0e4efe752feebf2f009298de8055bb0118c42a8))
+* **plots:** render &lt;plot&gt; blocks in the preview ([04cffb9](https://github.com/AadityaSalgarkar/md_render/commit/04cffb9e764217e29656fe8566ce49d1deacd8c9))
+* **plots:** summary table up to 150 rows, or as the block says ([0838e07](https://github.com/AadityaSalgarkar/md_render/commit/0838e07767ae6cbaa0a86547a257c198e5567d13))
+* **plots:** the summary table is opt-in ([875ce9f](https://github.com/AadityaSalgarkar/md_render/commit/875ce9f0c1cb611c43877f674c444750bf9deab2))
+* **server:** /api/experiments routes behind a database allowlist ([9f79578](https://github.com/AadityaSalgarkar/md_render/commit/9f79578b08b8720b9d81d5d1c0e66706353ad18a))
+* **themes:** chart palette variables in every theme ([4d60001](https://github.com/AadityaSalgarkar/md_render/commit/4d60001ecce5658e705c562800227e0a441ec74b))
+* **themes:** Paradigm, Literata in dark teal on warm stone ([5845281](https://github.com/AadityaSalgarkar/md_render/commit/5845281254b00ba1b61674a8c46d67db828d53a9))
+* **themes:** Paradigm, Literata in dark teal on warm stone ([2f463e8](https://github.com/AadityaSalgarkar/md_render/commit/2f463e8a6ae8d6de50f6318f9fdb4701e7ba896c))
+* **wrapper:** serve to the browser by default, --app for the window ([627f6b1](https://github.com/AadityaSalgarkar/md_render/commit/627f6b18f18bc29a1d66ea53fc3df1cb11c4c7bb))
+* **wrapper:** the browser is the default, --app for the window ([fe3b325](https://github.com/AadityaSalgarkar/md_render/commit/fe3b325fa439ff4db642aa262222f38ddce9f48a))
+
+
+### Bug Fixes
+
+* **plots:** scatter labels follow the data, log ticks thin out ([3899c8e](https://github.com/AadityaSalgarkar/md_render/commit/3899c8e7ccba667f72c0f461131d0cde1eecca74))
+
 ## [0.5.1](https://github.com/AadityaSalgarkar/md_render/compare/v0.5.0...v0.5.1) (2026-09-18)
 
 
