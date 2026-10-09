@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ChartDataset, TooltipItem } from 'chart.js'
-import { buildChart, plannedRequest, type BuildInput } from '../../lib/plots/chartConfig'
+import { buildChart, numberTicks, plannedRequest, type BuildInput } from '../../lib/plots/chartConfig'
 import { parseColor, readPalette, shade, type Palette } from '../../lib/plots/palette'
 import { deriveViews, resolveView, type View } from '../../lib/plots/views'
 import { describer } from '../../lib/plots/descriptions'
@@ -205,9 +205,21 @@ describe('summary plots', () => {
     const s = spec({ plot_type: 'scatter', summary: 'best', scatter: { x: 'config:lr', y: 'val/acc/top1', labels: 'always' } })
     const built = build(s, viewNamed(s, 'by model.arch'))
     const datasets = built.config.data.datasets as ChartDataset<'scatter'>[]
-    expect(datasets.map((d) => d.data)).toEqual([[{ x: 0.001, y: 0.6 }], [{ x: 0.0003, y: 0.8 }], [{ x: 0.001, y: 0.7 }]])
+    expect(datasets.map((d) => d.data)).toEqual([
+      [{ x: 0.001, y: 0.6, run: 'exp_1' }],
+      [{ x: 0.0003, y: 0.8, run: 'exp_3' }],
+      [{ x: 0.001, y: 0.7, run: 'exp_2' }],
+    ])
     expect(built.legend.map((e) => e.label)).toEqual(['conv', 'vit'])
     expect(built.config.plugins).toHaveLength(1)
+  })
+})
+
+describe('tick labels', () => {
+  it('keep only 1, 2 and 5 multiples on a log axis', () => {
+    const log = numberTicks(true)
+    expect([1e6, 2e6, 3e6, 5e6, 0.01, 0.03].map(log)).toEqual(['1M', '2M', '', '5M', '0.01', ''])
+    expect(numberTicks(false)(3e6)).toBe('3M')
   })
 })
 

@@ -186,7 +186,10 @@ export function scatterPoints(
 export function formatNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '–'
   const abs = Math.abs(value)
-  if (abs !== 0 && (abs >= 1e6 || abs < 1e-3)) return value.toExponential(2)
+  if (abs >= 1e6) {
+    return new Intl.NumberFormat('en-US', { notation: 'compact', maximumSignificantDigits: 3 }).format(value)
+  }
+  if (abs !== 0 && abs < 1e-3) return value.toExponential(2)
   if (Number.isInteger(value)) return value.toLocaleString('en-US')
   return Number(value.toPrecision(4)).toString()
 }

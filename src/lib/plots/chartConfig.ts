@@ -162,6 +162,21 @@ function linearScale(palette: Palette, label: string | null, log: boolean, range
   }
 }
 
+/**
+ * Tick labels: readable numbers, and on a log axis only the 1, 2 and 5
+ * multiples of each power of ten, so the labels do not pile up.
+ */
+export function numberTicks(log: boolean) {
+  return (value: string | number): string => {
+    const v = Number(value)
+    if (log && v > 0) {
+      const mantissa = v / 10 ** Math.floor(Math.log10(v) + 1e-9)
+      if (![1, 2, 5].some((k) => Math.abs(mantissa - k) < 1e-6)) return ''
+    }
+    return formatNumber(v)
+  }
+}
+
 /** Legend ids: a series' own id, or its group for kinds drawn per group. */
 const bySeries = (s: ResolvedSeries) => s.id
 const byGroup = (s: ResolvedSeries) => s.group
@@ -302,10 +317,7 @@ function buildLine(input: BuildInput): BuiltChart {
         },
         y: {
           ...linearScale(palette, y.label, log, y.range),
-          ticks: {
-            ...linearScale(palette, null, log, y.range).ticks,
-            callback: (value) => formatNumber(Number(value)),
-          },
+          ticks: { ...linearScale(palette, null, log, y.range).ticks, callback: numberTicks(log) },
         },
       },
       plugins: {
@@ -443,10 +455,7 @@ function buildBar(input: BuildInput): BuiltChart {
         },
         y: {
           ...linearScale(palette, y.label ?? spec.summary, y.scale === 'log', y.range),
-          ticks: {
-            ...linearScale(palette, null, y.scale === 'log', y.range).ticks,
-            callback: (value) => formatNumber(Number(value)),
-          },
+          ticks: { ...linearScale(palette, null, y.scale === 'log', y.range).ticks, callback: numberTicks(y.scale === 'log') },
         },
       },
       plugins: {
@@ -596,7 +605,7 @@ function buildHistogram(input: BuildInput): BuiltChart {
   const binText = (i: number) => `${formatNumber(hist.edges[i])} to ${formatNumber(hist.edges[i + 1])}`
   const config: ChartConfiguration<'bar'> = {
     type: 'bar',
-    data: { labels: centers.map((c) => formatNumber(c)), datasets },
+    data: { labels: centers.map((c) => formatNumber(Number(c.toPrecision(3)))), datasets },
     options: {
       ...base,
       scales: {
@@ -643,8 +652,18 @@ interface ScatterMeta {
   steps: Array<number | null>
 }
 
-/** Draws run names next to scatter points when `labels` is "always". */
-function pointLabels(palette: Palette, meta: ScatterMeta[]): Plugin<'scatter'> {
+/** A scatter point carries its run, so the label plugin needs no other state. */
+interface LabelledPoint {
+  x: number
+  y: number
+  run: string
+}
+
+/**
+ * Draws run names next to scatter points when `labels` is "always". It reads
+ * the names from the points, so it stays right when the data is replaced.
+ */
+function pointLabels(palette: Palette): Plugin<'scatter'> {
   return {
     id: 'mdRenderPointLabels',
     afterDatasetsDraw(chart) {
@@ -653,12 +672,12 @@ function pointLabels(palette: Palette, meta: ScatterMeta[]): Plugin<'scatter'> {
       ctx.font = `11px ${palette.font}`
       ctx.fillStyle = palette.text
       ctx.textBaseline = 'middle'
-      chart.data.datasets.forEach((_, i) => {
+      chart.data.datasets.forEach((dataset, i) => {
         if (!chart.isDatasetVisible(i)) return
-        const m = meta[i]
+        const points = dataset.data as unknown as LabelledPoint[]
         chart.getDatasetMeta(i).data.forEach((element, j) => {
-          if (m.steps[j] !== null) return
-          ctx.fillText(m.series.run, element.x + 6, element.y - 6)
+          const run = points[j]?.run
+          if (run) ctx.fillText(run, element.x + 7, element.y - 7)
         })
       })
       ctx.restore()
@@ -698,7 +717,8 @@ function buildScatter(input: BuildInput): BuiltChart {
     meta.push({ series: s, steps: points.map((p) => p.step) })
     return {
       label: view.group_by === 'none' ? s.run : `${s.group}: ${s.run}`,
-      data: points.map((p) => ({ x: p.x, y: p.y })),
+      // Per-run points carry the run name for the label plugin.
+      data: points.map((p) => (byStep ? { x: p.x, y: p.y } : { x: p.x, y: p.y, run: p.run })),
       borderColor: byStep ? withAlpha(color, 0.35) : color,
       backgroundColor: color,
       pointRadius: byStep ? 2 : 4,
@@ -715,25 +735,24 @@ function buildScatter(input: BuildInput): BuiltChart {
   const config: ChartConfiguration<'scatter'> = {
     type: 'scatter',
     data: { datasets },
-    plugins: scatter.labels === 'always' && !byStep ? [pointLabels(palette, meta)] : [],
+    plugins: scatter.labels === 'always' && !byStep ? [pointLabels(palette)] : [],
     options: {
       ...base,
+      // Room for run names beside points at the edges.
+      layout: { padding: scatter.labels === 'always' ? { top: 12, right: 56 } : 0 },
       parsing: false,
       scales: {
         x: {
           ...linearScale(palette, spec.x.label ?? scatter.x.replace(/^config:/, ''), scatter.log_x, spec.x.range),
           ticks: {
             ...linearScale(palette, null, scatter.log_x, spec.x.range).ticks,
-            maxTicksLimit: 8,
-            callback: (value) => formatNumber(Number(value)),
+            maxTicksLimit: scatter.log_x ? undefined : 8,
+            callback: numberTicks(scatter.log_x),
           },
         },
         y: {
           ...linearScale(palette, y.label ?? scatter.y, y.scale === 'log', y.range),
-          ticks: {
-            ...linearScale(palette, null, y.scale === 'log', y.range).ticks,
-            callback: (value) => formatNumber(Number(value)),
-          },
+          ticks: { ...linearScale(palette, null, y.scale === 'log', y.range).ticks, callback: numberTicks(y.scale === 'log') },
         },
       },
       plugins: {
