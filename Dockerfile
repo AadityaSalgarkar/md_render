@@ -59,7 +59,9 @@ ENV XDG_CACHE_HOME=/cache \
     TRACKIO_DIR=/data/trackio
 # Fetch the TeX files TikZ needs at build time, so diagrams render offline
 # and the first one does not wait minutes for a download.
-RUN md-render --warm-tikz
+# Writable by any user id, since bin/md-render-docker runs the container as
+# the host user so files it writes stay theirs.
+RUN md-render --warm-tikz && chmod -R a+rwX /cache
 
 WORKDIR /docs
 EXPOSE 9999
