@@ -1,0 +1,6 @@
+# Tectonic (TikZ diagrams) links ICU. Homebrew keeps ICU out of the default
+# pkg-config search path, so point at its usual places on Apple silicon and
+# Intel Macs. Missing directories are ignored, so this is harmless on Linux.
+# A PKG_CONFIG_PATH already set in the environment takes precedence.
+[env]
+PKG_CONFIG_PATH = "/opt/homebrew/opt/icu4c/lib/pkgconfig:/usr/local/opt/icu4c/lib/pkgconfig"
