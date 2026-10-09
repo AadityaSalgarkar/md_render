@@ -994,7 +994,15 @@ body {
   opacity: 1;
 }
 
-/* Experiment plots: <plot> blocks */
+/* Experiment plots: <plot> blocks, numbered in document order */
+.markdown-body {
+  counter-reset: md-figure;
+}
+
+.markdown-body .experiment-plot:not(.experiment-plot--error) {
+  counter-increment: md-figure;
+}
+
 .markdown-body .experiment-plot {
   margin: 1.75em 0;
   padding: 0.9rem 1rem 0.75rem;
@@ -1213,6 +1221,31 @@ body {
 
 .markdown-body .plot-legend-swatch {
   flex: none;
+}
+
+/* The figure caption: the lesson of the plot, as in a paper */
+.markdown-body .experiment-plot-label {
+  margin-top: 0.8rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-body);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  text-align: justify;
+  hyphens: auto;
+}
+
+.markdown-body .experiment-plot-label::before {
+  content: "Figure " counter(md-figure) ":";
+  margin-right: 0.4em;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.markdown-body .experiment-plot-label code {
+  font-size: 0.8em;
+  padding: 0.05em 0.25em;
 }
 
 /* Metric descriptions, on hover or focus only */

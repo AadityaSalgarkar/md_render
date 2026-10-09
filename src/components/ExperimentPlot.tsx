@@ -15,6 +15,7 @@ import {
 } from '../lib/plots/types'
 import { AUTO_REFRESH_MS, AUTO_REFRESH_WINDOW_MS, PlotContext } from '../lib/plots/context'
 import { MetricHint } from './MetricHint'
+import { PlotCaption } from './PlotCaption'
 import { PlotLegend } from './PlotLegend'
 import { PlotViewPicker } from './PlotViewPicker'
 
@@ -328,7 +329,7 @@ function LoadedPlot({ spec, warnings }: { spec: PlotSpec; warnings: string[] }) 
       aria-label={`Plot: ${caption}`}
       data-testid="experiment-plot"
     >
-      <figcaption className="experiment-plot-caption">
+      <div className="experiment-plot-caption">
         {singleKey && caption === singleKey ? (
           <MetricHint metric={singleKey} description={describe(singleKey)}>
             <span className="experiment-plot-title" tabIndex={describe(singleKey) ? 0 : undefined}>
@@ -345,7 +346,7 @@ function LoadedPlot({ spec, warnings }: { spec: PlotSpec; warnings: string[] }) 
             </span>
           </MetricHint>
         )}
-      </figcaption>
+      </div>
 
       {runs && active && (
         <div className="experiment-plot-toolbar">
@@ -417,6 +418,8 @@ function LoadedPlot({ spec, warnings }: { spec: PlotSpec; warnings: string[] }) 
           {showLegend && <PlotLegend entries={legendEntries} onToggle={toggle} position={legendPosition} />}
         </div>
       )}
+
+      {spec.caption && <PlotCaption text={spec.caption} />}
 
       {/* Shown for up to MAX_TABLE_ROWS series unless the block decides; it
           also stands in for the chart where no canvas can draw. */}

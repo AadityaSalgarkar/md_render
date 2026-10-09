@@ -182,6 +182,25 @@ describe.skipIf(!binary)('plot blocks against the real server', () => {
     await waitFor(() => expect(rows(figure).map((r) => r.slice(0, 3))).toEqual([['val/acc/top1', 'val/acc/top1', '10']]))
   })
 
+  it('prints the caption under the chart, with inline markdown and math', async () => {
+    const figure = await renderPlot({
+      plot_type: 'line',
+      source: { project: 'demo' },
+      metrics: ['val/loss/ce'],
+      caption: '**exp_2** reaches the lowest validation loss, about $0.5$ nats below *exp_1*.\n\n- not a list',
+    })
+    const caption = figure.querySelector('figcaption.experiment-plot-label')!
+    expect(caption).not.toBeNull()
+    expect(caption.querySelector('strong')?.textContent).toBe('exp_2')
+    expect(caption.querySelector('em')?.textContent).toBe('exp_1')
+    expect(caption.querySelector('.katex')).not.toBeNull()
+    expect(caption.querySelector('ul, li, p')).toBeNull()
+    expect(caption).toHaveTextContent('not a list')
+    // The caption sits after the chart and its legend.
+    const body = figure.querySelector('.experiment-plot-body')!
+    expect(body.compareDocumentPosition(caption) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('summarises bars with the best value per run', async () => {
     const figure = await renderPlot({
       plot_type: 'bar',

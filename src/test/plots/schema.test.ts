@@ -46,6 +46,7 @@ describe('plot block schema', () => {
       height: 320,
       legend: 'auto',
       table: 'auto',
+      caption: '',
       id: null,
       scatter: null,
     })
@@ -79,6 +80,7 @@ describe('plot block schema', () => {
     expect(spec.views[0]).toEqual({ name: 'by arch', metrics: '^val/', group_by: 'config:model.arch', y: { scale: 'log' } })
     expect(spec.descriptions).toEqual({ '*/loss/ce': 'Cross entropy.' })
     expect(spec.refresh).toBe(10)
+    expect(parsed({ plot_type: 'bar', source: { project: 'p' }, caption: '  The lesson.  ' }).caption).toBe('The lesson.')
     expect(parsed({ plot_type: 'bar', source: { project: 'p' }, table: true }).table).toBe(true)
     expect(parsed({ plot_type: 'bar', source: { project: 'p' }, table: false }).table).toBe(false)
   })

@@ -106,6 +106,8 @@ export interface PlotSpec {
   /** "auto", or seconds between polls (0 never polls). */
   refresh: 'auto' | number
   title: string
+  /** The lesson the plot shows, printed under it as "Figure N: …". */
+  caption: string
   height: number
   legend: 'auto' | 'bottom' | 'right' | 'none'
   /**
@@ -135,7 +137,7 @@ export const MAX_PATTERN_LENGTH = 200
 const KNOWN_KEYS = new Set([
   'plot_type', 'type', 'source', 'runs', 'metrics', 'descriptions', 'items', 'views',
   'default_view', 'x', 'y', 'dedupe_steps', 'summary', 'better', 'normalize', 'bins',
-  'density', 'scatter', 'max_points', 'refresh', 'title', 'height', 'legend', 'table', 'id',
+  'density', 'scatter', 'max_points', 'refresh', 'title', 'caption', 'height', 'legend', 'table', 'id',
 ])
 
 class SpecError extends Error {}
@@ -375,6 +377,7 @@ function parseSpec(raw: unknown): { spec: PlotSpec; warnings: string[] } {
     max_points: raw.max_points === undefined ? 1500 : Math.round(num(raw.max_points, '"max_points"', 0, 20000)),
     refresh: 'auto',
     title: raw.title === undefined ? '' : str(raw.title, '"title"'),
+    caption: raw.caption === undefined || raw.caption === null ? '' : str(raw.caption, '"caption"').trim(),
     height: raw.height === undefined ? 320 : Math.round(num(raw.height, '"height"', 160, 1200)),
     legend: raw.legend === undefined ? 'auto' : oneOf(raw.legend, ['auto', 'bottom', 'right', 'none'], '"legend"'),
     table: raw.table === undefined || raw.table === 'auto' ? 'auto' : tableSetting(raw.table),
