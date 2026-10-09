@@ -2,6 +2,10 @@
 # MD_RENDER installer.
 #
 #   curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
+#   curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | MDRENDER_DOCKER=1 sh
+#
+# With MDRENDER_DOCKER=1 (Linux) nothing is compiled: md-render runs the
+# published Docker image, and only docker, git, node and npm are needed.
 #
 # Detects the platform, checks the build prerequisites, clones the repository
 # (or updates an existing checkout), and runs `make install` — which installs
@@ -23,9 +27,19 @@ case "$OS" in
   *) fail "unsupported platform '$OS' — MD_RENDER builds on macOS and Linux" ;;
 esac
 
+DOCKER="${MDRENDER_DOCKER:-}"
+if [ -n "$DOCKER" ] && [ "$OS" != "Linux" ]; then
+  fail "MDRENDER_DOCKER=1 is for Linux; on macOS install the app normally"
+fi
+
 # Everything the build needs; installed by the user's package manager, not us.
 missing=""
-for tool in git node npm cargo make; do
+if [ -n "$DOCKER" ]; then
+  tools="git node npm make docker"
+else
+  tools="git node npm cargo make"
+fi
+for tool in $tools; do
   have "$tool" || missing="$missing $tool"
 done
 if [ "$OS" = "Linux" ] && ! have pkg-config; then
@@ -41,7 +55,7 @@ if [ -n "$missing" ]; then
   fail "install the missing tools and re-run"
 fi
 
-if [ "$OS" = "Linux" ] && ! pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
+if [ -z "$DOCKER" ] && [ "$OS" = "Linux" ] && ! pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
   say "missing the webkit2gtk build libraries; on Debian/Ubuntu:"
   say "  sudo apt install build-essential curl wget file pkg-config \\"
   say "    libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \\"
@@ -50,7 +64,7 @@ if [ "$OS" = "Linux" ] && ! pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
 fi
 
 # TikZ diagrams are compiled by Tectonic, which links these libraries.
-if [ "$OS" = "Linux" ] && ! pkg-config --exists icu-uc fontconfig freetype2 graphite2 harfbuzz libpng 2>/dev/null; then
+if [ -z "$DOCKER" ] && [ "$OS" = "Linux" ] && ! pkg-config --exists icu-uc fontconfig freetype2 graphite2 harfbuzz libpng 2>/dev/null; then
   say "missing the TeX engine's build libraries; on Debian/Ubuntu:"
   say "  sudo apt install libicu-dev libfontconfig1-dev libfreetype-dev libgraphite2-dev \\"
   say "    libharfbuzz-dev libpng-dev zlib1g-dev"
@@ -68,7 +82,7 @@ fi
 
 # Tectonic needs Rust 1.92 or newer.
 rust_minor=$(rustc --version 2>/dev/null | sed -n 's/^rustc 1\.\([0-9]*\).*/\1/p')
-if [ -z "$rust_minor" ] || [ "$rust_minor" -lt 92 ]; then
+if [ -z "$DOCKER" ] && { [ -z "$rust_minor" ] || [ "$rust_minor" -lt 92 ]; }; then
   say "Rust 1.92 or newer is needed (found: $(rustc --version 2>/dev/null || echo none))"
   say "  rustup update stable"
   fail "update Rust and re-run"
@@ -100,7 +114,11 @@ if git show-ref --verify --quiet "refs/heads/$REF"; then
   git merge --ff-only --quiet "origin/$REF" 2>/dev/null || true
 fi
 npm install --no-audit --no-fund
-make install
+if [ -n "$DOCKER" ]; then
+  make install-docker
+else
+  make install
+fi
 
 say ""
 say "installed. make sure ~/bin is on your PATH, then:"

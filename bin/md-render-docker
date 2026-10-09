@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# md-render, run from the published Docker image instead of a local build.
+#
+# `make install-docker` installs this as ~/.local/bin/md-render, where the
+# mdrender wrapper and the MCP server look for the binary, so everything
+# works as with a native install while nothing is compiled on the machine.
+#
+# The container sees the machine the way the native binary would:
+#   - the home folder and /tmp at their real paths, so documents, saved
+#     edits and downloaded markdown keep their paths;
+#   - the host network, so the server is on 127.0.0.1:<port> and a second
+#     `mdrender FILE` joins it;
+#   - the host's process ids, so the state file's pid is a real pid;
+#   - your user id, so files it writes are yours;
+#   - XDG_STATE_HOME on the host, so the MCP server finds the token.
+# TikZ diagrams are cached under ~/.cache/md-render/tikz; the image carries
+# the TeX files, so diagrams compile offline.
+#
+# Environment:
+#   MDRENDER_IMAGE          image to run (default ghcr.io/aadityasalgarkar/md_render:latest)
+#   MDRENDER_DOCKER_MOUNTS  extra directories outside home to mount, space-separated
+set -euo pipefail
+
+IMAGE="${MDRENDER_IMAGE:-ghcr.io/aadityasalgarkar/md_render:latest}"
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "md-render: docker is not installed (this md-render runs the Docker image)" >&2
+  exit 1
+fi
+
+state="${XDG_STATE_HOME:-$HOME/.local/state}"
+cache="${XDG_CACHE_HOME:-$HOME/.cache}"
+mkdir -p "$state" "$cache/md-render/tikz"
+
+args=(
+  --rm --init
+  --network host --pid host
+  --user "$(id -u):$(id -g)"
+  --volume "$HOME:$HOME"
+  --volume /tmp:/tmp
+  --env HOME="$HOME"
+  --env XDG_STATE_HOME="$state"
+  --env MDRENDER_TIKZ_CACHE="$cache/md-render/tikz"
+  --env TRACKIO_DIR="${TRACKIO_DIR:-${HF_HOME:-$cache/huggingface}/trackio}"
+)
+
+# Settings the native binary reads, passed through when set.
+for name in MDRENDER_TIKZ_TIMEOUT MDRENDER_REMOTE_DIR MDRENDER_SAVED_DIR MDRENDER_BROWSER; do
+  if [ -n "${!name+x}" ]; then
+    args+=(--env "$name=${!name}")
+  fi
+done
+
+# Work in the current directory when the container can see it, else home.
+workdir="$HOME"
+case "$PWD" in
+  "$HOME"|"$HOME"/*|/tmp|/tmp/*) workdir="$PWD" ;;
+esac
+for dir in ${MDRENDER_DOCKER_MOUNTS:-}; do
+  args+=(--volume "$dir:$dir")
+  case "$PWD" in "$dir"|"$dir"/*) workdir="$PWD" ;; esac
+done
+args+=(--workdir "$workdir")
+
+exec docker run "${args[@]}" --entrypoint md-render "$IMAGE" "$@"
