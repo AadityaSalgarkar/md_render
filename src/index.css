@@ -41,6 +41,16 @@
   --code-comment: #8A8A8A;
   --code-function: #5A7A9A;
   --code-builtin: #8959A8;
+
+  /* Plot series hues */
+  --chart-1: #C9553D;
+  --chart-2: #2D5A4A;
+  --chart-3: #5A7A9A;
+  --chart-4: #B07D48;
+  --chart-5: #8959A8;
+  --chart-6: #6B8E4E;
+  --chart-7: #A23B5E;
+  --chart-8: #7A7A7A;
 }
 
 /* ===================================================================
