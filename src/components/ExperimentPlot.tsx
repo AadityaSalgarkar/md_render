@@ -411,14 +411,15 @@ function LoadedPlot({ spec, warnings }: { spec: PlotSpec; warnings: string[] }) 
         <div className={`experiment-plot-body experiment-plot-body--legend-${showLegend ? legendPosition : 'none'}`}>
           <div className="experiment-plot-canvas" style={{ height: spec.height }} aria-busy={!allLoaded}>
             {canvasReady !== false && <canvas ref={canvasRef} role="img" aria-label={caption} />}
-            {canvasReady === false && <p className="experiment-plot-status">Charts need a canvas; the data is in the table below.</p>}
+            {canvasReady === false && <p className="experiment-plot-status">Charts need a canvas; the values are in the table below.</p>}
             {!allLoaded && <span className="experiment-plot-loading">Loading…</span>}
           </div>
           {showLegend && <PlotLegend entries={legendEntries} onToggle={toggle} position={legendPosition} />}
         </div>
       )}
 
-      {built && (
+      {/* The table is opt-in; it stands in for the chart where no canvas can draw. */}
+      {built && (spec.table || canvasReady === false) && (
         <details className="experiment-plot-table" open={canvasReady === false}>
           <summary>Data</summary>
           <div className="experiment-plot-table-scroll">

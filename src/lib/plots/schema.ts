@@ -108,6 +108,8 @@ export interface PlotSpec {
   title: string
   height: number
   legend: 'auto' | 'bottom' | 'right' | 'none'
+  /** Show the per-series summary table under the chart. */
+  table: boolean
   id: string | null
 }
 
@@ -121,7 +123,7 @@ export const MAX_PATTERN_LENGTH = 200
 const KNOWN_KEYS = new Set([
   'plot_type', 'type', 'source', 'runs', 'metrics', 'descriptions', 'items', 'views',
   'default_view', 'x', 'y', 'dedupe_steps', 'summary', 'better', 'normalize', 'bins',
-  'density', 'scatter', 'max_points', 'refresh', 'title', 'height', 'legend', 'id',
+  'density', 'scatter', 'max_points', 'refresh', 'title', 'height', 'legend', 'table', 'id',
 ])
 
 class SpecError extends Error {}
@@ -358,6 +360,7 @@ function parseSpec(raw: unknown): { spec: PlotSpec; warnings: string[] } {
     title: raw.title === undefined ? '' : str(raw.title, '"title"'),
     height: raw.height === undefined ? 320 : Math.round(num(raw.height, '"height"', 160, 1200)),
     legend: raw.legend === undefined ? 'auto' : oneOf(raw.legend, ['auto', 'bottom', 'right', 'none'], '"legend"'),
+    table: raw.table === undefined ? false : Boolean(raw.table),
     id: raw.id === undefined || raw.id === null ? null : str(raw.id, '"id"'),
   }
 

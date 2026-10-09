@@ -146,7 +146,7 @@ A `<plot>` block draws a chart from a trackio experiment database
 (wandb-compatible logs; one SQLite file per project under `$TRACKIO_DIR`,
 default `~/.cache/huggingface/trackio/<project>.db`). Write JSON inside the
 tag (or a ```` ```plot ```` fence); the reader gets the chart, a legend that
-toggles series, a dropdown of views, hover values and a data table.
+toggles series, a dropdown of views and hover values.
 
 Workflow: call `list_projects`, then `list_runs` (runs, metric keys, config
 keys that group runs, and `suggested_views`: the dropdown the reader will
@@ -197,12 +197,13 @@ see), write the block, and call `read_metrics` for numbers to quote in prose.
   runs", "val/loss/ce by model.arch". Name keys consistently for good views.
 - `descriptions`: what each metric means, by exact key or glob (`*` is one
   path segment, `**` any depth); shown only on hover over the legend, the
-  key caption and the data table.
+  key caption and the table when one is shown.
 - Also: `x` (`axis`, `range`, `label`), `y` (`scale`: `log`, `smoothing`
   0 to 0.99, `range`), `max_points` (1500), `refresh` (`"auto"` polls every
   15 s while the database changed in the last ten minutes; seconds; or 0),
-  `height`, `legend` (`auto`, `bottom`, `right`, `none`), `id` (remember the
-  reader's view).
+  `height`, `legend` (`auto`, `bottom`, `right`, `none`), `table` (`true` adds
+  a per-series summary table under the chart), `id` (remember the reader's
+  view).
 - A mistake renders an error card with the message, so check the reader
   after writing.
 
