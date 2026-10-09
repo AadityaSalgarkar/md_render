@@ -1655,6 +1655,98 @@ body {
   letter-spacing: 0;
 }
 
+/* Paradigm — serif body in dark teal, mono caps for section heads,
+   teal-filled inline code, a ruled rather than ornamented page */
+[data-theme="paradigm"] .markdown-body h1 {
+  text-align: center;
+  font-weight: 400;
+  font-size: 2.6rem;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+[data-theme="paradigm"] .markdown-body h1::after,
+[data-theme="paradigm"] .markdown-body h2::after {
+  content: '';
+  display: none;
+}
+
+[data-theme="paradigm"] .markdown-body h2 {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 1.6rem;
+  line-height: 1.18;
+  text-transform: uppercase;
+  margin-top: 2.2em;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+[data-theme="paradigm"] .markdown-body h3 {
+  font-weight: 700;
+  font-size: 1.3rem;
+}
+
+[data-theme="paradigm"] .markdown-body h4 {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 1rem;
+}
+
+[data-theme="paradigm"] .markdown-body p,
+[data-theme="paradigm"] .markdown-body li {
+  line-height: 1.75;
+}
+
+[data-theme="paradigm"] .markdown-body a:not(.heading-anchor) {
+  color: inherit;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 3px;
+  border-bottom: 1px solid var(--accent);
+}
+
+[data-theme="paradigm"] .markdown-body a:not(.heading-anchor):hover {
+  color: var(--accent-hover);
+}
+
+[data-theme="paradigm"] .markdown-body :not(pre) > code {
+  background: var(--accent);
+  color: var(--bg-primary);
+  padding: 0.15em 0.4em;
+  font-size: 0.85em;
+}
+
+[data-theme="paradigm"] .markdown-body blockquote {
+  border-left-width: 6px;
+  padding-left: 1.25rem;
+  background: none;
+  color: var(--text-primary);
+}
+
+[data-theme="paradigm"] .markdown-body img {
+  padding: 4px;
+  border: 1px solid var(--accent);
+  outline: 1px solid var(--accent);
+  outline-offset: -5px;
+  background: #D8D9D0;
+}
+
+[data-theme="paradigm"] .markdown-body table {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 0.9rem;
+  border: 1px solid var(--accent);
+}
+
+[data-theme="paradigm"] .markdown-body thead {
+  background: #D8D9D0;
+}
+
+[data-theme="paradigm"] .markdown-body th,
+[data-theme="paradigm"] .markdown-body td {
+  border-bottom: 1px solid var(--accent);
+}
+
 /* ===================================================================
    Responsive
    =================================================================== */

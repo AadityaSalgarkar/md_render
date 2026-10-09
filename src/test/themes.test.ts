@@ -56,6 +56,18 @@ describe('theme registry', () => {
     expect(ponder.vars['--font-mono']).toMatch(/^"Google Sans Code"/)
     expect(ponder.vars['--font-body']).toMatch(/^-apple-system/)
   })
+
+  it('has the paradigm theme with its stone ground, teal text and mono heads', () => {
+    const paradigm = getTheme('paradigm')!
+    expect(paradigm.mode).toBe('light')
+    expect(paradigm.vars['--bg-primary']).toBe('#E9E5DA')
+    expect(paradigm.vars['--accent']).toBe('#436F7A')
+    expect(paradigm.vars['--text-primary']).toBe('#3C646E')
+    expect(paradigm.vars['--font-body']).toMatch(/^"Literata"/)
+    expect(paradigm.vars['--font-mono']).toMatch(/^"Geist Mono"/)
+    // Display math sits on the page, as on the site.
+    expect(paradigm.vars['--math-display-bg']).toBe('transparent')
+  })
 })
 
 describe('getTheme', () => {
