@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.9.0...v0.10.0) (2026-10-10)
+
+
+### Features
+
+* **install:** the Docker web app mounts only the folders it is given ([63aa0db](https://github.com/AadityaSalgarkar/md_render/commit/63aa0dbb5071660424206e8e080b5e65cb2bedee))
+* **install:** the Docker web app mounts only the folders it is given ([b298848](https://github.com/AadityaSalgarkar/md_render/commit/b298848b358d31a31290243ac4b638e4fb5144ea))
+
 ## [0.9.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.8.1...v0.9.0) (2026-10-10)
 
 
