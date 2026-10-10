@@ -24,11 +24,11 @@ RUN npm run build && npm run build:mcp
 
 # ---- server binary ----------------------------------------------------------
 FROM rust:1.92-bookworm AS server
-# Tauri links WebKitGTK even when serving headless; Tectonic (TikZ) links ICU,
-# fontconfig, freetype, graphite2, harfbuzz and libpng.
+# Built without the desktop window (--no-default-features), so no WebKit or
+# GTK; Tectonic (TikZ) links ICU, fontconfig, freetype, graphite2, harfbuzz
+# and libpng.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libssl-dev \
-      libxdo-dev libayatana-appindicator3-dev \
+      pkg-config libssl-dev \
       libicu-dev libfontconfig1-dev libfreetype-dev libgraphite2-dev \
       libharfbuzz-dev libpng-dev zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -36,13 +36,13 @@ WORKDIR /src
 COPY . .
 # rust-embed compiles the built frontend into the binary.
 COPY --from=web /src/dist ./dist
-RUN cd src-tauri && cargo build --release --locked && strip target/release/app
+RUN cd src-tauri && cargo build --release --locked --no-default-features \
+    && strip target/release/app
 
 # ---- runtime ----------------------------------------------------------------
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates libwebkit2gtk-4.1-0 libgtk-3-0 librsvg2-2 libssl3 \
-      libxdo3 libayatana-appindicator3-1 \
+      ca-certificates libssl3 \
       libicu72 libfontconfig1 libfreetype6 libgraphite2-3 libharfbuzz0b \
       libpng16-16 zlib1g \
     && rm -rf /var/lib/apt/lists/* \
