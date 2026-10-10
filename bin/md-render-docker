@@ -45,6 +45,10 @@ case "$PWD" in
   "$HOME"|"$HOME"/*|/tmp|/tmp/*|/private/tmp|/private/tmp/*) workdir="$PWD" ;;
 esac
 mounts=(--volume "$HOME:$HOME" --volume /tmp:/tmp)
+# On macOS /tmp is a link to /private/tmp, and paths arrive resolved.
+if [ "$(uname -s)" = "Darwin" ]; then
+  mounts+=(--volume /private/tmp:/private/tmp)
+fi
 for dir in ${MDRENDER_DOCKER_MOUNTS:-}; do
   mounts+=(--volume "$dir:$dir")
   case "$PWD" in "$dir"|"$dir"/*) workdir="$PWD" ;; esac
