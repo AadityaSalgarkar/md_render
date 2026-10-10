@@ -21,8 +21,15 @@ if [ "${1:-}" = "--inside" ]; then
   # ---- inside the manylinux container -------------------------------------
   arch="$2" version="$3" owner="$4"
   cd /src
-  dnf install -y -q libicu-devel fontconfig-devel freetype-devel graphite2-devel \
-    harfbuzz-devel libpng-devel zlib-devel >/dev/null
+  # A flaky mirror (EPEL, which none of these need) must not fail the build.
+  for attempt in 1 2 3; do
+    if dnf install -y -q --setopt=skip_if_unavailable=True libicu-devel fontconfig-devel \
+      freetype-devel graphite2-devel harfbuzz-devel libpng-devel zlib-devel >/dev/null; then
+      break
+    fi
+    [ "$attempt" = 3 ] && exit 1
+    sleep 10
+  done
   export RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH="/opt/cargo/bin:$PATH"
   if ! command -v cargo >/dev/null; then
     curl -fsSL https://sh.rustup.rs | sh -s -- -y -q --no-modify-path --profile minimal \
