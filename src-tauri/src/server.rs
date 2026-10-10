@@ -1262,8 +1262,9 @@ pub fn run(
     .build()
     .map_err(|err| format!("could not start async runtime: {}", err))?;
 
+  let container = in_container();
   runtime.block_on(async move {
-    let address = format!("{}:{}", host, port);
+    let address = format!("{}:{}", bind_host(host, container), port);
     let listener = tokio::net::TcpListener::bind(&address)
       .await
       .map_err(|err| format!("could not bind {}: {}", address, err))?;
@@ -1271,7 +1272,8 @@ pub fn run(
     if let Err(err) = state::write(&ServerRecord {
       port,
       token,
-      pid: std::process::id(),
+      // A container's pids are not the host's: 0 tells tools not to signal.
+      pid: if container { 0 } else { std::process::id() },
     }) {
       eprintln!("warning: could not record server state: {}", err);
     }
@@ -1283,6 +1285,25 @@ pub fn run(
     state::remove(port);
     result
   })
+}
+
+/// Running in a container whose network and process ids are its own, as on
+/// macOS, where Docker runs in a virtual machine. Set by
+/// bin/md-render-docker; the Linux route shares the host's instead.
+fn in_container() -> bool {
+  std::env::var("MDRENDER_CONTAINER").map(|v| v == "1").unwrap_or(false)
+}
+
+/// Where to listen. In a container, loopback is the container's own, and a
+/// port published as 127.0.0.1:PORT on the host arrives on its outer
+/// interface; so listen on all of them there, while URLs, the banner and the
+/// state file keep saying 127.0.0.1, which is what the host sees.
+fn bind_host(host: &str, container: bool) -> &str {
+  if container && host == "127.0.0.1" {
+    "0.0.0.0"
+  } else {
+    host
+  }
 }
 
 /// Serve until ctrl-c or a `POST /api/shutdown` carrying the token.
@@ -1491,6 +1512,13 @@ mod tests {
       body.len(),
       body
     )
+  }
+
+  #[test]
+  fn in_a_container_loopback_binds_all_interfaces_but_others_stay() {
+    assert_eq!(bind_host("127.0.0.1", true), "0.0.0.0");
+    assert_eq!(bind_host("127.0.0.1", false), "127.0.0.1");
+    assert_eq!(bind_host("100.71.56.104", true), "100.71.56.104");
   }
 
   #[test]
