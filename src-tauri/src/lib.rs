@@ -124,14 +124,31 @@ pub(crate) fn export_path(path: &str) -> PathBuf {
     .unwrap_or_else(|| PathBuf::from(file_name))
 }
 
-/// First port from `start` that is free or already an md-render server —
-/// anything held by another program is skipped.
+/// First port from `start` that is free or already one of our md-render
+/// servers — anything held by another program, or by another user's
+/// md-render (a shared login node), is skipped.
 fn pick_port(host: &str, start: u16, attempts: u16) -> Result<u16, String> {
+  pick_port_with(host, start, attempts, |port| state::read(port).is_some())
+}
+
+/// `pick_port`, with `ours` saying whether we hold the token of the md-render
+/// server on a port.
+fn pick_port_with(
+  host: &str,
+  start: u16,
+  attempts: u16,
+  ours: impl Fn(u16) -> bool,
+) -> Result<u16, String> {
   for offset in 0..attempts {
     let Some(candidate) = start.checked_add(offset) else {
       break;
     };
-    if attach::probe(host, candidate) != attach::Probe::Occupied {
+    let usable = match attach::probe(host, candidate) {
+      attach::Probe::Free => true,
+      attach::Probe::MdRender => ours(candidate),
+      attach::Probe::Occupied => false,
+    };
+    if usable {
       return Ok(candidate);
     }
   }
@@ -172,10 +189,16 @@ fn run_server(
   match attach::probe(&host, port) {
     attach::Probe::MdRender => {
       let record = state::read(port).ok_or_else(|| {
+        let next = match port.checked_add(1) {
+          Some(after) => pick_port(&host, after, cli::PORT_SCAN_ATTEMPTS)
+            .map(|free| format!("; port {} is free (or leave out --port to pick one)", free))
+            .unwrap_or_default(),
+          None => String::new(),
+        };
         format!(
-          "a md-render server is already on port {}, but its token could not be read; \
-           it may have been started by another user",
-          port
+          "the md-render server on port {} is not ours (no token for it in this \
+           state directory; another user's, on a shared machine){}",
+          port, next
         )
       })?;
 
@@ -379,5 +402,32 @@ mod tests {
     let picked = pick_port("127.0.0.1", held, 5).unwrap();
     assert_ne!(picked, held);
     assert!(picked > held && picked < held + 5);
+  }
+
+  #[test]
+  fn pick_port_skips_another_users_md_render_but_joins_ours() {
+    use std::io::{Read, Write};
+
+    // Answers /api/health the way an md-render server does, as another
+    // user's server on a shared login node would.
+    let other = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let held = other.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+      for stream in other.incoming() {
+        let Ok(mut stream) = stream else { continue };
+        let mut buffer = [0u8; 512];
+        let _ = stream.read(&mut buffer);
+        let _ = stream.write_all(
+          b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n{\"app\":\"md-render\",\"version\":\"0\"}",
+        );
+        let _ = stream.shutdown(std::net::Shutdown::Both);
+      }
+    });
+
+    let skipped = pick_port_with("127.0.0.1", held, 5, |_| false).unwrap();
+    assert!(skipped > held && skipped < held + 5);
+
+    let joined = pick_port_with("127.0.0.1", held, 5, |port| port == held).unwrap();
+    assert_eq!(joined, held);
   }
 }
