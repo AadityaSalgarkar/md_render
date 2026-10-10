@@ -1,6 +1,8 @@
 mod attach;
 mod browser;
 mod cli;
+#[cfg(feature = "desktop")]
+mod desktop;
 mod experiments;
 mod remote;
 mod server;
@@ -8,26 +10,30 @@ mod state;
 mod tikz;
 
 use std::collections::HashSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 // Global state to store the launch file path
-static LAUNCH_FILE: Mutex<Option<String>> = Mutex::new(None);
+#[cfg_attr(not(feature = "desktop"), allow(dead_code))]
+pub(crate) static LAUNCH_FILE: Mutex<Option<String>> = Mutex::new(None);
 
 /// The path arguments as given, so a refresh can rescan directories and pick
 /// up markdown added since launch.
-static LAUNCH_SOURCES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+#[cfg_attr(not(feature = "desktop"), allow(dead_code))]
+pub(crate) static LAUNCH_SOURCES: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 /// Documents named on the command line (and added since), surfaced to the
 /// frontend as tabs.
+#[cfg_attr(not(feature = "desktop"), allow(dead_code))]
 static DOCUMENTS: OnceLock<Mutex<DocumentStore>> = OnceLock::new();
 
-fn store() -> &'static Mutex<DocumentStore> {
+#[cfg_attr(not(feature = "desktop"), allow(dead_code))]
+pub(crate) fn store() -> &'static Mutex<DocumentStore> {
   DOCUMENTS.get_or_init(|| Mutex::new(DocumentStore::default()))
 }
 
 #[derive(serde::Serialize)]
+#[cfg_attr(not(feature = "desktop"), allow(dead_code))]
 pub struct DocumentMeta {
   id: u64,
   label: String,
@@ -35,6 +41,7 @@ pub struct DocumentMeta {
 }
 
 /// One open document plus the id the frontend addresses it by.
+#[cfg_attr(not(feature = "desktop"), allow(dead_code))]
 struct DocEntry {
   id: u64,
   document: cli::Document,
@@ -44,6 +51,7 @@ struct DocEntry {
 /// never reused, so closing a tab never renumbers the others — the frontend's
 /// active id, its `?doc=` URL and any in-flight read all stay valid.
 #[derive(Default)]
+#[cfg_attr(not(feature = "desktop"), allow(dead_code))]
 pub struct DocumentStore {
   next_id: u64,
   entries: Vec<DocEntry>,
@@ -52,6 +60,7 @@ pub struct DocumentStore {
   closed: HashSet<PathBuf>,
 }
 
+#[cfg_attr(not(feature = "desktop"), allow(dead_code))]
 impl DocumentStore {
   /// Add documents, skipping ones already open. `explicit` marks paths the
   /// user named just now, which re-opens a previously closed document; a
@@ -97,78 +106,6 @@ impl DocumentStore {
   }
 }
 
-fn documents_as_meta() -> Vec<DocumentMeta> {
-  store().lock().map(|s| s.as_meta()).unwrap_or_default()
-}
-
-/// The open documents, mirroring the server's `/api/files` so the frontend can
-/// build tabs the same way in either mode.
-#[tauri::command]
-fn list_documents() -> Vec<DocumentMeta> {
-  documents_as_meta()
-}
-
-/// Rescan the original path arguments and return the tab list. Markdown added
-/// to a directory that was named on the command line shows up here.
-#[tauri::command]
-fn refresh_documents() -> Vec<DocumentMeta> {
-  let sources = LAUNCH_SOURCES.lock().map(|s| s.clone()).unwrap_or_default();
-  if let Ok(found) = cli::collect_documents(&sources) {
-    if let Ok(mut open) = store().lock() {
-      // A rescan, not an explicit ask: closed tabs stay closed.
-      open.merge(found, false);
-    }
-  }
-  documents_as_meta()
-}
-
-/// Open a file that arrived while the app was running — a Finder double-click
-/// or a deep link — as another tab rather than replacing the current one.
-#[tauri::command]
-fn add_document(path: String) -> Vec<DocumentMeta> {
-  if let Ok(found) = cli::collect_documents(&[path]) {
-    if let Ok(mut open) = store().lock() {
-      open.merge(found, true);
-    }
-  }
-  documents_as_meta()
-}
-
-/// Close a tab. The id is the string the frontend got from `list_documents`;
-/// the updated tab list comes back so the caller need not re-fetch.
-#[tauri::command]
-fn remove_document(id: String) -> Vec<DocumentMeta> {
-  if let Ok(id) = id.parse::<u64>() {
-    if let Ok(mut open) = store().lock() {
-      open.remove(id);
-    }
-  }
-  documents_as_meta()
-}
-
-#[tauri::command]
-fn read_file(path: String) -> Result<String, String> {
-  fs::read_to_string(&path)
-    .map_err(|e| format!("Failed to read file: {}", e))
-}
-
-/// Save a document. A remote document's edit is also kept outside /tmp,
-/// the same as in server mode; see `remote::save`.
-#[tauri::command]
-fn write_file(path: String, content: String) -> Result<(), String> {
-  remote::save(Path::new(&path), &content)
-    .map(|_| ())
-    .map_err(|e| format!("Failed to write file: {}", e))
-}
-
-#[tauri::command]
-fn export_markdown(path: String, content: String) -> Result<String, String> {
-  let output_path = export_path(&path);
-  fs::write(&output_path, content)
-    .map_err(|e| format!("Failed to export file: {}", e))?;
-  Ok(output_path.to_string_lossy().to_string())
-}
-
 pub(crate) fn export_path(path: &str) -> PathBuf {
   let source = Path::new(path);
   let stem = source
@@ -185,67 +122,6 @@ pub(crate) fn export_path(path: &str) -> PathBuf {
     .parent()
     .map(|parent| parent.join(&file_name))
     .unwrap_or_else(|| PathBuf::from(file_name))
-}
-
-/// Experiment databases in the trackio directory.
-#[tauri::command]
-fn list_experiment_projects() -> experiments::ProjectsResponse {
-  experiments::list_projects()
-}
-
-/// Runs, metric keys and configs of one experiment database. The desktop
-/// window reads any path, as `read_file` does.
-#[tauri::command]
-async fn list_experiment_runs(
-  source: experiments::DbSource,
-  base_dir: Option<String>,
-) -> Result<experiments::RunsResponse, experiments::ExpError> {
-  tauri::async_runtime::spawn_blocking(move || {
-    let path = experiments::resolve_source(&source, base_dir.as_deref().map(Path::new))?;
-    experiments::list_runs(&path)
-  })
-  .await
-  .map_err(|e| experiments::ExpError::bad_request(e.to_string()))?
-}
-
-/// Series for (runs x keys) from one experiment database.
-#[tauri::command]
-async fn fetch_experiment_series(
-  source: experiments::DbSource,
-  base_dir: Option<String>,
-  request: experiments::SeriesRequest,
-) -> Result<experiments::SeriesResponse, experiments::ExpError> {
-  tauri::async_runtime::spawn_blocking(move || {
-    let path = experiments::resolve_source(&source, base_dir.as_deref().map(Path::new))?;
-    experiments::fetch_series(&path, &request)
-  })
-  .await
-  .map_err(|e| experiments::ExpError::bad_request(e.to_string()))?
-}
-
-/// Compile a TikZ block to SVG (cached). Runs off the main thread: a first
-/// compile can take seconds.
-#[tauri::command]
-async fn render_tikz(source: String) -> Result<tikz::Rendered, tikz::TikzError> {
-  tauri::async_runtime::spawn_blocking(move || tikz::render(&source))
-    .await
-    .map_err(|e| tikz::TikzError {
-      error: "engine",
-      message: e.to_string(),
-      log: Vec::new(),
-    })?
-}
-
-#[tauri::command]
-fn get_launch_file() -> Option<String> {
-  // First check the global state (set from command-line args)
-  if let Ok(guard) = LAUNCH_FILE.lock() {
-    if let Some(ref path) = *guard {
-      return Some(path.clone());
-    }
-  }
-  // Fall back to environment variable (for wrapper script)
-  std::env::var("TAURI_LAUNCH_FILE").ok()
 }
 
 /// First port from `start` that is free or already an md-render server —
@@ -333,7 +209,7 @@ fn run_server(
   }
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[cfg_attr(feature = "desktop", cfg_attr(mobile, tauri::mobile_entry_point))]
 pub fn run() {
   let args: Vec<String> = std::env::args().skip(1).collect();
 
@@ -390,46 +266,16 @@ pub fn run() {
     cli::Mode::Desktop { documents, sources } => (documents, sources),
   };
 
-  // Check for launch file from command-line args before building the app
-  if let Some(first) = documents.first() {
-    if let Ok(mut guard) = LAUNCH_FILE.lock() {
-      *guard = Some(first.path.to_string_lossy().to_string());
-    }
-  }
-  if let Ok(mut open) = store().lock() {
-    open.merge(documents, true);
-  }
-  if let Ok(mut guard) = LAUNCH_SOURCES.lock() {
-    *guard = sources;
-  }
+  #[cfg(feature = "desktop")]
+  desktop::run(documents, sources);
 
-  tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![
-      read_file,
-      write_file,
-      export_markdown,
-      get_launch_file,
-      list_documents,
-      refresh_documents,
-      add_document,
-      remove_document,
-      list_experiment_projects,
-      list_experiment_runs,
-      fetch_experiment_series,
-      render_tikz
-    ])
-    .setup(|app| {
-      if cfg!(debug_assertions) {
-        app.handle().plugin(
-          tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
-            .build(),
-        )?;
-      }
-      Ok(())
-    })
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+  // A server-only build (the Docker image) has no window to open.
+  #[cfg(not(feature = "desktop"))]
+  {
+    let _ = (documents, sources);
+    eprintln!("md-render: this build has no desktop window; serve with --port");
+    std::process::exit(2);
+  }
 }
 
 #[cfg(test)]

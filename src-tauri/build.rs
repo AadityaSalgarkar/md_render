@@ -7,6 +7,9 @@ fn main() {
     let _ = std::fs::create_dir_all(dist);
   }
 
+  // Only the desktop window needs Tauri's build step (config, icons,
+  // capabilities); the server-only build skips it.
+  #[cfg(feature = "desktop")]
   tauri_build::build();
 
   #[cfg(target_os = "macos")]
