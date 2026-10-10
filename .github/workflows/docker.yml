@@ -141,7 +141,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish this architecture
-        if: inputs.tag != 
+        if: inputs.tag != ''
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -157,7 +157,7 @@ jobs:
   # One tag for both architectures; docker pulls the one that matches.
   manifest:
     needs: image
-    if: inputs.tag != 
+    if: inputs.tag != ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
