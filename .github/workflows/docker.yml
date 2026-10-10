@@ -29,7 +29,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag to publish under, e.g. v0.7.0 (empty builds the branch without publishing)
+        description: Image tag to publish the branch under, e.g. v0.7.0 when run on that tag (empty builds without publishing)
         type: string
         required: false
       latest:
@@ -61,9 +61,11 @@ jobs:
       contents: read
       packages: write
     steps:
+      # A release builds its tag; a manual run builds the branch or tag it was
+      # started on, and `tag` only names the image.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || inputs.tag || github.ref }}
 
       - uses: docker/setup-buildx-action@v3
 
