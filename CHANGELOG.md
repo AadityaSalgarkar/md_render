@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.11.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.10.1...v0.11.0) (2026-10-10)
+
+
+### Features
+
+* **install:** prebuilt Linux server for clusters and shared machines ([457b8b1](https://github.com/AadityaSalgarkar/md_render/commit/457b8b14c24179aded872110f23c763ddd58f4d3))
+* **install:** prebuilt server install, and make install-server ([98901f4](https://github.com/AadityaSalgarkar/md_render/commit/98901f40a7b515d2e071bc7aae3c9c5a8ee38707))
+
+
+### Bug Fixes
+
+* **mcp:** skip another user's server when picking a port ([9e77b87](https://github.com/AadityaSalgarkar/md_render/commit/9e77b875b8cc9229eff6b91cc8cd41eebd32ae6b))
+* **server:** skip another user's server when picking a port ([8808a3d](https://github.com/AadityaSalgarkar/md_render/commit/8808a3d99cf993a60f6502432fabfd709012cca8))
+* **tikz:** report why the compiler child died ([0be7844](https://github.com/AadityaSalgarkar/md_render/commit/0be7844c483149164bd0539a71e7dbfcc5f7e600))
+* **wrapper:** find md-render and the MCP bundle beside the wrapper ([39b1def](https://github.com/AadityaSalgarkar/md_render/commit/39b1def058f339d84252b134bcd2dc371bf9e0e5))
+
 ## [0.10.1](https://github.com/AadityaSalgarkar/md_render/compare/v0.10.0...v0.10.1) (2026-10-10)
 
 
