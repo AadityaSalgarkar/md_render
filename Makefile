@@ -24,7 +24,7 @@ DOCKER_IMAGE ?= ghcr.io/aadityasalgarkar/md_render:latest
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build build-app-macos build-binary-linux build-mcp install install-macos install-linux install-docker install-mcp install-clean test clean
+.PHONY: help build build-app-macos build-binary-linux build-server build-mcp install install-macos install-linux install-server install-docker install-mcp install-clean test clean
 
 help:
 	@printf "Targets:\n"
@@ -33,6 +33,7 @@ help:
 	@printf "  make install-docker Install without compiling: md-render runs the published Docker image (web app only)\n"
 	@printf "  make install-macos  Install MD_RENDER.app plus ~/bin/mdrender\n"
 	@printf "  make install-linux  Install into \$$PREFIX (default ~/.local), no root needed\n"
+	@printf "  make install-server Build and install the headless server only (no WebKit; clusters, servers)\n"
 	@printf "  make build-mcp      Bundle the MCP server into mcp/dist/index.js\n"
 	@printf "  make install-mcp    Install the MCP bundle to \$$MCP_DIR (default ~/.local/share/md-render/mcp)\n"
 	@printf "  make install-clean  Install, then remove local build artifacts\n"
@@ -105,6 +106,22 @@ install-linux: build-binary-linux install-mcp
 	@echo "Installed $(BIN_NAME) to $(PREFIX)/bin/$(BIN_NAME)"
 	@echo "Installed mdrender wrapper to $(BIN_DIR)/mdrender"
 	@echo "Installed desktop entry to $(DESKTOP_DIR)/$(BIN_NAME).desktop"
+	@echo "Ensure $(PREFIX)/bin and $(BIN_DIR) are on your PATH."
+
+# The headless server alone: no WebKit or GTK, so it builds where the desktop
+# app cannot (a cluster login node, a server). scripts/build_server.sh points
+# the build at libraries outside the system paths and records their
+# directories in the binary, so nothing goes on LD_LIBRARY_PATH.
+build-server:
+	scripts/build_server.sh
+
+install-server: build-server install-mcp
+	mkdir -p "$(PREFIX)/bin" "$(BIN_DIR)"
+	install -m 755 src-tauri/target/release/app "$(PREFIX)/bin/$(BIN_NAME).new"
+	mv -f "$(PREFIX)/bin/$(BIN_NAME).new" "$(PREFIX)/bin/$(BIN_NAME)"
+	install -m 755 "$(WRAPPER)" "$(BIN_DIR)/mdrender"
+	@echo "Installed $(BIN_NAME) (server only) to $(PREFIX)/bin/$(BIN_NAME)"
+	@echo "Installed mdrender wrapper to $(BIN_DIR)/mdrender"
 	@echo "Ensure $(PREFIX)/bin and $(BIN_DIR) are on your PATH."
 
 # Nothing is compiled: the server comes from the published image, and
