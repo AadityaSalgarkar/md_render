@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.8.1...v0.9.0) (2026-10-10)
+
+
+### Features
+
+* a slim server-only image for amd64 and arm64, and the Docker web app on macOS ([962d11b](https://github.com/AadityaSalgarkar/md_render/commit/962d11bdbef9dd1ff558ccf4cc3af59e6bd052d4))
+* **build:** a desktop feature, so the server can build without WebKit ([4d6f53e](https://github.com/AadityaSalgarkar/md_render/commit/4d6f53e18f499329eb0da98a3876abdee896342d))
+* **install:** the Docker web app on macOS ([56fda67](https://github.com/AadityaSalgarkar/md_render/commit/56fda677b6aede86016d0d131e4e68aebbfcdf06))
+* **server:** MDRENDER_CONTAINER binds all interfaces and records pid 0 ([2031f7e](https://github.com/AadityaSalgarkar/md_render/commit/2031f7e64b9e33214e4b348ca9941adc664c3d70))
+
+
+### Bug Fixes
+
+* **ci:** a manual docker run builds its own ref; the tag only names the image ([a0a4189](https://github.com/AadityaSalgarkar/md_render/commit/a0a4189a6ab45316bad9b4c034cd796832f7801e))
+* **ci:** restore the empty-tag checks in the docker workflow ([a0eddc6](https://github.com/AadityaSalgarkar/md_render/commit/a0eddc6935ed3aba5588c05b812c3ac56700deb0))
+* **install:** mount /private/tmp on macOS, where /tmp paths arrive resolved ([df15049](https://github.com/AadityaSalgarkar/md_render/commit/df150495ba7f9167a8f3c3d8f727e668318ab3c2))
+
 ## [0.8.1](https://github.com/AadityaSalgarkar/md_render/compare/v0.8.0...v0.8.1) (2026-10-09)
 
 
