@@ -40,6 +40,13 @@ find_linux_binary() {
   local self candidate resolved
   self="$(self_path)"
 
+  # The server tarball keeps the binary next to this wrapper, under any prefix.
+  candidate="$(dirname "$self")/md-render"
+  if [ -x "$candidate" ] && [ ! -d "$candidate" ]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
   # Deliberately excludes "mdrender": that is this wrapper's own installed name,
   # so matching it would launch the wrapper again instead of the app.
   for candidate in md-render "$APP_NAME"; do
@@ -191,6 +198,7 @@ exec_mcp() {
   for entry in \
     "${MDRENDER_MCP_DIR:+$MDRENDER_MCP_DIR/index.js}" \
     "$HOME/.local/share/md-render/mcp/index.js" \
+    "$repo_root/share/md-render/mcp/index.js" \
     "$repo_root/mcp/dist/index.js"; do
     if [ -n "$entry" ] && [ -f "$entry" ]; then
       if ! command -v node >/dev/null 2>&1; then

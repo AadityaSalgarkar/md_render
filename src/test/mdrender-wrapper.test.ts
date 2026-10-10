@@ -568,6 +568,58 @@ describe('bin/mdrender --help', () => {
   })
 })
 
+describe('bin/mdrender unpacked from the server tarball', () => {
+  // <prefix>/bin/{mdrender,md-render} and <prefix>/share/md-render/mcp,
+  // under a prefix that is neither ~/.local nor on PATH.
+  let prefix: string
+  let wrapperCopy: string
+
+  beforeEach(() => {
+    stubUname('Linux')
+    // Another md-render on PATH, which the tarball's own must win over.
+    writeStub('md-render', '#!/usr/bin/env bash\necho "PATH-BINARY" >> "' + recordFile + '"\n')
+    writeStub('node', recordingStub())
+    prefix = path.join(work, 'scratch', 'md-render')
+    mkdirSync(path.join(prefix, 'bin'), { recursive: true })
+    mkdirSync(path.join(prefix, 'share', 'md-render', 'mcp'), { recursive: true })
+    wrapperCopy = path.join(prefix, 'bin', 'mdrender')
+    writeFileSync(wrapperCopy, readFileSync(WRAPPER, 'utf8'))
+    chmodSync(wrapperCopy, 0o755)
+    const binary = path.join(prefix, 'bin', 'md-render')
+    writeFileSync(binary, recordingStub())
+    chmodSync(binary, 0o755)
+    writeFileSync(path.join(prefix, 'share', 'md-render', 'mcp', 'index.js'), '// bundle')
+  })
+
+  const run = (args: string[]) =>
+    execFileSync('bash', [wrapperCopy, ...args], {
+      env: {
+        ...process.env,
+        PATH: `${stubBin}:${process.env.PATH ?? ''}`,
+        HOME: path.join(work, 'empty-home'),
+        MDRENDER_FOREGROUND: '1',
+      },
+      encoding: 'utf8',
+    })
+
+  it('serves with the binary beside the wrapper', () => {
+    const doc = path.join(work, 'note.md')
+    writeFileSync(doc, '# hello')
+
+    run([doc])
+
+    const log = recorded()
+    expect(log).toContain(`SELF=${path.join(prefix, 'bin', 'md-render')}`)
+    expect(log).not.toContain('PATH-BINARY')
+  })
+
+  it('runs the MCP bundle from the same prefix', () => {
+    run(['--mcp'])
+
+    expect(recorded()).toContain(`ARGS=${path.join(prefix, 'share', 'md-render', 'mcp', 'index.js')}`)
+  })
+})
+
 describe('bin/mdrender --mcp', () => {
   beforeEach(() => {
     stubUname('Linux')

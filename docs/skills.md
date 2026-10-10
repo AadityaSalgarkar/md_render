@@ -278,5 +278,12 @@ To read a document without them, strip those blocks — or use the app's
 - The server reads and writes only the documents it was told to open;
   images only from those documents' directories; experiment databases
   (read-only) from the trackio directory and the served folders.
-- If `mdrender` is missing, install from the repo:
-  `git clone https://github.com/AadityaSalgarkar/md_render && cd md_render && npm install && make install`
+- If `mdrender` is missing, install it:
+  `curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh`.
+  On a cluster login node or other machine without root, Docker or WebKit,
+  this installs the prebuilt headless server (`MDRENDER_SERVER=1` forces it).
+  Set `MDRENDER_PREFIX` to a scratch folder, and `XDG_STATE_HOME`,
+  `XDG_CACHE_HOME` and `XDG_CONFIG_HOME` under it, when `$HOME` is small. Then
+  tell the human to forward the port: `ssh -L PORT:127.0.0.1:PORT <host>`.
+- On a shared machine, leave out `--port`: the server picks a free port and
+  skips other users' servers. Read the URL it prints.

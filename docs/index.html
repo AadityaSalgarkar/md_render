@@ -284,6 +284,7 @@ footer .mono, .mono { font-family: "IBM Plex Mono", monospace; font-size: 0.8rem
   <a href="#install">Install</a>
   <a href="#install-macos" class="sub">macOS</a>
   <a href="#install-linux" class="sub">Linux</a>
+  <a href="#install-cluster" class="sub">Clusters</a>
   <a href="#cli">Command line</a>
   <a href="#server">Server mode</a>
   <a href="#remote" class="sub">Reading over SSH</a>
@@ -403,6 +404,25 @@ make install        <span class="c"># everything under ~/.local and ~/bin — no
   <code>.rpm</code> and <code>.AppImage</code> bundles under
   <code>src-tauri/target/release/bundle/</code>. Set <code>PREFIX</code> to
   install elsewhere: <code>make install-linux PREFIX=/usr/local</code>.</p>
+
+  <h3 id="install-cluster"><a class="anchor" href="#install-cluster">Clusters and shared machines</a></h3>
+  <p>Without WebKit (a cluster login node, a server), the installer puts in
+  the headless server prebuilt: no compiler, root, Docker or
+  <code>LD_LIBRARY_PATH</code>, on any glibc 2.28+ x86_64 or aarch64 Linux.
+  Keep it and its caches off <code>$HOME</code>:</p>
+<pre><code>export MDRENDER_PREFIX=/scratch/$USER/md-render
+export XDG_STATE_HOME=$MDRENDER_PREFIX/state XDG_CACHE_HOME=$MDRENDER_PREFIX/cache \
+       XDG_CONFIG_HOME=$MDRENDER_PREFIX/config
+curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | MDRENDER_SERVER=1 sh
+$MDRENDER_PREFIX/bin/mdrender --port 9999 ~/project
+ssh -L 9999:127.0.0.1:9999 &lt;host&gt;   <span class="c"># on your laptop, then open http://127.0.0.1:9999/</span></code></pre>
+  <p>Another user's server on the same node is skipped when picking a port.
+  No GitHub access: copy the release's
+  <code>md-render-server-&lt;version&gt;-linux-&lt;arch&gt;.tar.gz</code> over
+  and install with <code>MDRENDER_TARBALL=&lt;file&gt;</code>.
+  <code>MDRENDER_SERVER=build</code> compiles it instead
+  (<code>make install-server</code>), finding the TeX libraries through
+  <code>PKG_CONFIG_PATH</code>.</p>
 </section>
 
 <section id="cli">

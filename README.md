@@ -134,6 +134,41 @@ The image has the TeX files baked in, so diagrams render offline. Mount
 trackio databases at `/data/trackio` for plot blocks, and a volume at
 `/cache` to keep rendered diagrams across containers.
 
+### Shared machines and clusters (no Docker, no root)
+
+On a cluster login node or any Linux box without WebKit, the installer puts
+in the headless server prebuilt: a single download that needs no compiler,
+root, Docker or `LD_LIBRARY_PATH`, and runs on any glibc 2.28+ x86_64 or
+aarch64 Linux. It bundles the libraries the TeX engine links. Keep the
+install and its caches on scratch storage rather than `$HOME`:
+
+```bash
+export MDRENDER_PREFIX=/scratch/$USER/md-render                         # install here
+export XDG_STATE_HOME=$MDRENDER_PREFIX/state                            # server tokens
+export XDG_CACHE_HOME=$MDRENDER_PREFIX/cache                            # TeX files, diagrams
+export XDG_CONFIG_HOME=$MDRENDER_PREFIX/config                          # saved remote documents
+curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | MDRENDER_SERVER=1 sh
+$MDRENDER_PREFIX/bin/mdrender --port 9999 ~/project                     # serve
+```
+
+Then reach it from your laptop with `ssh -L 9999:127.0.0.1:9999 <host>` (or
+`ssh -O forward -L 9999:127.0.0.1:9999 <host>` on an open master connection)
+and open http://127.0.0.1:9999/. Without `--port`, the server takes 9999 or
+the next free port; another user's md-render on the same node is skipped.
+Finer-grained variables: `TECTONIC_CACHE_DIR` (TeX files),
+`MDRENDER_TIKZ_CACHE` (diagrams), `MDRENDER_REMOTE_DIR`, `MDRENDER_SAVED_DIR`,
+and `TRACKIO_DIR`.
+
+If the machine cannot reach GitHub, download
+`md-render-server-<version>-linux-<arch>.tar.gz` from
+[Releases](https://github.com/AadityaSalgarkar/md_render/releases/latest),
+copy it over, and install it with `MDRENDER_TARBALL=<file>`. TikZ diagrams
+need the system's CA certificates for the TeX engine's first download.
+`MDRENDER_SERVER=build` compiles the server instead (`make install-server`,
+Rust 1.92+): it finds the TeX libraries through `PKG_CONFIG_PATH` and records
+their directories in the binary. Where Apptainer is allowed,
+`apptainer run docker://ghcr.io/aadityasalgarkar/md_render` runs the image.
+
 To make it the macOS default for markdown:
 `brew install duti && duti -s com.mdrender.app .md all`
 

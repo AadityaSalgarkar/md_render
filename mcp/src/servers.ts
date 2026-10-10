@@ -186,6 +186,12 @@ function repoRoot(): string | null {
   return existsSync(path.join(candidate, 'src-tauri')) ? candidate : null
 }
 
+function besideBundle(): string | null {
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  if (path.basename(path.dirname(here)) !== 'md-render') return null
+  return path.resolve(here, '..', '..', '..', 'bin', 'md-render')
+}
+
 function onPath(name: string): string | null {
   for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
     if (!dir) continue
@@ -216,6 +222,9 @@ export function findBinary(): string {
     // Chosen over the app when installed: the user picked the image.
     dockerInstall(),
     '/Applications/MD_RENDER.app/Contents/MacOS/md-render',
+    // The server tarball: <prefix>/share/md-render/mcp/index.js beside
+    // <prefix>/bin/md-render, whatever the prefix.
+    besideBundle(),
     onPath('md-render'),
     path.join(homedir(), '.local', 'bin', 'md-render'),
   ]
@@ -236,12 +245,17 @@ export function findBinary(): string {
   )
 }
 
-/** First port from `start` that is free or already an md-render server. */
+/**
+ * First port from `start` that is free or already one of our md-render
+ * servers. Another user's md-render (a shared login node) is skipped: we
+ * hold no token for it.
+ */
 export async function pickPort(start = DEFAULT_PORT, attempts = PORT_SCAN_ATTEMPTS): Promise<number> {
   for (let offset = 0; offset < attempts; offset += 1) {
     const candidate = start + offset
     if (candidate > 65535) break
-    if ((await probe(candidate)) !== 'occupied') return candidate
+    const found = await probe(candidate)
+    if (found === 'free' || (found === 'md-render' && readRecord(candidate))) return candidate
   }
   throw new ToolError(
     `no usable port between ${start} and ${start + attempts - 1}; pass port to pick one explicitly`,

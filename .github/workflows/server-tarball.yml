@@ -1,0 +1,85 @@
+name: server-tarball
+
+# Builds the headless server as a portable Linux tarball (glibc 2.28+, its
+# libraries bundled) for x86_64 and aarch64, and checks it on stock
+# distributions with no build packages. On pull requests that touch its
+# inputs it only builds and checks. Called from the release workflow (or run
+# by hand with a tag) it also uploads the tarballs to that release, where
+# `MDRENDER_SERVER=1 sh install.sh` downloads them.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/server-tarball.yml
+      - scripts/build_server_tarball.sh
+      - scripts/check_server_tarball.sh
+      - src-tauri/Cargo.toml
+      - src-tauri/Cargo.lock
+      - src-tauri/src/tikz.rs
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to build and upload to, e.g. v0.11.0
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build and upload to (empty builds without uploading)
+        type: string
+        required: false
+
+concurrency:
+  group: server-tarball-${{ inputs.tag || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tarball:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Frontend and MCP bundle
+        run: npm ci && npm run build && npm run build:mcp
+
+      - name: Build in manylinux_2_28
+        run: |
+          version="${{ inputs.tag }}"
+          scripts/build_server_tarball.sh ${{ matrix.arch }} ${version#v}
+          ls -la dist-server | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The oldest glibc the tarball promises, and a current one.
+      - name: Check on Rocky Linux 8 (glibc 2.28)
+        run: scripts/check_server_tarball.sh dist-server/*.tar.gz rockylinux:8
+
+      - name: Check on Ubuntu 24.04
+        run: scripts/check_server_tarball.sh dist-server/*.tar.gz ubuntu:24.04
+
+      - name: Keep the tarball
+        if: inputs.tag == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: md-render-server-linux-${{ matrix.arch }}
+          path: dist-server/*.tar.gz
+
+      - name: Upload to the release
+        if: inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ inputs.tag }}" dist-server/*.tar.gz --clobber

@@ -105,6 +105,17 @@ jobs:
           tagName: ${{ env.RELEASE_TAG }}
           releaseName: ${{ env.RELEASE_TAG }}
 
+  # The headless server as portable Linux tarballs, uploaded to the release;
+  # `MDRENDER_SERVER=1 sh install.sh` installs from them.
+  server-tarball:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/server-tarball.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+
   # Publish the headless server image for the new release to the GitHub
   # Container Registry; `make install-docker` installs from it.
   docker-image:

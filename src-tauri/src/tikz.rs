@@ -384,8 +384,25 @@ fn run_child(input: &Path, output: &Path, log: &Path, key: &str) -> Result<Strin
     }
     Err(_) => Err(TikzError::new(
       "engine",
-      format!("the TikZ compiler failed: {}", stderr.trim().lines().last().unwrap_or("no output")),
+      format!("the TikZ compiler failed: {}", child_failure(&stderr)),
     )),
+  }
+}
+
+/// Why the child died, from its stderr: a panic's message (the line after
+/// "panicked at", not the backtrace note that ends the output), else the
+/// last line.
+fn child_failure(stderr: &str) -> String {
+  let lines: Vec<&str> = stderr.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+  let message = match lines.iter().position(|l| l.contains("panicked at")) {
+    Some(at) => lines.get(at + 1).copied().unwrap_or(lines[at]),
+    None => lines.last().copied().unwrap_or("no output"),
+  };
+  if message.contains("CA certificates") {
+    // Tectonic downloads its TeX files over HTTPS with the system's roots.
+    format!("{} (install the system's ca-certificates package)", message)
+  } else {
+    message.to_string()
   }
 }
 
@@ -586,6 +603,20 @@ pub fn warm() -> Result<(), TikzError> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn a_child_panic_reports_its_message_not_the_backtrace_note() {
+    // The stderr of a child on a host without CA certificates.
+    let stderr = "thread 'main' (10) panicked at /opt/cargo/registry/src/reqwest-0.13.5/src/blocking/client.rs:1278:38:\n\
+      Client::new(): reqwest::Error { kind: Builder, source: General(\"No CA certificates were loaded from the system\") }\n\
+      note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n";
+    let message = child_failure(stderr);
+    assert!(message.starts_with("Client::new(): reqwest::Error"), "{}", message);
+    assert!(message.ends_with("(install the system's ca-certificates package)"));
+
+    assert_eq!(child_failure("first\nlast line\n"), "last line");
+    assert_eq!(child_failure(""), "no output");
+  }
 
   #[test]
   fn headers_become_preamble_and_the_rest_is_the_body() {
