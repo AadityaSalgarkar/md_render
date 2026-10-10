@@ -4,8 +4,9 @@
 #   curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
 #   curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | MDRENDER_DOCKER=1 sh
 #
-# With MDRENDER_DOCKER=1 (Linux) nothing is compiled: md-render runs the
-# published Docker image, and only docker, git, node and npm are needed.
+# With MDRENDER_DOCKER=1 nothing is compiled: md-render runs the published
+# Docker image (the web app; on macOS the desktop window still needs the
+# app), and only docker, git, node and npm are needed.
 #
 # Detects the platform, checks the build prerequisites, clones the repository
 # (or updates an existing checkout), and runs `make install` — which installs
@@ -28,9 +29,6 @@ case "$OS" in
 esac
 
 DOCKER="${MDRENDER_DOCKER:-}"
-if [ -n "$DOCKER" ] && [ "$OS" != "Linux" ]; then
-  fail "MDRENDER_DOCKER=1 is for Linux; on macOS install the app normally"
-fi
 
 # Everything the build needs; installed by the user's package manager, not us.
 missing=""
@@ -70,7 +68,7 @@ if [ -z "$DOCKER" ] && [ "$OS" = "Linux" ] && ! pkg-config --exists icu-uc fontc
   say "    libharfbuzz-dev libpng-dev zlib1g-dev"
   fail "install the build dependencies and re-run"
 fi
-if [ "$OS" = "Darwin" ]; then
+if [ -z "$DOCKER" ] && [ "$OS" = "Darwin" ]; then
   icu_pc=""
   have brew && icu_pc="$(brew --prefix icu4c 2>/dev/null)/lib/pkgconfig"
   if ! have pkg-config || ! PKG_CONFIG_PATH="$icu_pc" pkg-config --exists icu-uc graphite2 harfbuzz freetype2 libpng 2>/dev/null; then

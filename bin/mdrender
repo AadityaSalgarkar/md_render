@@ -88,6 +88,12 @@ find_binary() {
   fi
   case "$(uname -s)" in
     Darwin)
+      # `make install-docker` chose the published image over the app.
+      local docker_bin="$HOME/.local/bin/md-render"
+      if [ -x "$docker_bin" ] && grep -q "run from the published Docker image" "$docker_bin" 2>/dev/null; then
+        printf '%s\n' "$docker_bin"
+        return 0
+      fi
       local app_bin="/Applications/$APP_NAME.app/Contents/MacOS/md-render"
       if [ ! -x "$app_bin" ]; then
         app_bin="$(cd -P "$(dirname "$(self_path)")/.." && pwd)/src-tauri/target/release/md-render"
@@ -232,6 +238,29 @@ Environment: MDRENDER_BIN picks the executable; MDRENDER_BROWSER the opener
 EOF
 }
 
+# When the server could not open a browser itself (in a container there is
+# none), it prints "open URL in your browser"; open that URL here, on the
+# host, with the same rules the binary uses: MDRENDER_BROWSER names the
+# opener (empty disables it), else `open` on macOS, else xdg-open with a
+# display.
+open_printed_url() {
+  local url
+  url="$(sed -n 's/^open \(http[^ ]*\) in your browser$/\1/p' "$1" | tail -n 1)"
+  [ -n "$url" ] || return 0
+  local opener=""
+  if [ -n "${MDRENDER_BROWSER+x}" ]; then
+    opener="$MDRENDER_BROWSER"
+  elif [ "$(uname -s)" = "Darwin" ]; then
+    opener="open"
+  elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open >/dev/null 2>&1; then
+    opener="xdg-open"
+  fi
+  [ -n "$opener" ] || return 0
+  if "$opener" "$url" >/dev/null 2>&1; then
+    echo "opened $url in the browser"
+  fi
+}
+
 # Serve in the foreground: the banner is visible and ctrl-c stops the server.
 serve_foreground() {
   local bin
@@ -265,6 +294,7 @@ serve_and_open() {
   done
 
   grep -v -e '(ctrl-c to stop)' "$log" || true
+  open_printed_url "$log"
   if kill -0 "$pid" 2>/dev/null; then
     disown 2>/dev/null || true
     echo "(server running in the background, pid $pid)"
