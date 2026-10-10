@@ -25,3 +25,4 @@ to-delete/
 
 # MCP server bundle (built by npm run build:mcp)
 mcp/dist/
+dist-server/
