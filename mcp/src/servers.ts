@@ -200,9 +200,21 @@ function onPath(name: string): string | null {
 }
 
 /** Where the md-render binary is, checked in the order a user would expect. */
+/** `make install-docker` puts a script here that runs the published image. */
+function dockerInstall(): string | null {
+  const script = path.join(homedir(), '.local', 'bin', 'md-render')
+  try {
+    return readFileSync(script, 'utf8').slice(0, 400).includes('run from the published Docker image') ? script : null
+  } catch {
+    return null
+  }
+}
+
 export function findBinary(): string {
   const candidates: Array<string | null> = [
     process.env.MDRENDER_BIN ?? null,
+    // Chosen over the app when installed: the user picked the image.
+    dockerInstall(),
     '/Applications/MD_RENDER.app/Contents/MacOS/md-render',
     onPath('md-render'),
     path.join(homedir(), '.local', 'bin', 'md-render'),

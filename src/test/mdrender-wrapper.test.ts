@@ -279,6 +279,23 @@ describe('bin/mdrender on macOS', () => {
   })
 })
 
+describe('bin/mdrender with the Docker install on macOS', () => {
+  it('runs ~/.local/bin/md-render when it is the Docker script, ahead of the app', () => {
+    stubUname('Darwin')
+    const home = path.join(work, 'home')
+    mkdirSync(path.join(home, '.local', 'bin'), { recursive: true })
+    const script = path.join(home, '.local', 'bin', 'md-render')
+    writeFileSync(script, `#!/usr/bin/env bash\n# md-render, run from the published Docker image instead of a local build.\necho "ARGS=$*" >> "${recordFile}"\n`)
+    chmodSync(script, 0o755)
+    const doc = path.join(work, 'f.md')
+    writeFileSync(doc, '# f')
+
+    runWrapper([doc], { HOME: home, MDRENDER_BIN: '' })
+
+    expect(recorded()).toContain(`ARGS=--port --open ${doc}`)
+  })
+})
+
 describe('bin/mdrender default mode in the background', () => {
   beforeEach(() => {
     stubUname('Linux')
@@ -335,6 +352,53 @@ echo "opening http://127.0.0.1:9999/notes/?doc=2 in the browser"
     expect(output).toContain('added to http://127.0.0.1:9999')
     expect(output).toContain('opening http://127.0.0.1:9999/notes/?doc=2')
     expect(output).not.toContain('background')
+  })
+
+  it('opens the URL a server without a browser printed, on the host', () => {
+    // A server in a container cannot open the browser; it prints the URL.
+    writeStub(
+      'md-render',
+      `#!/usr/bin/env bash
+echo "added to http://127.0.0.1:9999"
+echo "open http://127.0.0.1:9999/notes/?doc=3 in your browser"
+`,
+    )
+    const opened = path.join(work, 'opened.log')
+    const opener = writeStub('fake-open', `#!/usr/bin/env bash\necho "$1" >> "${opened}"\n`)
+    const doc = path.join(work, 'd.md')
+    writeFileSync(doc, '# d')
+
+    const output = execFileSync('bash', [WRAPPER, doc], {
+      env: {
+        ...process.env,
+        PATH: `${stubBin}:${process.env.PATH ?? ''}`,
+        MDRENDER_FOREGROUND: '',
+        MDRENDER_BROWSER: opener,
+      },
+      encoding: 'utf8',
+      timeout: 15_000,
+    })
+
+    expect(readFileSync(opened, 'utf8')).toBe('http://127.0.0.1:9999/notes/?doc=3\n')
+    expect(output).toContain('opened http://127.0.0.1:9999/notes/?doc=3 in the browser')
+  })
+
+  it('leaves a printed URL alone when MDRENDER_BROWSER is empty', () => {
+    writeStub(
+      'md-render',
+      `#!/usr/bin/env bash
+echo "open http://127.0.0.1:9999/notes/?doc=4 in your browser"
+`,
+    )
+    const doc = path.join(work, 'e.md')
+    writeFileSync(doc, '# e')
+    const output = execFileSync('bash', [WRAPPER, doc], {
+      env: { ...process.env, PATH: `${stubBin}:${process.env.PATH ?? ''}`, MDRENDER_FOREGROUND: '', MDRENDER_BROWSER: '' },
+      encoding: 'utf8',
+      timeout: 15_000,
+    })
+    expect(output).toContain('open http://127.0.0.1:9999/notes/?doc=4 in your browser')
+    expect(output).not.toContain('opened')
   })
 
   it('fails with the binary\'s message and status when it could not serve', () => {

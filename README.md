@@ -101,10 +101,14 @@ minutes, once); `mdrender --warm-tikz` does it ahead of time. See the
 [install docs](https://aadityasalgarkar.github.io/md_render/#install) for the
 package list, `PREFIX=`, and the deb/rpm/AppImage bundles.
 
-On a Linux server, install without compiling anything: `md-render` then runs
-the image published with each release, with your home folder, `/tmp` and
-the server state at their real paths, so the `mdrender` command, joining a
-running server and the MCP server all work as with a native install:
+To run the web app without compiling anything, on Linux or macOS, install
+from Docker: `md-render` then runs the image published with each release
+(about 200 MB, amd64 and arm64, the server only), with your home folder,
+`/tmp` and the server state at their real paths, so the `mdrender` command,
+joining a running server and the MCP server work as with a native install.
+On Linux the container shares the host network; on macOS its port is
+published on 127.0.0.1 and the wrapper opens the browser. The desktop
+window (`--app`) still needs the native app:
 
 ```bash
 curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | MDRENDER_DOCKER=1 sh

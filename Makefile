@@ -30,7 +30,7 @@ help:
 	@printf "Targets:\n"
 	@printf "  make build          Build the Tauri app for the current platform\n"
 	@printf "  make install        Build and install for the current platform ($(UNAME_S))\n"
-	@printf "  make install-docker Install without compiling: md-render runs the published Docker image (Linux)\n"
+	@printf "  make install-docker Install without compiling: md-render runs the published Docker image (web app only)\n"
 	@printf "  make install-macos  Install MD_RENDER.app plus ~/bin/mdrender\n"
 	@printf "  make install-linux  Install into \$$PREFIX (default ~/.local), no root needed\n"
 	@printf "  make build-mcp      Bundle the MCP server into mcp/dist/index.js\n"

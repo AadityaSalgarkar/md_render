@@ -2,19 +2,26 @@
 # md-render, run from the published Docker image instead of a local build.
 #
 # `make install-docker` installs this as ~/.local/bin/md-render, where the
-# mdrender wrapper and the MCP server look for the binary, so everything
+# mdrender wrapper and the MCP server look for the binary, so the web app
 # works as with a native install while nothing is compiled on the machine.
+# The image holds the server only (no desktop window); `mdrender --app`
+# needs the native app.
 #
-# The container sees the machine the way the native binary would:
-#   - the home folder and /tmp at their real paths, so documents, saved
-#     edits and downloaded markdown keep their paths;
-#   - the host network, so the server is on 127.0.0.1:<port> and a second
-#     `mdrender FILE` joins it;
-#   - the host's process ids, so the state file's pid is a real pid;
-#   - your user id, so files it writes are yours;
-#   - XDG_STATE_HOME on the host, so the MCP server finds the token.
-# TikZ diagrams are cached under ~/.cache/md-render/tikz; the image carries
-# the TeX files, so diagrams compile offline.
+# Linux: the container shares the host's network and process ids, so the
+# server is on 127.0.0.1:<port>, a second `mdrender FILE` joins it, and the
+# state file's pid is a real pid.
+#
+# macOS: Docker runs in a virtual machine, so the server's port is
+# published on 127.0.0.1 instead, the container is named md-render-<port>,
+# and later commands for that port run inside it (docker exec) so they find
+# the server. The state file records pid 0, which tools read as "do not
+# signal". The mdrender wrapper opens the browser on the Mac.
+#
+# Both: the home folder and /tmp are mounted at their real paths, the
+# container runs as your user, and XDG_STATE_HOME is the host's, so
+# documents keep their paths and the MCP server finds the token. TikZ
+# diagrams are cached under ~/.cache/md-render/tikz; the image carries the
+# TeX files, so diagrams compile offline.
 #
 # Environment:
 #   MDRENDER_IMAGE          image to run (default ghcr.io/aadityasalgarkar/md_render:latest)
@@ -32,34 +39,102 @@ state="${XDG_STATE_HOME:-$HOME/.local/state}"
 cache="${XDG_CACHE_HOME:-$HOME/.cache}"
 mkdir -p "$state" "$cache/md-render/tikz"
 
-args=(
-  --rm --init
-  --network host --pid host
-  --user "$(id -u):$(id -g)"
-  --volume "$HOME:$HOME"
-  --volume /tmp:/tmp
+# Work in the current directory when the container can see it, else home.
+workdir="$HOME"
+case "$PWD" in
+  "$HOME"|"$HOME"/*|/tmp|/tmp/*|/private/tmp|/private/tmp/*) workdir="$PWD" ;;
+esac
+mounts=(--volume "$HOME:$HOME" --volume /tmp:/tmp)
+# On macOS /tmp is a link to /private/tmp, and paths arrive resolved.
+if [ "$(uname -s)" = "Darwin" ]; then
+  mounts+=(--volume /private/tmp:/private/tmp)
+fi
+for dir in ${MDRENDER_DOCKER_MOUNTS:-}; do
+  mounts+=(--volume "$dir:$dir")
+  case "$PWD" in "$dir"|"$dir"/*) workdir="$PWD" ;; esac
+done
+
+env_args=(
   --env HOME="$HOME"
   --env XDG_STATE_HOME="$state"
   --env MDRENDER_TIKZ_CACHE="$cache/md-render/tikz"
   --env TRACKIO_DIR="${TRACKIO_DIR:-${HF_HOME:-$cache/huggingface}/trackio}"
+  # No browser opener exists in the container: the server prints the URL and
+  # the mdrender wrapper opens it on the host.
+  --env MDRENDER_BROWSER=
 )
-
-# Settings the native binary reads, passed through when set.
-for name in MDRENDER_TIKZ_TIMEOUT MDRENDER_REMOTE_DIR MDRENDER_SAVED_DIR MDRENDER_BROWSER; do
+for name in MDRENDER_TIKZ_TIMEOUT MDRENDER_REMOTE_DIR MDRENDER_SAVED_DIR; do
   if [ -n "${!name+x}" ]; then
-    args+=(--env "$name=${!name}")
+    env_args+=(--env "$name=${!name}")
   fi
 done
+user=(--user "$(id -u):$(id -g)")
 
-# Work in the current directory when the container can see it, else home.
-workdir="$HOME"
-case "$PWD" in
-  "$HOME"|"$HOME"/*|/tmp|/tmp/*) workdir="$PWD" ;;
-esac
-for dir in ${MDRENDER_DOCKER_MOUNTS:-}; do
-  args+=(--volume "$dir:$dir")
-  case "$PWD" in "$dir"|"$dir"/*) workdir="$PWD" ;; esac
+if [ "$(uname -s)" != "Darwin" ]; then
+  exec docker run --rm --init --network host --pid host "${user[@]}" "${mounts[@]}" \
+    --workdir "$workdir" "${env_args[@]}" --entrypoint md-render "$IMAGE" "$@"
+fi
+
+# ---- macOS ------------------------------------------------------------------
+serving=""
+port=""
+expect_port=""
+for arg in "$@"; do
+  if [ -n "$expect_port" ]; then
+    expect_port=""
+    if [[ "$arg" =~ ^[0-9]+$ ]]; then port="$arg"; continue; fi
+  fi
+  case "$arg" in
+    --port|-p) serving=yes; expect_port=yes ;;
+    --port=*|-p=*) serving=yes; port="${arg#*=}" ;;
+    --open) serving=yes ;;
+  esac
 done
-args+=(--workdir "$workdir")
 
-exec docker run "${args[@]}" --entrypoint md-render "$IMAGE" "$@"
+running() { [ "$(docker inspect --format '{{.State.Running}}' "md-render-$1" 2>/dev/null)" = "true" ]; }
+host_port_free() { ! (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+
+if [ -n "$serving" ] && [ -z "$port" ]; then
+  # No port named: like the native binary, take 9999 or the next usable one,
+  # here meaning a running md-render container or a free host port. Then
+  # name it, so the server inside listens where the host will look.
+  for candidate in $(seq 9999 10048); do
+    if running "$candidate" || host_port_free "$candidate"; then
+      port="$candidate"
+      break
+    fi
+  done
+  [ -n "$port" ] || { echo "md-render: no free port between 9999 and 10048" >&2; exit 1; }
+  named=()
+  done_port=""
+  for arg in "$@"; do
+    if [ -z "$done_port" ] && { [ "$arg" = --port ] || [ "$arg" = -p ]; }; then
+      named+=(--port "$port")
+      done_port=yes
+    else
+      named+=("$arg")
+    fi
+  done
+  [ -n "$done_port" ] || named=(--port "$port" "${named[@]}")
+  set -- "${named[@]}"
+fi
+
+if [ -z "$serving" ]; then
+  # --help, --warm-tikz and the like: a one-off container.
+  exec docker run --rm --init "${user[@]}" "${mounts[@]}" --workdir "$workdir" \
+    "${env_args[@]}" --env MDRENDER_CONTAINER=1 --entrypoint md-render "$IMAGE" "$@"
+fi
+
+name="md-render-$port"
+if running "$port"; then
+  # A server for this port is running: run inside its container, where
+  # 127.0.0.1:<port> is that server, so the documents join it.
+  exec docker exec "${user[@]}" --workdir "$workdir" "$name" md-render "$@"
+fi
+
+# Start the server. It listens on the container's interfaces (see
+# MDRENDER_CONTAINER in server.rs); the port is published on 127.0.0.1 only.
+docker rm -f "$name" >/dev/null 2>&1 || true
+exec docker run --rm --init --name "$name" --publish "127.0.0.1:$port:$port" \
+  "${user[@]}" "${mounts[@]}" --workdir "$workdir" "${env_args[@]}" \
+  --env MDRENDER_CONTAINER=1 --entrypoint md-render "$IMAGE" "$@"
