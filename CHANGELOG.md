@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.1](https://github.com/AadityaSalgarkar/md_render/compare/v0.10.0...v0.10.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **install:** a --host server is separate from the 127.0.0.1 one on its port ([b9a248c](https://github.com/AadityaSalgarkar/md_render/commit/b9a248c7712369976ed7364ec0b2d7c19c3d6267))
+* **install:** a --host server is separate from the 127.0.0.1 one on its port ([134ef0d](https://github.com/AadityaSalgarkar/md_render/commit/134ef0d5865be2357cc9869334403efe574ee066))
+
 ## [0.10.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.9.0...v0.10.0) (2026-10-10)
 
 
