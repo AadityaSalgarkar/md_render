@@ -146,6 +146,40 @@ jobs:
           token=$(sed -n 's/.*"token":"\([^"]*\)".*/\1/p' "$state")
           curl -fs -X POST -H "Authorization: Bearer $token" http://127.0.0.1:9999/api/shutdown
 
+      # Two servers on one port at different addresses, like 127.0.0.1 and a
+      # Tailscale address: separate containers, separate tokens.
+      - name: A second server on another address, same port
+        run: |
+          export MDRENDER_IMAGE=md-render:ci MDRENDER_BIN="$PWD/bin/md-render-docker" MDRENDER_BROWSER=
+          mkdir -p "$HOME/addr-a" "$HOME/addr-b"
+          printf '# A\n' > "$HOME/addr-a/a.md"
+          printf '# B\n' > "$HOME/addr-b/b.md"
+          bash bin/mdrender "$HOME/addr-a/a.md" | tee a.log
+          nohup bash bin/mdrender --port 9999 --host 127.0.0.2 "$HOME/addr-b/b.md" > b.log 2>&1 &
+          for i in $(seq 1 60); do curl -fs http://127.0.0.2:9999/api/health && break; sleep 1; done
+          cat b.log
+          docker ps --format '{{.Names}}' | sort | tee names.txt
+          grep -qx md-render-9999 names.txt
+          grep -qx md-render-127-0-0-2-9999 names.txt
+          curl -fs http://127.0.0.1:9999/api/files | grep -q a.md
+          curl -fs http://127.0.0.2:9999/api/files | tee b-files.json | grep -q b.md
+          ! grep -q a.md b-files.json
+          local_state="$HOME/.local/state/md-render/servers/9999.json"
+          other_state="$HOME/.local/state/md-render/hosts/127.0.0.2/md-render/servers/9999.json"
+          test -f "$local_state"
+          test -f "$other_state"
+          ! cmp -s "$local_state" "$other_state"
+          # A document for the second address joins the second server.
+          printf '# C\n' > "$HOME/addr-b/c.md"
+          bash bin/mdrender --port 9999 --host 127.0.0.2 "$HOME/addr-b/c.md"
+          curl -fs http://127.0.0.2:9999/api/files | grep -q c.md
+          ! curl -fs http://127.0.0.1:9999/api/files | grep -q c.md
+          for s in "$local_state" "$other_state"; do
+            addr=127.0.0.1; [ "$s" = "$other_state" ] && addr=127.0.0.2
+            token=$(sed -n 's/.*"token":"\([^"]*\)".*/\1/p' "$s")
+            curl -fs -X POST -H "Authorization: Bearer $token" "http://$addr:9999/api/shutdown"
+          done
+
       - name: Container logs
         if: failure()
         run: docker logs md || true
