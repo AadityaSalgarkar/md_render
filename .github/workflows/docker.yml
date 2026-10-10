@@ -128,6 +128,22 @@ jobs:
           printf '# Second\n' > "$HOME/shim-docs/second.md"
           bash bin/mdrender "$HOME/shim-docs/second.md" | tee join.log
           curl -fs http://127.0.0.1:9999/api/files | grep -q second.md
+          # Only the named folder is mounted: not the rest of home.
+          docker inspect --format '{{range .Mounts}}{{.Destination}}{{"\n"}}{{end}}' md-render-9999 | tee mounts.txt
+          grep -qx "$HOME/shim-docs" mounts.txt
+          ! grep -qx "$HOME" mounts.txt
+          # A folder the server cannot see restarts it with that folder added,
+          # keeping its tabs.
+          mkdir -p "$HOME/other-docs"
+          printf '# Other\n' > "$HOME/other-docs/other.md"
+          bash bin/mdrender "$HOME/other-docs/other.md" | tee restart.log
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:9999/api/health && break; sleep 1; done
+          curl -fs http://127.0.0.1:9999/api/files | tee files-after.json
+          grep -q other.md files-after.json
+          grep -q shim.md files-after.json
+          grep -q second.md files-after.json
+          state="$HOME/.local/state/md-render/servers/9999.json"
+          token=$(sed -n 's/.*"token":"\([^"]*\)".*/\1/p' "$state")
           curl -fs -X POST -H "Authorization: Bearer $token" http://127.0.0.1:9999/api/shutdown
 
       - name: Container logs
