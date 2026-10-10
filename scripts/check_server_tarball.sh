@@ -19,7 +19,7 @@ if [ "${1:-}" = "--inside" ]; then
   echo "--- $(. /etc/os-release && echo "$PRETTY_NAME"), $(ldd --version | head -n 1)"
 
   echo "--- libraries"
-  if LD_LIBRARY_PATH= ldd "$root/bin/md-render" | grep "not found"; then
+  if LD_LIBRARY_PATH='' ldd "$root/bin/md-render" | grep "not found"; then
     echo "check_server_tarball: unresolved libraries" >&2
     exit 1
   fi
@@ -38,7 +38,7 @@ if [ "${1:-}" = "--inside" ]; then
 
   echo "--- tikz"
   "$root/bin/md-render" --warm-tikz
-  count=$(ls /tmp/cache/md-render/tikz | grep -c '\.svg$')
+  set -- /tmp/cache/md-render/tikz/*.svg; count=$#
   [ "$count" -ge 3 ] || { echo "check_server_tarball: expected 3 diagrams, found $count" >&2; exit 1; }
 
   echo "--- server"

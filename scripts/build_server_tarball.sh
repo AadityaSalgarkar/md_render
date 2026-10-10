@@ -53,7 +53,7 @@ if [ "${1:-}" = "--inside" ]; then
   patchelf --set-rpath '$ORIGIN/../lib' "$stage/bin/md-render"
   for lib in "$stage"/lib/*.so*; do patchelf --set-rpath '$ORIGIN' "$lib"; done
 
-  if LD_LIBRARY_PATH= ldd "$stage/bin/md-render" | grep "not found"; then
+  if LD_LIBRARY_PATH='' ldd "$stage/bin/md-render" | grep "not found"; then
     echo "build_server_tarball: unresolved libraries" >&2
     exit 1
   fi
