@@ -7,28 +7,33 @@
 # The image holds the server only (no desktop window); `mdrender --app`
 # needs the native app.
 #
+# What the container sees is kept small. It mounts, at their real paths:
+#   - the folders named on the command line (a file's folder for a file);
+#   - md-render's own state (the server token), TikZ cache, and the folders
+#     for downloaded and saved remote documents;
+#   - the trackio directory, read-only, when it exists;
+#   - MDRENDER_DOCKER_MOUNTS, for anything else.
+# It runs as your user.
+#
+# A server for a port runs in one container, md-render-<port>. Later
+# commands for that port run inside it (docker exec), where 127.0.0.1:<port>
+# is the server, so documents join it. Docker cannot add a folder to a
+# running container: when a command names a folder the server cannot see,
+# the server restarts with that folder added and its tabs reopened.
+#
 # Linux: the container shares the host's network and process ids, so the
-# server is on 127.0.0.1:<port>, a second `mdrender FILE` joins it, and the
-# state file's pid is a real pid.
-#
-# macOS: Docker runs in a virtual machine, so the server's port is
-# published on 127.0.0.1 instead, the container is named md-render-<port>,
-# and later commands for that port run inside it (docker exec) so they find
-# the server. The state file records pid 0, which tools read as "do not
-# signal". The mdrender wrapper opens the browser on the Mac.
-#
-# Both: the home folder and /tmp are mounted at their real paths, the
-# container runs as your user, and XDG_STATE_HOME is the host's, so
-# documents keep their paths and the MCP server finds the token. TikZ
-# diagrams are cached under ~/.cache/md-render/tikz; the image carries the
-# TeX files, so diagrams compile offline.
+# server is on the host's 127.0.0.1:<port> and its pid is a real pid.
+# macOS: Docker runs in a virtual machine, so the port is published on
+# 127.0.0.1 instead, and the server records pid 0 ("do not signal"). In both,
+# the mdrender wrapper opens the browser on the host.
 #
 # Environment:
 #   MDRENDER_IMAGE          image to run (default ghcr.io/aadityasalgarkar/md_render:latest)
-#   MDRENDER_DOCKER_MOUNTS  extra directories outside home to mount, space-separated
+#   MDRENDER_DOCKER_MOUNTS  extra directories to mount, space-separated
 set -euo pipefail
 
 IMAGE="${MDRENDER_IMAGE:-ghcr.io/aadityasalgarkar/md_render:latest}"
+OS="$(uname -s)"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "md-render: docker is not installed (this md-render runs the Docker image)" >&2
@@ -37,67 +42,121 @@ fi
 
 state="${XDG_STATE_HOME:-$HOME/.local/state}"
 cache="${XDG_CACHE_HOME:-$HOME/.cache}"
-mkdir -p "$state" "$cache/md-render/tikz"
+config="${XDG_CONFIG_HOME:-$HOME/.config}"
+tikz_cache="$cache/md-render/tikz"
+remote_dir="${MDRENDER_REMOTE_DIR:-/tmp/md-render/remote}"
+saved_dir="${MDRENDER_SAVED_DIR:-$config/mdrender/temp_files}"
+trackio="${TRACKIO_DIR:-${HF_HOME:-$cache/huggingface}/trackio}"
+mkdir -p "$state/md-render/servers" "$tikz_cache" "$remote_dir" "$saved_dir"
 
-# Work in the current directory when the container can see it, else home.
-workdir="$HOME"
-case "$PWD" in
-  "$HOME"|"$HOME"/*|/tmp|/tmp/*|/private/tmp|/private/tmp/*) workdir="$PWD" ;;
-esac
-mounts=(--volume "$HOME:$HOME" --volume /tmp:/tmp)
-# On macOS /tmp is a link to /private/tmp, and paths arrive resolved.
-if [ "$(uname -s)" = "Darwin" ]; then
-  mounts+=(--volume /private/tmp:/private/tmp)
-fi
-for dir in ${MDRENDER_DOCKER_MOUNTS:-}; do
-  mounts+=(--volume "$dir:$dir")
-  case "$PWD" in "$dir"|"$dir"/*) workdir="$PWD" ;; esac
-done
+# ---- arguments --------------------------------------------------------------
 
-env_args=(
-  --env HOME="$HOME"
-  --env XDG_STATE_HOME="$state"
-  --env MDRENDER_TIKZ_CACHE="$cache/md-render/tikz"
-  --env TRACKIO_DIR="${TRACKIO_DIR:-${HF_HOME:-$cache/huggingface}/trackio}"
-  # No browser opener exists in the container: the server prints the URL and
-  # the mdrender wrapper opens it on the host.
-  --env MDRENDER_BROWSER=
-)
-for name in MDRENDER_TIKZ_TIMEOUT MDRENDER_REMOTE_DIR MDRENDER_SAVED_DIR; do
-  if [ -n "${!name+x}" ]; then
-    env_args+=(--env "$name=${!name}")
-  fi
-done
-user=(--user "$(id -u):$(id -g)")
-
-if [ "$(uname -s)" != "Darwin" ]; then
-  exec docker run --rm --init --network host --pid host "${user[@]}" "${mounts[@]}" \
-    --workdir "$workdir" "${env_args[@]}" --entrypoint md-render "$IMAGE" "$@"
-fi
-
-# ---- macOS ------------------------------------------------------------------
 serving=""
 port=""
-expect_port=""
+docs=()
+expect=""
 for arg in "$@"; do
-  if [ -n "$expect_port" ]; then
-    expect_port=""
-    if [[ "$arg" =~ ^[0-9]+$ ]]; then port="$arg"; continue; fi
-  fi
+  case "$expect" in
+    port)
+      expect=""
+      if [[ "$arg" =~ ^[0-9]+$ ]]; then port="$arg"; continue; fi
+      ;;
+    value) expect=""; continue ;;
+  esac
   case "$arg" in
-    --port|-p) serving=yes; expect_port=yes ;;
+    --port|-p) serving=yes; expect=port ;;
     --port=*|-p=*) serving=yes; port="${arg#*=}" ;;
+    --host) expect=value ;;
     --open) serving=yes ;;
+    -*|http://*|https://*) ;;
+    *) docs+=("$arg") ;;
   esac
 done
+
+# The folder each document lives in: itself for a directory, else its parent.
+dir_of() {
+  if [ -d "$1" ]; then
+    (cd -P "$1" && pwd)
+  elif [ -e "$1" ]; then
+    (cd -P "$(dirname "$1")" && pwd)
+  fi
+}
+
+# ---- what the container mounts ----------------------------------------------
+
+mount_dirs=()
+add_mount() {
+  local dir="$1" have
+  [ -n "$dir" ] || return 0
+  for have in "${mount_dirs[@]+"${mount_dirs[@]}"}"; do
+    # Already covered by itself or a parent.
+    case "$dir" in "$have"|"$have"/*) return 0 ;; esac
+  done
+  mount_dirs+=("$dir")
+}
+
+doc_mounts() {
+  local doc
+  for doc in "${docs[@]+"${docs[@]}"}"; do add_mount "$(dir_of "$doc")"; done
+  for doc in ${MDRENDER_DOCKER_MOUNTS:-}; do add_mount "$doc"; done
+}
+
+flags=()
+build_flags() {
+  local dir
+  flags=(--init --user "$(id -u):$(id -g)")
+  for dir in "$state/md-render" "$tikz_cache" "$remote_dir" "$saved_dir"; do
+    flags+=(--volume "$dir:$dir")
+  done
+  if [ -d "$trackio" ]; then flags+=(--volume "$trackio:$trackio:ro"); fi
+  for dir in "${mount_dirs[@]+"${mount_dirs[@]}"}"; do flags+=(--volume "$dir:$dir"); done
+  flags+=(
+    --env HOME="$HOME"
+    --env XDG_STATE_HOME="$state"
+    --env MDRENDER_TIKZ_CACHE="$tikz_cache"
+    --env MDRENDER_REMOTE_DIR="$remote_dir"
+    --env MDRENDER_SAVED_DIR="$saved_dir"
+    --env TRACKIO_DIR="$trackio"
+    # No browser opener exists in the container: the server prints the URL
+    # and the mdrender wrapper opens it on the host.
+    --env MDRENDER_BROWSER=
+  )
+  if [ -n "${MDRENDER_TIKZ_TIMEOUT:-}" ]; then
+    flags+=(--env "MDRENDER_TIKZ_TIMEOUT=$MDRENDER_TIKZ_TIMEOUT")
+  fi
+  if [ "$OS" = "Darwin" ]; then
+    flags+=(--env MDRENDER_CONTAINER=1)
+  else
+    flags+=(--network host --pid host)
+  fi
+}
+
+# A directory the container can see, to work in.
+workdir() {
+  local dir
+  for dir in "${mount_dirs[@]+"${mount_dirs[@]}"}"; do
+    case "$PWD" in "$dir"|"$dir"/*) printf '%s\n' "$PWD"; return ;; esac
+  done
+  printf '%s\n' "${mount_dirs[0]:-/}"
+}
+
+doc_mounts
+build_flags
+
+if [ -z "$serving" ]; then
+  # --help, --warm-tikz and the like: a one-off container.
+  exec docker run --rm "${flags[@]}" --workdir "$(workdir)" --entrypoint md-render "$IMAGE" "$@"
+fi
+
+# ---- serving ----------------------------------------------------------------
 
 running() { [ "$(docker inspect --format '{{.State.Running}}' "md-render-$1" 2>/dev/null)" = "true" ]; }
 host_port_free() { ! (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 
-if [ -n "$serving" ] && [ -z "$port" ]; then
+if [ -z "$port" ]; then
   # No port named: like the native binary, take 9999 or the next usable one,
-  # here meaning a running md-render container or a free host port. Then
-  # name it, so the server inside listens where the host will look.
+  # here a running md-render container or a free host port, then name it so
+  # the server inside listens where the host will look.
   for candidate in $(seq 9999 10048); do
     if running "$candidate" || host_port_free "$candidate"; then
       port="$candidate"
@@ -119,22 +178,54 @@ if [ -n "$serving" ] && [ -z "$port" ]; then
   set -- "${named[@]}"
 fi
 
-if [ -z "$serving" ]; then
-  # --help, --warm-tikz and the like: a one-off container.
-  exec docker run --rm --init "${user[@]}" "${mounts[@]}" --workdir "$workdir" \
-    "${env_args[@]}" --env MDRENDER_CONTAINER=1 --entrypoint md-render "$IMAGE" "$@"
-fi
-
 name="md-render-$port"
+
+# Folders the running container mounts read-write.
+container_mounts() {
+  docker inspect --format '{{range .Mounts}}{{if .RW}}{{.Destination}}{{"\n"}}{{end}}{{end}}' "$name" 2>/dev/null
+}
+
+# Whether the running container already mounts every folder this command needs.
+covered() {
+  local mounted dir have ok
+  mounted="$(container_mounts)"
+  for dir in "${mount_dirs[@]+"${mount_dirs[@]}"}"; do
+    ok=""
+    while IFS= read -r have; do
+      [ -n "$have" ] || continue
+      case "$dir" in "$have"|"$have"/*) ok=yes; break ;; esac
+    done <<< "$mounted"
+    [ -n "$ok" ] || return 1
+  done
+}
+
 if running "$port"; then
-  # A server for this port is running: run inside its container, where
-  # 127.0.0.1:<port> is that server, so the documents join it.
-  exec docker exec "${user[@]}" --workdir "$workdir" "$name" md-render "$@"
+  if covered; then
+    exec docker exec --user "$(id -u):$(id -g)" --workdir "$(workdir)" "$name" md-render "$@"
+  fi
+  # The server cannot see a folder this command names: restart it with that
+  # folder added, reopening every tab it had.
+  previous=()
+  while IFS= read -r path; do
+    if [ -n "$path" ]; then previous+=("$path"); fi
+  done < <(curl -fs "http://127.0.0.1:$port/api/files" | grep -o '"path":"[^"]*"' | sed 's/^"path":"//; s/"$//' || true)
+  while IFS= read -r have; do
+    case "$have" in
+      "$state/md-render"|"$tikz_cache"|"$remote_dir"|"$saved_dir") ;;
+      /*) add_mount "$have" ;;
+    esac
+  done < <(container_mounts)
+  build_flags
+  echo "md-render: restarting the server on port $port so it can read ${mount_dirs[*]}" >&2
+  token="$(sed -n 's/.*"token":"\([^"]*\)".*/\1/p' "$state/md-render/servers/$port.json" 2>/dev/null || true)"
+  curl -fs -X POST -H "Authorization: Bearer $token" "http://127.0.0.1:$port/api/shutdown" >/dev/null \
+    || docker stop "$name" >/dev/null
+  docker wait "$name" >/dev/null 2>&1 || true
+  set -- "$@" "${previous[@]+"${previous[@]}"}"
 fi
 
-# Start the server. It listens on the container's interfaces (see
-# MDRENDER_CONTAINER in server.rs); the port is published on 127.0.0.1 only.
 docker rm -f "$name" >/dev/null 2>&1 || true
-exec docker run --rm --init --name "$name" --publish "127.0.0.1:$port:$port" \
-  "${user[@]}" "${mounts[@]}" --workdir "$workdir" "${env_args[@]}" \
-  --env MDRENDER_CONTAINER=1 --entrypoint md-render "$IMAGE" "$@"
+publish=()
+if [ "$OS" = "Darwin" ]; then publish=(--publish "127.0.0.1:$port:$port"); fi
+exec docker run --rm --name "$name" "${publish[@]+"${publish[@]}"}" "${flags[@]}" \
+  --workdir "$(workdir)" --entrypoint md-render "$IMAGE" "$@"

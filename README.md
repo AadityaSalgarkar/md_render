@@ -103,9 +103,12 @@ package list, `PREFIX=`, and the deb/rpm/AppImage bundles.
 
 To run the web app without compiling anything, on Linux or macOS, install
 from Docker: `md-render` then runs the image published with each release
-(about 200 MB, amd64 and arm64, the server only), with your home folder,
-`/tmp` and the server state at their real paths, so the `mdrender` command,
-joining a running server and the MCP server work as with a native install.
+(about 200 MB, amd64 and arm64, the server only). The container sees only
+the folders you name (a file's folder for a file) plus md-render's own state
+and caches, at their real paths, so the `mdrender` command, joining a
+running server and the MCP server work as with a native install. Naming a
+folder the running server cannot see restarts it with that folder added and
+its tabs reopened.
 On Linux the container shares the host network; on macOS its port is
 published on 127.0.0.1 and the wrapper opens the browser. The desktop
 window (`--app`) still needs the native app:
@@ -116,7 +119,7 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | MDRENDER_DO
 ```
 
 It needs docker, git, node and npm. `MDRENDER_DOCKER_MOUNTS` names extra
-directories outside home to mount; `MDRENDER_IMAGE` picks another image.
+directories to mount (for MCP tools that open files elsewhere); `MDRENDER_IMAGE` picks another image.
 Re-running the install pulls the latest image.
 
 Or run the container directly, serving a folder headless:
