@@ -108,7 +108,8 @@ the folders you name (a file's folder for a file) plus md-render's own state
 and caches, at their real paths, so the `mdrender` command, joining a
 running server and the MCP server work as with a native install. Naming a
 folder the running server cannot see restarts it with that folder added and
-its tabs reopened.
+its tabs reopened. On Linux, `--host ADDR` (a Tailscale address, say) runs a
+separate server beside the 127.0.0.1 one, even on the same port.
 On Linux the container shares the host network; on macOS its port is
 published on 127.0.0.1 and the wrapper opens the browser. The desktop
 window (`--app`) still needs the native app:

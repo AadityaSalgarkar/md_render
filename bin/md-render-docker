@@ -53,6 +53,7 @@ mkdir -p "$state/md-render/servers" "$tikz_cache" "$remote_dir" "$saved_dir"
 
 serving=""
 port=""
+host=""
 docs=()
 expect=""
 for arg in "$@"; do
@@ -61,17 +62,34 @@ for arg in "$@"; do
       expect=""
       if [[ "$arg" =~ ^[0-9]+$ ]]; then port="$arg"; continue; fi
       ;;
-    value) expect=""; continue ;;
+    host) expect=""; host="$arg"; continue ;;
   esac
   case "$arg" in
     --port|-p) serving=yes; expect=port ;;
     --port=*|-p=*) serving=yes; port="${arg#*=}" ;;
-    --host) expect=value ;;
+    --host) expect=host ;;
+    --host=*) host="${arg#*=}" ;;
     --open) serving=yes ;;
     -*|http://*|https://*) ;;
     *) docs+=("$arg") ;;
   esac
 done
+
+# A server on another address (--host, say a Tailscale address) is a
+# separate server from the one on 127.0.0.1 at the same port: its own
+# container, and its own state folder so the two tokens do not collide.
+case "$host" in
+  ""|127.0.0.1|localhost) host=""; address=127.0.0.1; server_state="$state" ;;
+  *)
+    if [ "$OS" = "Darwin" ]; then
+      echo "md-render: --host $host is not supported by the Docker install on macOS" >&2
+      exit 2
+    fi
+    address="$host"
+    server_state="$state/md-render/hosts/$host"
+    mkdir -p "$server_state/md-render/servers"
+    ;;
+esac
 
 # The folder each document lives in: itself for a directory, else its parent.
 dir_of() {
@@ -112,7 +130,7 @@ build_flags() {
   for dir in "${mount_dirs[@]+"${mount_dirs[@]}"}"; do flags+=(--volume "$dir:$dir"); done
   flags+=(
     --env HOME="$HOME"
-    --env XDG_STATE_HOME="$state"
+    --env XDG_STATE_HOME="$server_state"
     --env MDRENDER_TIKZ_CACHE="$tikz_cache"
     --env MDRENDER_REMOTE_DIR="$remote_dir"
     --env MDRENDER_SAVED_DIR="$saved_dir"
@@ -150,8 +168,15 @@ fi
 
 # ---- serving ----------------------------------------------------------------
 
-running() { [ "$(docker inspect --format '{{.State.Running}}' "md-render-$1" 2>/dev/null)" = "true" ]; }
-host_port_free() { ! (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+container_name() {
+  if [ -n "$host" ]; then
+    printf 'md-render-%s-%s\n' "${host//[^A-Za-z0-9]/-}" "$1"
+  else
+    printf 'md-render-%s\n' "$1"
+  fi
+}
+running() { [ "$(docker inspect --format '{{.State.Running}}' "$(container_name "$1")" 2>/dev/null)" = "true" ]; }
+host_port_free() { ! (exec 3<>"/dev/tcp/$address/$1") 2>/dev/null; }
 
 if [ -z "$port" ]; then
   # No port named: like the native binary, take 9999 or the next usable one,
@@ -178,7 +203,7 @@ if [ -z "$port" ]; then
   set -- "${named[@]}"
 fi
 
-name="md-render-$port"
+name="$(container_name "$port")"
 
 # Folders the running container mounts read-write.
 container_mounts() {
@@ -208,7 +233,7 @@ if running "$port"; then
   previous=()
   while IFS= read -r path; do
     if [ -n "$path" ]; then previous+=("$path"); fi
-  done < <(curl -fs "http://127.0.0.1:$port/api/files" | grep -o '"path":"[^"]*"' | sed 's/^"path":"//; s/"$//' || true)
+  done < <(curl -fs "http://$address:$port/api/files" | grep -o '"path":"[^"]*"' | sed 's/^"path":"//; s/"$//' || true)
   while IFS= read -r have; do
     case "$have" in
       "$state/md-render"|"$tikz_cache"|"$remote_dir"|"$saved_dir") ;;
@@ -217,8 +242,8 @@ if running "$port"; then
   done < <(container_mounts)
   build_flags
   echo "md-render: restarting the server on port $port so it can read ${mount_dirs[*]}" >&2
-  token="$(sed -n 's/.*"token":"\([^"]*\)".*/\1/p' "$state/md-render/servers/$port.json" 2>/dev/null || true)"
-  curl -fs -X POST -H "Authorization: Bearer $token" "http://127.0.0.1:$port/api/shutdown" >/dev/null \
+  token="$(sed -n 's/.*"token":"\([^"]*\)".*/\1/p' "$server_state/md-render/servers/$port.json" 2>/dev/null || true)"
+  curl -fs -X POST -H "Authorization: Bearer $token" "http://$address:$port/api/shutdown" >/dev/null \
     || docker stop "$name" >/dev/null
   docker wait "$name" >/dev/null 2>&1 || true
   set -- "$@" "${previous[@]+"${previous[@]}"}"
