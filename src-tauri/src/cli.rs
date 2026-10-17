@@ -124,7 +124,11 @@ Options:
       --host <ADDR>   address to bind (default 127.0.0.1)
       --open          hand the first document to the browser once serving;
                       MDRENDER_BROWSER names the opener (empty disables it)
-  -h, --help          show this help";
+  -h, --help          show this help
+
+Docs for agents and LLMs:
+  https://aadityasalgarkar.github.io/md_render/llms.txt    what MD_RENDER does, in one page
+  https://aadityasalgarkar.github.io/md_render/skills.md   how an agent should write and open documents";
 
 /// Parse argv (already stripped of the binary name).
 pub fn parse(args: &[String]) -> Result<Mode, CliError> {
@@ -477,6 +481,12 @@ mod tests {
 
   fn args(values: &[&str]) -> Vec<String> {
     values.iter().map(|v| v.to_string()).collect()
+  }
+
+  #[test]
+  fn usage_links_the_docs_for_agents() {
+    assert!(USAGE.contains("https://aadityasalgarkar.github.io/md_render/llms.txt"));
+    assert!(USAGE.contains("https://aadityasalgarkar.github.io/md_render/skills.md"));
   }
 
   fn temp_dir(name: &str) -> PathBuf {
