@@ -1,12 +1,30 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
   themes,
+  themeSwatch,
   THEME_VARS,
   getTheme,
   resolveTheme,
   DEFAULT_LIGHT,
   DEFAULT_DARK,
 } from '../lib/themes'
+
+/** WCAG relative luminance of a #RRGGBB colour. */
+function luminance(hex: string): number {
+  const channel = (offset: number) => {
+    const value = parseInt(hex.slice(offset, offset + 2), 16) / 255
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5)
+}
+
+/** WCAG contrast ratio between two #RRGGBB colours. */
+function contrast(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+  return (hi + 0.05) / (lo + 0.05)
+}
 
 describe('theme registry', () => {
   it('registers at least five themes', () => {
@@ -26,11 +44,65 @@ describe('theme registry', () => {
     }
   })
 
-  it('gives every theme a valid mode and a three-colour swatch', () => {
+  it('gives every theme a valid mode and a swatch of page, text and accent', () => {
     for (const theme of themes) {
       expect(['light', 'dark']).toContain(theme.mode)
-      expect(theme.swatch).toHaveLength(3)
+      expect(themeSwatch(theme)).toEqual([
+        theme.vars['--bg-primary'],
+        theme.vars['--text-primary'],
+        theme.vars['--accent'],
+      ])
       expect(theme.name.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('keeps body text readable: at least 4.5:1 against the page in every theme', () => {
+    for (const theme of themes) {
+      const ratio = contrast(theme.vars['--text-primary'], theme.vars['--bg-primary'])
+      expect(ratio, `${theme.id}: ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('pairs each Typora-inspired theme with a dark variant of the same name and fonts', () => {
+    for (const id of ['claude', 'sonnet', 'claudette', 'latex']) {
+      const light = getTheme(id)!
+      const dark = getTheme(`${id}-dark`)!
+      expect(light.mode).toBe('light')
+      expect(dark.mode).toBe('dark')
+      expect(dark.name).toBe(light.name)
+      for (const font of ['--font-head', '--font-body', '--font-mono'] as const) {
+        expect(dark.vars[font]).toBe(light.vars[font])
+      }
+    }
+  })
+
+  it('sets the LaTeX theme in the bundled New Computer Modern, display math on the page', () => {
+    for (const id of ['latex', 'latex-dark']) {
+      const latex = getTheme(id)!
+      expect(latex.vars['--font-body']).toMatch(/^"MDR New Computer Modern"/)
+      expect(latex.vars['--font-mono']).toMatch(/^"MDR New Computer Modern Mono"/)
+      expect(latex.vars['--math-display-bg']).toBe('transparent')
+    }
+  })
+
+  it('does not load the Claude theme fonts, which are not licensed for redistribution', () => {
+    for (const theme of themes) {
+      for (const font of ['--font-head', '--font-body', '--font-mono'] as const) {
+        expect(theme.vars[font]).not.toMatch(/Anthropic/)
+      }
+    }
+  })
+
+  it("lets the server's listing page tell every dark theme apart", () => {
+    // ROOT_SCRIPT in server.rs names the older dark themes and matches `-dark`.
+    const server = readFileSync(path.resolve(__dirname, '../../src-tauri/src/server.rs'), 'utf8')
+    const script = server.slice(server.indexOf('const ROOT_SCRIPT'), server.indexOf('"#;', server.indexOf('const ROOT_SCRIPT')))
+    for (const theme of themes.filter((t) => t.mode === 'dark')) {
+      const covered = theme.id.endsWith('-dark') || script.includes(`'${theme.id}'`)
+      expect(covered, `${theme.id} would show the listing in light mode`).toBe(true)
+    }
+    for (const theme of themes.filter((t) => t.mode === 'light')) {
+      expect(theme.id.endsWith('-dark') || script.includes(`'${theme.id}'`), theme.id).toBe(false)
     }
   })
 
