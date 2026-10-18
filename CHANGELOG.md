@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.12.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.11.0...v0.12.0) (2026-10-18)
+
+
+### Features
+
+* **themes:** Claude, Sonnet, Claudette and LaTeX, light and dark, in a compact dropdown ([aeeaf01](https://github.com/AadityaSalgarkar/md_render/commit/aeeaf01d1eb7978a7d2a1249696b67a76de4caee))
+* **themes:** Claude, Sonnet, Claudette and LaTeX, light and dark, in a compact dropdown ([2ba6550](https://github.com/AadityaSalgarkar/md_render/commit/2ba6550f7ad3a2063989f4254d02a44474b98475))
+
+
+### Bug Fixes
+
+* **server:** the listing page treats every -dark theme as dark ([f0355c7](https://github.com/AadityaSalgarkar/md_render/commit/f0355c7a86fefa436303c22817d13edad7884973))
+
 ## [0.11.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.10.1...v0.11.0) (2026-10-10)
 
 
