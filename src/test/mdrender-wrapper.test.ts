@@ -553,6 +553,8 @@ describe('bin/mdrender --help', () => {
     expect(output).toContain('--port')
     expect(output).toContain('--app')
     expect(output).toContain('9999')
+    expect(output).toContain('https://aadityasalgarkar.github.io/md_render/llms.txt')
+    expect(output).toContain('https://aadityasalgarkar.github.io/md_render/skills.md')
     // Neither the app nor the server was started.
     expect(recorded()).toBe('')
   })

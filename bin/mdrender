@@ -243,6 +243,10 @@ servers, workspaces, tabs, documents, comments and the open browser's view.
 
 Environment: MDRENDER_BIN picks the executable; MDRENDER_BROWSER the opener
 (empty disables it); MDRENDER_FOREGROUND=1 keeps everything in the foreground.
+
+Docs for agents and LLMs:
+  https://aadityasalgarkar.github.io/md_render/llms.txt    what MD_RENDER does, in one page
+  https://aadityasalgarkar.github.io/md_render/skills.md   how an agent should write and open documents
 EOF
 }
 
