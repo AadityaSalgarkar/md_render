@@ -1077,10 +1077,12 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 "#;
 
 /// Picks light or dark from the theme the app stored in this browser, so
-/// the listing matches the pages it links to.
+/// the listing matches the pages it links to. Dark themes are the three
+/// named here and every `*-dark` id (src/test/themes.test.ts checks this
+/// against the theme registry).
 const ROOT_SCRIPT: &str = r#"
 (function(){try{var t=localStorage.getItem('md-render-theme');if(!t)return;
-var dark=t==='midnight-ink'||t==='nocturne'||t==='evergreen';
+var dark=t==='midnight-ink'||t==='nocturne'||t==='evergreen'||/-dark$/.test(t);
 document.documentElement.setAttribute('data-mode',dark?'dark':'light');}catch(e){}})();
 "#;
 
