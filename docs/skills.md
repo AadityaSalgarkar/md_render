@@ -96,7 +96,9 @@ to `docs` as `guide/setup.md`). `write_document` and `add_comment` only touch
 files that are open as tabs; an open browser re-reads a changed file within
 30 seconds unless it holds unsaved edits, and `focus_tab` makes it reload at
 once. `set_theme` accepts `warm-paper`, `midnight-ink`, `newsprint`,
-`forest`, `nocturne`, `evergreen`, `plain`, `ponder`, `paradigm`.
+`forest`, `nocturne`, `evergreen`, `plain`, `ponder`, `paradigm`, and the
+light and dark pairs `claude`/`claude-dark`, `sonnet`/`sonnet-dark`,
+`claudette`/`claudette-dark`, `latex`/`latex-dark`.
 
 ### Without MCP: the HTTP API
 
@@ -124,9 +126,9 @@ Documents from MathJax sites render as they do there: `\(…\)` and `\[…\]`
 delimiters, bare `\begin{align}` / `\begin{equation}` blocks, AMS numbering
 (one number per equation or per align row; `\nonumber` suppresses),
 `\label{key}` and `\eqref{key}` all work. Use `$…$` / `$$…$$` and starred
-environments as usual when numbers are not wanted. The `plain`, `ponder` and
-`paradigm` themes show display math on the page rather than in a panel, as those
-blogs do.
+environments as usual when numbers are not wanted. The `plain`, `ponder`,
+`paradigm`, `claudette` and `latex` themes (light and dark) show display math
+on the page rather than in a panel, as those blogs and papers do.
 
 ## Quiz blocks
 

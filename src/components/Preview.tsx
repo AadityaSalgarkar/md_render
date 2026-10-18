@@ -440,7 +440,7 @@ function PreWithCopy({ children, className }: PreWithCopyProps) {
   }
 
   return (
-    <div className="code-block-wrapper">
+    <div className="code-block-wrapper" data-lang={codeLanguage(codeBlock?.props.className)}>
       <pre className={className}>{children}</pre>
       <button
         className={`copy-button ${copied ? 'copied' : ''}`}
@@ -473,6 +473,14 @@ function isMermaidLanguage(className?: string): boolean {
       || token === 'language-mermaid'
       || token === 'language-language-mermaid'
     ))
+}
+
+/** The fence's language (`language-python` gives "python"), for themes that
+ * label code blocks; undefined when the fence names none. */
+function codeLanguage(className?: string): string | undefined {
+  const token = (className ?? '').split(/\s+/).find((t) => t.startsWith('language-'))
+  const language = token?.slice('language-'.length)
+  return language ? language : undefined
 }
 
 function getTextContent(node: React.ReactNode): string {
