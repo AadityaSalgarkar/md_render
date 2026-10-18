@@ -15,7 +15,7 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
 [llms.txt](https://aadityasalgarkar.github.io/md_render/llms.txt) ·
 [skills.md](https://aadityasalgarkar.github.io/md_render/skills.md)
 
-![MD_RENDER serving three documents as browser tabs, with the index, math, highlighted code and a Mermaid diagram](docs/assets/browser.png)
+![MD_RENDER in the browser in the Claudette Dark theme: three documents as tabs, the index, and an experiment plot](docs/assets/browser.png)
 
 ## Features
 

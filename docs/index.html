@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="warm-paper">
+<html lang="en" data-theme="claudette-dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,47 +8,53 @@
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
 <style>
-/* Tokens lifted verbatim from src/lib/themes.ts — the page wears the app's
-   own Warm Paper theme, and Midnight Ink when toggled. */
-:root, [data-theme="warm-paper"] {
-  --bg-primary: #FAF7F2;
-  --bg-secondary: #F5F1EA;
-  --text-primary: #1A1A1A;
-  --text-secondary: #5C5C5C;
-  --text-muted: #8A8A8A;
-  --accent: #C9553D;
-  --accent-hover: #B84A34;
-  --accent-secondary: #2D5A4A;
-  --border: #E8E2D9;
-  --border-strong: #D4CCC0;
-  --code-bg: #F0EDE6;
-  --selection: rgba(201, 85, 61, 0.15);
-  --code-keyword: #C9553D;
-  --code-string: #2D5A4A;
-  --code-comment: #8A8A8A;
-  --btn-bg: #FFFDF8;
-  --shadow: 0 1px 3px rgba(26, 26, 26, 0.08), 0 6px 24px -12px rgba(26, 26, 26, 0.18);
+/* The page wears the app's Claudette Dark theme (src/lib/themes.ts and the
+   [data-theme^="claudette"] rules in src/index.css): a sheet on warm grey,
+   Source Serif at weight 400, hairline code, one clay accent. The toggle
+   switches to Claudette, its light twin. */
+:root, [data-theme="claudette-dark"] {
+  --bg-primary: #262625;
+  --bg-secondary: #2C2C2A;
+  --sheet: #2A2A28;
+  --text-primary: #F2F0E9;
+  --text-secondary: #D6D3C8;
+  --text-muted: #9C9A90;
+  --accent: #E6906F;
+  --accent-hover: #F0A88C;
+  --accent-secondary: #E5B07E;
+  --border: #3A3933;
+  --border-strong: #4A4943;
+  --code-bg: #262625;
+  --selection: rgba(217, 119, 87, 0.28);
+  --code-keyword: #FF8D77;
+  --code-string: #E5B07E;
+  --code-comment: #8B8B81;
+  --btn-bg: #2C2C2A;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 28px -14px rgba(0, 0, 0, 0.7);
+  color-scheme: dark;
 }
-[data-theme="midnight-ink"] {
-  --bg-primary: #121418;
-  --bg-secondary: #1A1D23;
-  --text-primary: #E8E4DC;
-  --text-secondary: #9A968E;
-  --text-muted: #6A665E;
-  --accent: #E07A5F;
-  --accent-hover: #E8907A;
-  --accent-secondary: #81B29A;
-  --border: #2A2D35;
-  --border-strong: #3A3D45;
-  --code-bg: #1A1D23;
-  --selection: rgba(224, 122, 95, 0.2);
-  --code-keyword: #E07A5F;
-  --code-string: #81B29A;
-  --code-comment: #6A665E;
-  --btn-bg: #1A1D23;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 6px 24px -12px rgba(0, 0, 0, 0.6);
+[data-theme="claudette"] {
+  --bg-primary: #FAF9F5;
+  --bg-secondary: #F2F0E9;
+  --sheet: #FFFFFF;
+  --text-primary: #141413;
+  --text-secondary: #52514E;
+  --text-muted: #73726C;
+  --accent: #C6613F;
+  --accent-hover: #D97757;
+  --accent-secondary: #9C4A21;
+  --border: #E3E1D7;
+  --border-strong: #D1CFC5;
+  --code-bg: #FAF9F5;
+  --selection: rgba(217, 119, 87, 0.18);
+  --code-keyword: #C2452D;
+  --code-string: #9C4A21;
+  --code-comment: #6E7781;
+  --btn-bg: #FFFFFF;
+  --shadow: 0 1px 2px rgba(20, 20, 19, 0.05), 0 8px 28px -14px rgba(20, 20, 19, 0.2);
+  color-scheme: light;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -60,9 +66,9 @@ html { scroll-behavior: smooth; scroll-padding-top: 3.5rem; }
 }
 
 body {
-  font-family: "Source Serif 4", Georgia, serif;
+  font-family: "Source Serif 4", "Source Serif Pro", Charter, Georgia, serif;
   font-size: 1.0625rem;
-  line-height: 1.72;
+  line-height: 1.7;
   color: var(--text-primary);
   background: var(--bg-primary);
   transition: background 0.25s ease, color 0.25s ease;
@@ -91,7 +97,7 @@ body {
 .fbtn:focus-visible, a:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
-.fbtn.is-on { background: var(--accent); border-color: var(--accent); color: #FAF7F2; }
+.fbtn.is-on { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
 .fbtn svg { width: 18px; height: 18px; }
 
 /* Layout: the app's index + article reading layout. */
@@ -103,49 +109,49 @@ body {
   border-right: 1px solid var(--border);
   padding: 2.2rem 1.4rem;
   position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 body.index-closed #index { display: none; }
 #index .kicker {
-  font-family: "IBM Plex Mono", monospace; font-size: 0.68rem;
-  letter-spacing: 0.22em; color: var(--text-muted);
+  font-size: 0.68rem; font-weight: 600;
+  letter-spacing: 0.14em; color: var(--text-muted);
   border-bottom: 1px solid var(--border); padding-bottom: 0.8rem; margin-bottom: 0.9rem;
 }
 #index a {
-  display: block; padding: 0.32rem 0 0.32rem 0.85rem;
+  display: block; padding: 0.3rem 0 0.3rem 0.85rem;
   color: var(--text-secondary); text-decoration: none;
-  font-size: 0.94rem; border-left: 2px solid transparent;
+  font-size: 0.88rem; border-left: 2px solid transparent;
 }
 #index a:hover { color: var(--text-primary); }
 #index a.active {
   color: var(--accent); border-left-color: var(--accent); font-weight: 500;
 }
-#index a.sub { padding-left: 1.9rem; font-size: 0.88rem; }
+#index a.sub { padding-left: 1.9rem; font-size: 0.83rem; }
 
-main { flex: 1; min-width: 0; }
+main { flex: 1; min-width: 0; padding: 2rem 1.5rem 3rem; }
+
+/* The sheet: Claudette sets the document on a panel above the page. */
 .measure {
-  max-width: 70%; min-width: min(46rem, 92%);
-  margin: 0 auto; padding: 4.5rem 2rem 5rem;
+  max-width: 50rem;
+  margin: 0 auto; padding: 3.5rem 3.2rem 3.5rem;
+  background: var(--sheet);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
 }
 
-/* Type */
-h1, h2, h3 { font-family: "Playfair Display", Georgia, serif; line-height: 1.15; }
-h1 { font-size: clamp(2.6rem, 6vw, 4.2rem); font-weight: 700; letter-spacing: -0.01em; }
-h2 {
-  font-size: 1.9rem; font-weight: 600;
-  margin: 3.6rem 0 0.4rem;
-  padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
-  position: relative;
+/* Type: weight-400 serif heads, no ornaments. */
+h1, h2, h3 {
+  font-family: "Source Serif 4", "Source Serif Pro", Charter, Georgia, serif;
+  font-weight: 400; line-height: 1.15; letter-spacing: -0.01em;
 }
-h2::after {
-  content: "◆"; position: absolute; left: 0; bottom: -0.42rem;
-  font-size: 0.5rem; color: var(--border-strong); background: var(--bg-primary);
-  padding-right: 0.5rem;
-}
-h3 { font-size: 1.28rem; font-weight: 600; margin: 2.2rem 0 0.2rem; }
+h1 { font-size: clamp(2.4rem, 5.5vw, 3.6rem); }
+h2 { font-size: 1.85rem; margin: 3.4rem 0 0.4rem; position: relative; }
+h3 { font-size: 1.3rem; margin: 2.2rem 0 0.2rem; position: relative; }
 h2 a.anchor, h3 a.anchor { color: inherit; text-decoration: none; }
 h2 a.anchor:hover::before, h3 a.anchor:hover::before {
   content: "#"; color: var(--accent); position: absolute; margin-left: -1.1rem;
-  font-family: "IBM Plex Mono", monospace; font-weight: 400;
+  font-family: "JetBrains Mono", monospace; font-weight: 400;
 }
 p, ul, ol { margin: 0.85rem 0; }
 li { margin: 0.3rem 0; }
@@ -156,20 +162,15 @@ strong { font-weight: 600; }
 .muted { color: var(--text-secondary); }
 
 /* Hero */
-.hero { padding-top: 1.8rem; text-align: center; }
+.hero { padding-top: 0.6rem; text-align: center; }
 .eyebrow {
-  font-family: "IBM Plex Mono", monospace; font-size: 0.75rem;
-  letter-spacing: 0.2em; color: var(--text-muted); text-transform: uppercase;
+  font-family: Inter, system-ui, sans-serif; font-size: 0.72rem; font-weight: 600;
+  letter-spacing: 0.14em; color: var(--text-muted); text-transform: uppercase;
 }
-.hero h1 { margin: 0.9rem 0 0; }
-.ornament {
-  color: var(--border-strong); font-size: 0.6rem; letter-spacing: 1.2em;
-  margin: 1.6rem 0; text-align: center;
-}
-.ornament::before, .ornament::after { content: "—"; letter-spacing: normal; margin: 0 0.9rem; }
+.hero h1 { margin: 0.9rem 0 1.1rem; }
 .lede {
   font-size: 1.2rem; color: var(--text-secondary);
-  max-width: 36rem; margin: 0 auto 2.4rem; font-style: italic;
+  max-width: 36rem; margin: 0 auto 2.4rem;
 }
 .lede em { font-style: normal; }
 
@@ -177,12 +178,12 @@ strong { font-weight: 600; }
 .frame {
   border: 1px solid var(--border-strong); border-radius: 10px;
   overflow: hidden; box-shadow: var(--shadow);
-  background: var(--bg-secondary); text-align: left;
+  background: var(--code-bg); text-align: left;
 }
 .frame .bar {
   display: flex; align-items: center; gap: 0.4rem;
   padding: 0.55rem 0.9rem; border-bottom: 1px solid var(--border);
-  font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; color: var(--text-muted);
+  font-family: "JetBrains Mono", monospace; font-size: 0.72rem; color: var(--text-muted);
 }
 .frame .bar .dots { display: flex; gap: 0.32rem; }
 .frame .bar .dots i {
@@ -193,7 +194,7 @@ strong { font-weight: 600; }
 .frame img { display: block; width: 100%; height: auto; }
 
 .terminal {
-  font-family: "IBM Plex Mono", monospace; font-size: 0.86rem; line-height: 1.65;
+  font-family: "JetBrains Mono", monospace; font-size: 0.84rem; line-height: 1.65;
   padding: 1.1rem 1.3rem; white-space: pre; overflow-x: auto;
   color: var(--text-primary);
 }
@@ -201,47 +202,45 @@ strong { font-weight: 600; }
 .terminal .d { color: var(--text-muted); }
 .terminal .s { color: var(--accent-secondary); }
 
-.hero .duo {
-  display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.4rem;
-  align-items: start; margin-top: 2.6rem;
-}
-.hero .duo figcaption {
-  font-family: "IBM Plex Mono", monospace; font-size: 0.72rem;
+.hero .shots { display: grid; gap: 1.4rem; margin-top: 2.2rem; }
+.hero .shots figcaption {
+  font-family: Inter, system-ui, sans-serif; font-size: 0.78rem;
   color: var(--text-muted); margin-top: 0.6rem; text-align: center;
 }
 
-/* Code */
+/* Code: hairline blocks, as Claudette draws them. */
 pre {
-  background: var(--code-bg); border: 1px solid var(--border);
-  border-radius: 8px; padding: 1rem 1.2rem; overflow-x: auto;
+  background: var(--code-bg); border: 1px solid var(--border-strong);
+  border-radius: 10px; padding: 1rem 1.2rem; overflow-x: auto;
   margin: 1.1rem 0;
 }
 code {
-  font-family: "IBM Plex Mono", monospace; font-size: 0.86em;
+  font-family: "JetBrains Mono", "Cascadia Code", "SF Mono", Consolas, monospace; font-size: 0.84em;
 }
 p code, li code, td code {
   background: var(--code-bg); border: 1px solid var(--border);
-  border-radius: 4px; padding: 0.08em 0.35em;
+  border-radius: 4px; padding: 0.06em 0.35em;
 }
 pre .c { color: var(--code-comment); }
 pre .k { color: var(--code-keyword); }
 pre .s { color: var(--code-string); }
 
-/* Tables */
+/* Tables: rules between rows only, small uppercase heads. */
 table { border-collapse: collapse; width: 100%; margin: 1.1rem 0; font-size: 0.97rem; }
 th, td { text-align: left; padding: 0.5rem 0.9rem; border-bottom: 1px solid var(--border); }
 th {
-  font-family: "IBM Plex Mono", monospace; font-size: 0.72rem;
-  letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted);
-  font-weight: 500;
+  font-family: Inter, system-ui, sans-serif; font-size: 0.7rem;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted);
+  font-weight: 600; border-bottom-color: var(--border-strong);
 }
 td:first-child { white-space: nowrap; }
 
-/* Swatch rows for the themes section */
-.swatch { display: inline-flex; gap: 0.25rem; vertical-align: middle; }
+/* Theme swatches: page, text and accent as filled squares, as the app's
+   dropdown shows them. */
+.swatch { display: inline-flex; gap: 2px; vertical-align: middle; }
 .swatch i {
-  width: 0.95rem; height: 0.95rem; border-radius: 50%;
-  border: 1px solid rgba(0,0,0,0.12); display: block;
+  width: 0.8rem; height: 0.8rem; border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.45); display: block;
 }
 
 footer {
@@ -249,12 +248,14 @@ footer {
   color: var(--text-muted); font-size: 0.92rem;
   display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem;
 }
-footer .mono, .mono { font-family: "IBM Plex Mono", monospace; font-size: 0.8rem; }
+footer .mono, .mono { font-family: "JetBrains Mono", monospace; font-size: 0.8rem; }
 
 @media (max-width: 900px) {
   #index { display: none; }
-  .measure { max-width: 100%; padding: 3.5rem 1.3rem 4rem; }
-  .hero .duo { grid-template-columns: 1fr; }
+  main { padding: 3.8rem 0.8rem 2rem; }
+  .measure { padding: 2.2rem 1.3rem 2.5rem; }
+  /* Long paths in the first column: the table scrolls, not the page. */
+  table { display: block; overflow-x: auto; }
   body.index-open #index {
     display: block; position: fixed; inset: 0; width: 100%; height: 100vh; z-index: 40;
     padding-top: 4.5rem;
@@ -269,7 +270,7 @@ footer .mono, .mono { font-family: "IBM Plex Mono", monospace; font-size: 0.8rem
   <button class="fbtn is-on" id="indexBtn" aria-pressed="true" aria-label="Toggle index" title="Index">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4.5" cy="6" r="1.1" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.1" fill="currentColor" stroke="none"/></svg>
   </button>
-  <button class="fbtn" id="themeBtn" aria-label="Switch between Warm Paper and Midnight Ink" title="Theme">
+  <button class="fbtn" id="themeBtn" aria-label="Switch between Claudette Dark and Claudette" title="Theme">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><path d="M12 22a10 10 0 1 1 10-10c0 2.5-1.5 4-3.5 4H16a2 2 0 0 0-2 2c0 .6.2 1 .5 1.5.4.7.1 1.7-.8 2-.6.2-1.1.5-1.7.5z"/></svg>
   </button>
   <a class="fbtn" href="https://github.com/AadityaSalgarkar/md_render" aria-label="Source on GitHub" title="GitHub">
@@ -302,7 +303,6 @@ footer .mono, .mono { font-family: "IBM Plex Mono", monospace; font-size: 0.8rem
 <header class="hero">
   <div class="eyebrow">MD_RENDER · macOS + Linux · Tauri 2</div>
   <h1>Markdown, set like a book.</h1>
-  <div class="ornament">◆</div>
   <p class="lede">A markdown renderer with book typography — seventeen themes, a
   document index, math, Mermaid, review comments — in a desktop window or
   served to your browser over SSH.</p>
@@ -318,17 +318,20 @@ opening <span class="s">http://127.0.0.1:9999/project/?doc=1</span> in the brows
 <span class="d">(server running in the background, pid 4242)</span></div>
   </div>
 
-  <div class="duo">
+  <div class="shots">
     <figure>
       <div class="frame">
-        <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="addr">127.0.0.1:9999</span></div>
-        <img src="assets/browser.png" alt="MD_RENDER serving three documents as browser tabs, with the index, math, highlighted code and a Mermaid diagram" width="1280" height="900">
+        <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="addr">127.0.0.1:9999/notes/</span></div>
+        <img src="assets/browser.png" alt="MD_RENDER in the browser in the Claudette Dark theme: three documents as tabs, the index, display math, highlighted code and an experiment plot" width="1280" height="1000">
       </div>
-      <figcaption>server mode in a browser — same app, same tabs</figcaption>
+      <figcaption>server mode in a browser, Claudette Dark — tabs, index, math, code and a training-curve plot</figcaption>
     </figure>
     <figure>
-      <div class="frame"><img src="assets/desktop.png" alt="The MD_RENDER desktop window on Linux with the same three documents open as tabs" width="810" height="632"></div>
-      <figcaption>the desktop window on Linux</figcaption>
+      <div class="frame">
+        <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="addr">127.0.0.1:9999/notes/</span></div>
+        <img src="assets/themes.png" alt="The theme dropdown open over a document in the LaTeX theme, listing light and dark themes with their colours as squares" width="1280" height="1000">
+      </div>
+      <figcaption>seventeen themes in one dropdown — here LaTeX, with numbered sections and a TikZ diagram</figcaption>
     </figure>
   </div>
 </header>
@@ -523,9 +526,10 @@ mdrender --port ~/notes.md          <span class="c"># on the server</span></code
 
 <section id="themes">
   <h2><a class="anchor" href="#themes">Themes</a></h2>
-  <p>Chosen from the palette control; the choice is remembered. Each theme is
-  a full set of faces, surfaces and a code palette. This page wears two of
-  them — try the palette button above.</p>
+  <p>Chosen from the palette control, a dropdown of light and dark themes,
+  each shown by its page, text and accent colours; the choice is remembered.
+  Each theme is a full set of faces, surfaces and a code palette. This page
+  wears Claudette Dark — the palette button above switches it to Claudette.</p>
   <table>
     <tr><th></th><th>Light</th><th></th><th>Dark</th></tr>
     <tr>
@@ -678,18 +682,17 @@ npm run lint</code></pre>
   var indexBtn = document.getElementById('indexBtn');
   var progress = document.getElementById('progress');
 
-  // Theme: ?theme= wins, then the remembered choice, then the OS preference —
-  // the same order the app uses on first run.
+  // Theme: ?theme= wins, then the remembered choice, then Claudette Dark,
+  // the site's own theme. The toggle switches to its light twin.
   var fromQuery = new URLSearchParams(location.search).get('theme');
   var stored = null;
   try { stored = localStorage.getItem('md-render-docs-theme'); } catch (e) {}
-  var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  var theme = fromQuery || stored || (dark ? 'midnight-ink' : 'warm-paper');
-  if (theme !== 'warm-paper' && theme !== 'midnight-ink') theme = 'warm-paper';
+  var theme = fromQuery || stored || 'claudette-dark';
+  if (theme !== 'claudette' && theme !== 'claudette-dark') theme = 'claudette-dark';
   root.setAttribute('data-theme', theme);
 
   themeBtn.addEventListener('click', function () {
-    theme = theme === 'warm-paper' ? 'midnight-ink' : 'warm-paper';
+    theme = theme === 'claudette-dark' ? 'claudette' : 'claudette-dark';
     root.setAttribute('data-theme', theme);
     try { localStorage.setItem('md-render-docs-theme', theme); } catch (e) {}
   });
