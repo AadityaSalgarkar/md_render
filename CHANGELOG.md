@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.12.0...v0.13.0) (2026-10-19)
+
+
+### Features
+
+* **layout:** a 42em reading measure in every theme ([0267188](https://github.com/AadityaSalgarkar/md_render/commit/0267188078b62fe6b3ef0aa7ac915646d3957875))
+* **layout:** a 42em reading measure in every theme ([6d5bbc1](https://github.com/AadityaSalgarkar/md_render/commit/6d5bbc113cd5ebf51647baf9dc8213518ce6aa27))
+
 ## [0.12.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.11.0...v0.12.0) (2026-10-18)
 
 
