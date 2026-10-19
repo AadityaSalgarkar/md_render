@@ -365,9 +365,12 @@ body {
 /* ===================================================================
    Markdown content
    =================================================================== */
+/* The text column is at most 42em (about 80 characters a line) in every
+   theme, however wide the window; LaTeX sets its own narrower 36em. The
+   4rem is the side padding, inside the box. */
 .markdown-body {
   padding: 1.75rem 2rem 4rem;
-  max-width: 70%;
+  max-width: min(70%, calc(42em + 4rem));
   margin: 0 auto;
   font-family: var(--font-body);
   font-size: 1.0625rem;
