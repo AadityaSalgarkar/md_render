@@ -93,6 +93,18 @@ describe('theme registry', () => {
     }
   })
 
+  it('caps the text column at a reading measure in every theme', () => {
+    // jsdom has no layout, so this checks the rule; the measured column is
+    // 714px of text at any window width (42em at 17px).
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf8')
+    const base = css.match(/\n\.markdown-body \{[^}]*\}/)![0]
+    expect(base).toContain('max-width: min(70%, calc(42em + 4rem));')
+    // No theme widens it again; LaTeX alone narrows it.
+    const widened = [...css.matchAll(/\[data-theme[^\]]*\][^{]*\.markdown-body \{[^}]*max-width:[^;]*;/g)].map((m) => m[0])
+    expect(widened).toHaveLength(1)
+    expect(widened[0]).toContain('[data-theme^="latex"]')
+  })
+
   it("lets the server's listing page tell every dark theme apart", () => {
     // ROOT_SCRIPT in server.rs names the older dark themes and matches `-dark`.
     const server = readFileSync(path.resolve(__dirname, '../../src-tauri/src/server.rs'), 'utf8')
