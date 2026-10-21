@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.14.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.13.0...v0.14.0) (2026-10-21)
+
+
+### Features
+
+* **plots:** draw a mean's std as a band and its min and max as dashed lines ([7bb0a2e](https://github.com/AadityaSalgarkar/md_render/commit/7bb0a2e79675f6fdb67f9c2e4da8ac49e758a273))
+* **plots:** mean ± std bands and dashed min/max for P/mean statistics ([a7bbf43](https://github.com/AadityaSalgarkar/md_render/commit/a7bbf43dcbb4b6bf4165a5a2359d04c1b7c8532c))
+
+
+### Bug Fixes
+
+* **plots:** a band draws only keys the block's metrics admit ([ed682bc](https://github.com/AadityaSalgarkar/md_render/commit/ed682bc9bf5e540020002d0fbbc906e59aa607d8))
+
 ## [0.13.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.12.0...v0.13.0) (2026-10-19)
 
 
