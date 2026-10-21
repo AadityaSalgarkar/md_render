@@ -204,6 +204,19 @@ see), write the block, and call `read_metrics` for numbers to quote in prose.
 - Without `views`, the dropdown is derived from `split/family/name` keys:
   "loss/ce: train vs val", "train/loss components", "val/loss/ce across
   runs", "val/loss/ce by model.arch". Name keys consistently for good views.
+- Spread statistics: log a per-step distribution as `P/mean` with any of
+  `P/std`, `P/min` and `P/max` beside it (`train/reward/mean`,
+  `train/reward/std`, `train/reward/min`, `train/reward/max`; `avg` and
+  `stddev` work too, but only with `/`: `reward_mean` and `reward_std` stay
+  separate lines). A line plot then draws the group as one series. For a
+  single run that is the mean as the line, a faint band of mean ± std and
+  faint dashed min and max lines, in one colour, with `0.89 ± 0.23 (min
+  0.30, max 1.37)` on hover. With several runs only the means are drawn, so
+  give a single-run view (`"runs": ["ppo_1"]`) when the spread matters.
+  The block's `metrics` must admit the partner keys (`"^train/reward/"`
+  does, `"^train/reward/mean$"` does not). The dropdown keeps a chart for
+  `P/std` but none for `P/min` or `P/max`. `"bands": false` draws every key
+  as its own line again.
 - `caption`: the lesson the plot teaches, printed under the chart as
   "Figure N: …" (numbered in document order), like a figure caption in a
   paper. Write one or two sentences that state the finding with its
@@ -218,8 +231,8 @@ see), write the block, and call `read_metrics` for numbers to quote in prose.
   0 to 0.99, `range`), `max_points` (1500), `refresh` (`"auto"` polls every
   15 s while the database changed in the last ten minutes; seconds; or 0),
   `height`, `legend` (`auto`, `bottom`, `right`, `none`), `table` (the per-series
-  summary table shows by itself up to 150 rows; `true` always, `false` never), `id` (remember the reader's
-  view).
+  summary table shows by itself up to 150 rows; `true` always, `false` never), `bands` (default
+  `true`; see spread statistics above), `id` (remember the reader's view).
 - A mistake renders an error card with the message, so check the reader
   after writing.
 
