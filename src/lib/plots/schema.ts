@@ -101,6 +101,8 @@ export interface PlotSpec {
   normalize: 'auto' | 'none' | 'minmax'
   bins: number
   density: boolean
+  /** Fold `P/std`, `P/min` and `P/max` into `P/mean` (line plots; see bands.ts). */
+  bands: boolean
   scatter: ScatterSpec | null
   max_points: number
   /** "auto", or seconds between polls (0 never polls). */
@@ -137,7 +139,7 @@ export const MAX_PATTERN_LENGTH = 200
 const KNOWN_KEYS = new Set([
   'plot_type', 'type', 'source', 'runs', 'metrics', 'descriptions', 'items', 'views',
   'default_view', 'x', 'y', 'dedupe_steps', 'summary', 'better', 'normalize', 'bins',
-  'density', 'scatter', 'max_points', 'refresh', 'title', 'caption', 'height', 'legend', 'table', 'id',
+  'density', 'bands', 'scatter', 'max_points', 'refresh', 'title', 'caption', 'height', 'legend', 'table', 'id',
 ])
 
 class SpecError extends Error {}
@@ -373,6 +375,7 @@ function parseSpec(raw: unknown): { spec: PlotSpec; warnings: string[] } {
     normalize: raw.normalize === undefined ? 'auto' : oneOf(raw.normalize, ['auto', 'none', 'minmax'], '"normalize"'),
     bins: raw.bins === undefined ? 30 : Math.round(num(raw.bins, '"bins"', 2, 200)),
     density: raw.density === undefined ? false : Boolean(raw.density),
+    bands: raw.bands === undefined ? true : Boolean(raw.bands),
     scatter: null,
     max_points: raw.max_points === undefined ? 1500 : Math.round(num(raw.max_points, '"max_points"', 0, 20000)),
     refresh: 'auto',

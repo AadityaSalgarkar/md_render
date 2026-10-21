@@ -198,10 +198,44 @@ export function buildChart(input: BuildInput): BuiltChart {
 
 // ---- line ------------------------------------------------------------------
 
+/** A mean's std, min and max at each of its drawn points. */
+interface Spread {
+  std: Array<number | null> | null
+  min: Array<number | null> | null
+  max: Array<number | null> | null
+}
+
 interface LineMeta {
   series: ResolvedSeries
+  /** A faint raw line or part of a band: drawn, but not in the tooltip. */
   raw: boolean
   steps: number[]
+  spread?: Spread
+}
+
+/** Band fill and min/max line strength, against the series colour. */
+const BAND_FILL_ALPHA = 0.15
+const EXTREME_ALPHA = 0.45
+const EXTREME_DASH = [4, 3]
+
+/** A band partner smoothed like its mean and read at the mean's steps. */
+function partnerAt(found: Series | undefined, steps: number[], smoothing: number): Array<number | null> {
+  if (!found) return steps.map(() => null)
+  const values = found.points.map((p) => p[1])
+  const smoothed = smoothing > 0 ? ema(values, smoothing) : values
+  const byStep = new Map(found.points.map((p, i) => [p[0], smoothed[i]]))
+  return steps.map((step) => byStep.get(step) ?? null)
+}
+
+function spreadText(spread: Spread, i: number): string {
+  const std = spread.std?.[i]
+  const min = spread.min?.[i]
+  const max = spread.max?.[i]
+  const parts: string[] = []
+  if (min !== undefined && min !== null) parts.push(`min ${formatNumber(min)}`)
+  if (max !== undefined && max !== null) parts.push(`max ${formatNumber(max)}`)
+  const pm = std !== undefined && std !== null ? ` ± ${formatNumber(std)}` : ''
+  return `${pm}${parts.length ? ` (${parts.join(', ')})` : ''}`
 }
 
 function xLabel(axis: AxisX): string {
@@ -290,7 +324,65 @@ function buildLine(input: BuildInput): BuiltChart {
       hidden: isHidden,
       order: 1,
     })
-    meta.push({ series: s, raw: false, steps })
+    const line: LineMeta = { series: s, raw: false, steps }
+    meta.push(line)
+
+    if (s.band) {
+      const partner = (key: string | undefined) =>
+        key ? partnerAt(data.get(seriesKey(s.run, key)), steps, y.smoothing) : null
+      const spread: Spread = { std: partner(s.band.std), min: partner(s.band.min), max: partner(s.band.max) }
+      line.spread = spread
+      // On a log scale an edge at or below zero cannot be drawn.
+      const drawable = (v: number | null) => {
+        if (v === null) return null
+        if (log && v <= 0) {
+          droppedNonPositive += 1
+          return null
+        }
+        return v
+      }
+      const edge = (offset: (i: number) => number | null) =>
+        xs.map((xv, i) => ({ x: xv, y: drawable(offset(i)) }))
+      const faint = { pointRadius: 0, pointHoverRadius: 0, tension: 0, hidden: isHidden }
+
+      if (spread.std) {
+        const std = spread.std
+        const lower = datasets.length
+        datasets.push({
+          ...faint,
+          label: `${s.label} − std`,
+          data: edge((i) => (std[i] === null ? null : smoothed[i] - std[i]!)),
+          borderWidth: 0,
+          fill: false,
+          order: 3,
+        })
+        meta.push({ series: s, raw: true, steps })
+        datasets.push({
+          ...faint,
+          label: `${s.label} + std`,
+          data: edge((i) => (std[i] === null ? null : smoothed[i] + std[i]!)),
+          borderWidth: 0,
+          backgroundColor: withAlpha(color, BAND_FILL_ALPHA),
+          fill: lower,
+          order: 3,
+        })
+        meta.push({ series: s, raw: true, steps })
+      }
+      for (const [name, values] of [['min', spread.min], ['max', spread.max]] as const) {
+        if (!values) continue
+        datasets.push({
+          ...faint,
+          label: `${s.label} ${name}`,
+          data: edge((i) => values[i]),
+          borderColor: withAlpha(color, EXTREME_ALPHA),
+          borderWidth: 1,
+          borderDash: EXTREME_DASH,
+          fill: false,
+          order: 2,
+        })
+        meta.push({ series: s, raw: true, steps })
+      }
+    }
   }
 
   if (droppedNonPositive) notes.push(`${droppedNonPositive} values at or below zero are not drawn on the log scale.`)
@@ -334,8 +426,11 @@ function buildLine(input: BuildInput): BuiltChart {
               const xText = formatX(item.parsed.x ?? 0, x.axis)
               return x.axis === 'step' ? `step ${xText}` : `${xText} · step ${formatNumber(step)}`
             },
-            label: (item: TooltipItem<'line'>) =>
-              `${meta[item.datasetIndex]?.series.label}: ${formatNumber(item.parsed.y)}`,
+            label: (item: TooltipItem<'line'>) => {
+              const m = meta[item.datasetIndex]
+              const spread = m?.spread ? spreadText(m.spread, item.dataIndex) : ''
+              return `${m?.series.label}: ${formatNumber(item.parsed.y)}${spread}`
+            },
             afterLabel: (item: TooltipItem<'line'>) => meta[item.datasetIndex]?.series.metadata ?? '',
             footer: (items: TooltipItem<'line'>[]) => sharedDescription(items.map((i) => meta[i.datasetIndex]?.series)),
           },
@@ -803,8 +898,12 @@ export function plannedRequest(spec: PlotSpec, resolution: Resolution): { runs: 
       maxPoints = scatter.per === 'step' ? Math.min(Math.max(spec.max_points, 1) * 4, 20_000) : 0
       break
     }
-    default:
+    default: {
+      // The std, min and max a band is drawn from are fetched with its mean.
+      const extra = resolution.series.flatMap((s) => Object.values(s.band ?? {}))
+      keys = [...new Set([...keys, ...extra])]
       break
+    }
   }
   return { runs, keys, maxPoints }
 }

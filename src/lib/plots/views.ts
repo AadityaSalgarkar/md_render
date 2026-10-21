@@ -6,6 +6,7 @@
  */
 
 import type { RunInfo } from './types'
+import { bandKeysOf, extremeKeys, foldedKeys, type BandKeys } from './bands'
 import {
   compilePattern,
   type AxisX,
@@ -48,6 +49,11 @@ export interface ResolvedSeries {
   shadeCount: number
   /** Index into the dash styles. */
   dash: number
+  /**
+   * The std, min and max keys drawn around this mean (bands.ts): set only
+   * in a line plot of a single run.
+   */
+  band: BandKeys | null
 }
 
 export interface Resolution {
@@ -146,16 +152,21 @@ function derivedViews(spec: PlotSpec, allRuns: RunInfo[]): View[] {
     return out
   }
 
+  // A group's min and max fold into its mean (bands.ts), so they get no
+  // chart of their own; the family view still draws the whole group.
+  const extremes = spec.plot_type === 'line' && spec.bands ? extremeKeys(keys) : new Set<string>()
+  const solo = keys.filter((k) => !extremes.has(k))
+
   const freq = new Map<string, number>()
   for (const run of runs) for (const k of run.keys) freq.set(k.key, (freq.get(k.key) ?? 0) + 1)
-  const byFrequency = [...keys].sort(
+  const byFrequency = [...solo].sort(
     (a, b) => (freq.get(b) ?? 0) - (freq.get(a) ?? 0) || naturalCompare(a, b),
   )
 
   const out: View[] = []
 
   if (spec.plot_type === 'line') {
-    out.push(...splitViews(keys, single))
+    out.push(...splitViews(solo, single))
   } else {
     out.push(derived({ name: 'all metrics', group_by: 'run' }))
   }
@@ -173,9 +184,9 @@ function derivedViews(spec: PlotSpec, allRuns: RunInfo[]): View[] {
 
   if (!single) {
     const primary = Array.isArray(spec.metrics)
-      ? spec.metrics.filter((k) => keys.includes(k))
-      : keys.filter((k) => HELD_OUT_RE.test(k)).length > 0
-        ? keys.filter((k) => HELD_OUT_RE.test(k))
+      ? spec.metrics.filter((k) => solo.includes(k))
+      : solo.filter((k) => HELD_OUT_RE.test(k)).length > 0
+        ? solo.filter((k) => HELD_OUT_RE.test(k))
         : byFrequency
     out.push(...configViews(runs, primary.slice(0, CAP_PRIMARY), false))
   }
@@ -311,7 +322,8 @@ export function resolveView(
   describe: (key: string) => string | null = () => null,
 ): Resolution {
   const byName = new Map(runs.map((r) => [r.name, r]))
-  if (view.items) return resolveItems(view.items, runs, byName, describe)
+  const folds = spec.plot_type === 'line' && spec.bands
+  if (view.items) return resolveItems(view.items, runs, byName, describe, folds)
 
   const runSelector = view.runs ?? spec.runs
   let chosen = select(runSelector, runs.map((r) => r.name)).map((n) => byName.get(n)!)
@@ -330,11 +342,14 @@ export function resolveView(
 
   const groupBy = view.group_by
   const groupOf = groupFunction(groupBy)
-  const pairs: Array<{ run: RunInfo; key: string; group: string }> = []
+  const pairs: Array<{ run: RunInfo; key: string; group: string; band: BandKeys | null }> = []
   for (const run of chosen) {
     const logged = new Set(run.keys.map((k) => k.key))
+    // A mean's std, min and max are drawn around it, not as lines of their own.
+    const folded = folds ? foldedKeys(keys, logged) : new Set<string>()
     for (const key of keys) {
-      if (logged.has(key)) pairs.push({ run, key, group: groupOf(run, key) })
+      if (!logged.has(key) || folded.has(key)) continue
+      pairs.push({ run, key, group: groupOf(run, key), band: folds ? bandKeysOf(key, logged) : null })
     }
   }
   if (pairs.length === 0) {
@@ -378,7 +393,9 @@ export function resolveView(
     members.set(pair.group, list)
   }
 
-  const series = pairs.map(({ run, key, group }) => {
+  // Bands are for reading one run; with several, only the means are drawn.
+  const banded = usedRuns.length === 1
+  const series = pairs.map(({ run, key, group, band }) => {
     const list = members.get(group)!
     const shaded = groupBy !== 'run' && groupBy !== 'none'
     return {
@@ -394,6 +411,7 @@ export function resolveView(
       shade: shaded ? list.indexOf(run.name) : 0,
       shadeCount: shaded ? list.length : 1,
       dash: dashFor(key),
+      band: banded ? band : null,
     }
   })
   return { series, groups, runs: usedRuns, keys: usedKeys, empty: null }
@@ -434,6 +452,7 @@ function resolveItems(
   runs: RunInfo[],
   byName: Map<string, RunInfo>,
   describe: (key: string) => string | null,
+  folds: boolean,
 ): Resolution {
   const series: ResolvedSeries[] = []
   const missing: string[] = []
@@ -461,14 +480,21 @@ function resolveItems(
         shade: 0,
         shadeCount: 1,
         dash: 0,
+        band: null,
       })
     }
   })
+  const usedRuns = [...new Set(series.map((s) => s.run))]
+  // An item naming a mean gets its band too, under the same one-run rule.
+  if (folds && usedRuns.length === 1) {
+    const logged = new Set(byName.get(usedRuns[0])!.keys.map((k) => k.key))
+    for (const s of series) s.band = bandKeysOf(s.key, logged)
+  }
   const groups = series.map((s) => s.group)
   return {
     series,
     groups,
-    runs: [...new Set(series.map((s) => s.run))],
+    runs: usedRuns,
     keys: [...new Set(series.map((s) => s.key))],
     empty: series.length === 0 ? `None of the listed series exist: ${missing.join('; ')}.` : null,
   }
