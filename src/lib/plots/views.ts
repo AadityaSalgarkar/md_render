@@ -6,7 +6,7 @@
  */
 
 import type { RunInfo } from './types'
-import { bandKeysOf, extremeKeys, foldedKeys, type BandKeys } from './bands'
+import { bandKeysOf, extremeKeys, foldedKeys, within, type BandKeys } from './bands'
 import {
   compilePattern,
   type AxisX,
@@ -323,7 +323,9 @@ export function resolveView(
 ): Resolution {
   const byName = new Map(runs.map((r) => [r.name, r]))
   const folds = spec.plot_type === 'line' && spec.bands
-  if (view.items) return resolveItems(view.items, runs, byName, describe, folds)
+  // A band only draws keys the block's own "metrics" admits.
+  const admitted = (logged: Set<string>) => new Set(select(spec.metrics, [...logged], true))
+  if (view.items) return resolveItems(view.items, runs, byName, describe, folds && admitted)
 
   const runSelector = view.runs ?? spec.runs
   let chosen = select(runSelector, runs.map((r) => r.name)).map((n) => byName.get(n)!)
@@ -347,9 +349,11 @@ export function resolveView(
     const logged = new Set(run.keys.map((k) => k.key))
     // A mean's std, min and max are drawn around it, not as lines of their own.
     const folded = folds ? foldedKeys(keys, logged) : new Set<string>()
+    const allowed = folds ? admitted(logged) : null
     for (const key of keys) {
       if (!logged.has(key) || folded.has(key)) continue
-      pairs.push({ run, key, group: groupOf(run, key), band: folds ? bandKeysOf(key, logged) : null })
+      const band = allowed ? within(bandKeysOf(key, logged), allowed) : null
+      pairs.push({ run, key, group: groupOf(run, key), band })
     }
   }
   if (pairs.length === 0) {
@@ -452,7 +456,8 @@ function resolveItems(
   runs: RunInfo[],
   byName: Map<string, RunInfo>,
   describe: (key: string) => string | null,
-  folds: boolean,
+  /** The keys a band may draw from, given what the run logged; false for no bands. */
+  admitted: false | ((logged: Set<string>) => Set<string>),
 ): Resolution {
   const series: ResolvedSeries[] = []
   const missing: string[] = []
@@ -486,9 +491,9 @@ function resolveItems(
   })
   const usedRuns = [...new Set(series.map((s) => s.run))]
   // An item naming a mean gets its band too, under the same one-run rule.
-  if (folds && usedRuns.length === 1) {
+  if (admitted && usedRuns.length === 1) {
     const logged = new Set(byName.get(usedRuns[0])!.keys.map((k) => k.key))
-    for (const s of series) s.band = bandKeysOf(s.key, logged)
+    for (const s of series) s.band = within(bandKeysOf(s.key, logged), admitted(logged))
   }
   const groups = series.map((s) => s.group)
   return {

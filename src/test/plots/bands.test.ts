@@ -118,6 +118,14 @@ describe('resolving a view with statistic groups', () => {
     ])
   })
 
+  it("draws only the partners the block's metrics admit", () => {
+    const meanStd = spec({ plot_type: 'line', metrics: '^(train|val)/reward/(mean|std)$' })
+    const resolved = resolveView(only(['train/reward/mean']), meanStd, SOLO).series
+    expect(resolved[0].band).toEqual({ std: 'train/reward/std' })
+    const meanOnly = spec({ plot_type: 'line', metrics: ['train/reward/mean'] })
+    expect(resolveView(only(['train/reward/mean']), meanOnly, SOLO).series[0].band).toBeNull()
+  })
+
   it('draws every key as its own line with "bands": false, and in other plot types', () => {
     const plain = resolveView(only(REWARD), spec({ plot_type: 'line', bands: false }), SOLO).series
     expect(plain.map((s) => s.key)).toEqual(REWARD)
@@ -225,7 +233,8 @@ describe('drawing a band', () => {
   it('smooths the partners with the mean', () => {
     const smooth = spec({ plot_type: 'line', y: { smoothing: 0.5 } })
     const sets = datasetsOf(build(smooth, only(REWARD), SOLO).built)
-    const named = (label: string) => ys(sets.filter((d) => d.label === label).at(-1)!) as number[]
+    // The smoothed line is the last dataset with its label; a faint raw one comes first.
+    const named = (label: string) => ys(sets.filter((d) => d.label === label).pop()!) as number[]
     const mean = named('train/reward/mean')
     expect(mean).toEqual(ema([1, 2, 3], 0.5))
     const std = ema([0.5, 0.25, 0.1], 0.5)

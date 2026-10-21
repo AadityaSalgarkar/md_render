@@ -36,6 +36,13 @@ export function bandKeysOf(key: string, logged: Set<string>): BandKeys | null {
   return Object.keys(band).length > 0 ? band : null
 }
 
+/** A band cut down to the keys the block admits, or null when none are left. */
+export function within(band: BandKeys | null, admitted: Set<string>): BandKeys | null {
+  if (!band) return null
+  const kept = Object.fromEntries(Object.entries(band).filter(([, key]) => admitted.has(key))) as BandKeys
+  return Object.keys(kept).length > 0 ? kept : null
+}
+
 /**
  * The keys among `keys` that belong to the group of a mean also in `keys`,
  * given what one run logged: these fold into the mean instead of being
