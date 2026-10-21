@@ -52,7 +52,9 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
   spider, histogram and scatter charts from trackio (wandb-compatible)
   logs, with a dropdown of views ("loss/ce: train vs val", "val/loss by
   architecture") derived from the metric names, hover metadata and metric
-  descriptions, theme colours, and live refresh while training writes
+  descriptions, theme colours, and live refresh while training writes.
+  Keys logged as `P/mean` with `P/std`, `P/min` and `P/max` draw as one
+  line with a mean ± std band and dashed min and max for a single run
 - TikZ diagrams: a ```` ```tikz ```` fence (or `<tikz>` tag) compiles to SVG
   with a LaTeX engine built into the app (Tectonic), so TikZ, tikz-cd,
   pgfplots and circuitikz work with no TeX installation. Diagrams follow the
