@@ -42,9 +42,21 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Tectonic's cached objects are compiled against the system ICU, whose
+      # symbols carry its major version (ubidi_close_74). Key the cache on it,
+      # so a runner image or Homebrew with a new ICU starts clean instead of
+      # failing to link.
+      - name: ICU version
+        id: icu
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then export PKG_CONFIG_PATH="$(brew --prefix icu4c)/lib/pkgconfig"; fi
+          echo "version=$(pkg-config --modversion icu-uc)" >> "$GITHUB_OUTPUT"
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          key: icu-${{ steps.icu.outputs.version }}
 
       # TeX files Tectonic downloads on first use; minutes to fetch, so keep them.
       - uses: actions/cache@v4
