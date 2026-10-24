@@ -212,6 +212,47 @@ describe('summary plots', () => {
     ])
     expect(built.legend.map((e) => e.label)).toEqual(['conv', 'vit'])
     expect(built.config.plugins).toHaveLength(1)
+    // Chart.js parses the points itself, so it never assumes their order.
+    expect(built.config.options?.parsing).toBeUndefined()
+  })
+
+  it('scatter per step: points stay in step order and Chart.js is not told x is sorted', () => {
+    // With `parsing: false`, Chart.js 4 takes a dataset's x range from its
+    // first and last points: here 5 to 7 instead of 1 to 9.
+    const s = spec({ plot_type: 'scatter', scatter: { x: 'train/loss/ce', y: 'val/acc/top1', per: 'step' } })
+    const view: View = { name: 'one run', origin: 'custom', runs: '^exp_1$', group_by: 'none' }
+    const data = seriesIndex([
+      series('exp_1', 'train/loss/ce', [5, 1, 9, 3, 7]),
+      series('exp_1', 'val/acc/top1', [0.1, 0.2, 0.3, 0.4, 0.5]),
+    ])
+    const built = build(s, view, { series: data })
+    expect(built.config.options?.parsing).toBeUndefined()
+    const points = (built.config.data.datasets[0] as ChartDataset<'scatter'>).data as Array<{ x: number; y: number }>
+    expect(points.map((p) => p.x)).toEqual([5, 1, 9, 3, 7])
+    expect(points.map((p) => p.y)).toEqual([0.1, 0.2, 0.3, 0.4, 0.5])
+  })
+})
+
+describe('line charts skip parsing only for sorted x', () => {
+  const view: View = { name: 'one run', origin: 'custom', runs: '^exp_1$', metrics: ['train/loss/ce'], group_by: 'run' }
+
+  it('skips it on the step axis, where points arrive in order', () => {
+    const options = build(spec({ plot_type: 'line' }), view).config.options as Record<string, unknown>
+    expect(options.parsing).toBe(false)
+    expect(options.normalized).toBe(true)
+  })
+
+  it('parses when a later step was logged at an earlier time', () => {
+    const resumed = series('exp_1', 'train/loss/ce', [3, 2, 1])
+    resumed.points = [
+      [0, 3, 1_000_000],
+      [1, 2, 1_005_000],
+      [2, 1, 1_002_000],
+    ]
+    const timed = spec({ plot_type: 'line', x: { axis: 'time' } })
+    const options = build(timed, view, { series: seriesIndex([resumed]) }).config.options as Record<string, unknown>
+    expect(options.parsing).toBeUndefined()
+    expect(options.normalized).toBeUndefined()
   })
 })
 

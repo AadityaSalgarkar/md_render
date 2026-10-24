@@ -264,6 +264,9 @@ function buildLine(input: BuildInput): BuiltChart {
   const notes: string[] = []
   let droppedNonPositive = 0
   let downsampled = 0
+  // Steps arrive in order, but times need not (a resumed run can log an
+  // earlier time at a later step).
+  let xSorted = true
 
   const datasets: ChartConfiguration<'line'>['data']['datasets'] = []
   const meta: LineMeta[] = []
@@ -288,6 +291,7 @@ function buildLine(input: BuildInput): BuiltChart {
         droppedNonPositive += 1
         continue
       }
+      if (xs.length > 0 && xv < xs[xs.length - 1]) xSorted = false
       xs.push(xv)
       ys.push(point[1])
       steps.push(point[0])
@@ -394,8 +398,10 @@ function buildLine(input: BuildInput): BuiltChart {
     data: { datasets },
     options: {
       ...base,
-      parsing: false,
-      normalized: true,
+      // Skipping parsing tells Chart.js the x values are sorted: it then takes
+      // the x range from the ends and finds hovers by bisection. Only safe when
+      // they are.
+      ...(xSorted ? { parsing: false as const, normalized: true } : {}),
       spanGaps: true,
       interaction: { mode: 'nearest', axis: 'x', intersect: false },
       scales: {
@@ -835,7 +841,9 @@ function buildScatter(input: BuildInput): BuiltChart {
       ...base,
       // Room for run names beside points at the edges.
       layout: { padding: scatter.labels === 'always' ? { top: 12, right: 56 } : 0 },
-      parsing: false,
+      // Parsing stays on: per-step points are in step order, not x order, and
+      // with `parsing: false` Chart.js assumes x is sorted, so it takes the x
+      // range from the first and last points and searches hovers by bisection.
       scales: {
         x: {
           ...linearScale(palette, spec.x.label ?? scatter.x.replace(/^config:/, ''), scatter.log_x, spec.x.range),
