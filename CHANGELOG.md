@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.1](https://github.com/AadityaSalgarkar/md_render/compare/v0.14.0...v0.14.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **plots:** per-step scatter x axis spans every point, not the first and last ([6f8ecc7](https://github.com/AadityaSalgarkar/md_render/commit/6f8ecc75bc8b874655aa7d42ccd4f36c4e4de0c8))
+* **plots:** per-step scatter x axis spans every point, not the first and last ([562a30a](https://github.com/AadityaSalgarkar/md_render/commit/562a30a3f6ecc2f4f319ddd4a43046b04bc500ca))
+
 ## [0.14.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.13.0...v0.14.0) (2026-10-21)
 
 
