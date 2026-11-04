@@ -7,6 +7,7 @@ mod experiments;
 mod remote;
 mod server;
 mod state;
+mod themes;
 mod tikz;
 
 use std::collections::HashSet;
@@ -257,6 +258,35 @@ pub fn run() {
         std::process::exit(1);
       }
     }
+  }
+
+  // Theme packages (themes.rs): install into the config folder, list, remove.
+  match args.first().map(String::as_str) {
+    Some("--list-themes") => {
+      themes::print_list();
+      return;
+    }
+    Some(flag @ ("--install-theme" | "--remove-theme")) => {
+      if args.len() < 2 {
+        eprintln!("usage: md-render {} NAME...", flag);
+        std::process::exit(2);
+      }
+      for name in &args[1..] {
+        let done = if flag == "--install-theme" { themes::install(name) } else { themes::remove(name) };
+        match done {
+          Ok(path) if flag == "--install-theme" => {
+            println!("installed {} in {}; pick it from the theme menu (reload open pages)", name, path.display())
+          }
+          Ok(path) => println!("removed {} (moved to {})", name, path.display()),
+          Err(err) => {
+            eprintln!("md-render: {}", err);
+            std::process::exit(1);
+          }
+        }
+      }
+      return;
+    }
+    _ => {}
   }
 
   let mode = match cli::parse(&args) {

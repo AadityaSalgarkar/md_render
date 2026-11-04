@@ -46,8 +46,10 @@ config="${XDG_CONFIG_HOME:-$HOME/.config}"
 tikz_cache="$cache/md-render/tikz"
 remote_dir="${MDRENDER_REMOTE_DIR:-/tmp/md-render/remote}"
 saved_dir="${MDRENDER_SAVED_DIR:-$config/mdrender/temp_files}"
+# Installed theme packages (md-render --install-theme), shared with the host.
+themes_dir="$config/md-render/themes"
 trackio="${TRACKIO_DIR:-${HF_HOME:-$cache/huggingface}/trackio}"
-mkdir -p "$state/md-render/servers" "$tikz_cache" "$remote_dir" "$saved_dir"
+mkdir -p "$state/md-render/servers" "$tikz_cache" "$remote_dir" "$saved_dir" "$themes_dir"
 
 # ---- arguments --------------------------------------------------------------
 
@@ -123,7 +125,7 @@ flags=()
 build_flags() {
   local dir
   flags=(--init --user "$(id -u):$(id -g)")
-  for dir in "$state/md-render" "$tikz_cache" "$remote_dir" "$saved_dir"; do
+  for dir in "$state/md-render" "$tikz_cache" "$remote_dir" "$saved_dir" "$themes_dir"; do
     flags+=(--volume "$dir:$dir")
   done
   if [ -d "$trackio" ]; then flags+=(--volume "$trackio:$trackio:ro"); fi
@@ -131,6 +133,7 @@ build_flags() {
   flags+=(
     --env HOME="$HOME"
     --env XDG_STATE_HOME="$server_state"
+    --env XDG_CONFIG_HOME="$config"
     --env MDRENDER_TIKZ_CACHE="$tikz_cache"
     --env MDRENDER_REMOTE_DIR="$remote_dir"
     --env MDRENDER_SAVED_DIR="$saved_dir"
@@ -236,7 +239,7 @@ if running "$port"; then
   done < <(curl -fs "http://$address:$port/api/files" | grep -o '"path":"[^"]*"' | sed 's/^"path":"//; s/"$//' || true)
   while IFS= read -r have; do
     case "$have" in
-      "$state/md-render"|"$tikz_cache"|"$remote_dir"|"$saved_dir") ;;
+      "$state/md-render"|"$tikz_cache"|"$remote_dir"|"$saved_dir"|"$themes_dir") ;;
       /*) add_mount "$have" ;;
     esac
   done < <(container_mounts)

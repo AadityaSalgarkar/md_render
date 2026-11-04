@@ -226,6 +226,9 @@ mdrender — MD_RENDER markdown renderer
                                   (headless-friendly; ctrl-c stops it)
   mdrender --mcp                  MCP server over stdio, driving the served tabs
   mdrender --warm-tikz            fetch the TeX files TikZ diagrams need (once)
+  mdrender --list-themes          the built-in theme and the packages to install
+  mdrender --install-theme NAME   install a theme package (latex, claude, ...);
+                                  --remove-theme NAME takes it out again
 
 Serving: the default port is 9999, falling forward to the next free port when
 another program holds it. Each directory (or a file's parent directory)
@@ -363,6 +366,15 @@ main() {
     shift
     exec_mcp "$@"
   fi
+
+  # Theme packages: install, remove or list them (no documents involved).
+  case "${1:-}" in
+    --install-theme|--remove-theme|--list-themes)
+      local theme_bin
+      theme_bin="$(find_binary)" || not_installed
+      exec "$theme_bin" "$@"
+      ;;
+  esac
 
   # Fetch the TeX files TikZ diagrams need, ahead of the first diagram.
   if [ "${1:-}" = "--warm-tikz" ]; then
