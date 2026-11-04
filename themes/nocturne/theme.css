@@ -1,0 +1,17 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Spectral:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap');
+
+/* Nocturne — a soft wash of moonlight */
+[data-theme="nocturne"] body {
+  background-image: radial-gradient(
+    ellipse at 50% -5%,
+    rgba(196, 167, 231, 0.12),
+    transparent 55%
+  );
+  background-attachment: fixed;
+}
+
+[data-theme="nocturne"] .markdown-body h1::after {
+  content: '☾';
+  font-size: 0.95rem;
+  letter-spacing: 0;
+}

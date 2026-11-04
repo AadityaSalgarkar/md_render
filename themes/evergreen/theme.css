@@ -1,0 +1,15 @@
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&display=swap');
+
+/* Evergreen — moonlight filtering through a dark canopy */
+[data-theme="evergreen"] body {
+  background-image:
+    radial-gradient(circle at 16% 10%, rgba(143, 179, 107, 0.1), transparent 46%),
+    radial-gradient(circle at 84% 84%, rgba(216, 154, 91, 0.08), transparent 44%);
+  background-attachment: fixed;
+}
+
+[data-theme="evergreen"] .markdown-body h1::after {
+  content: '❧';
+  font-size: 1rem;
+  letter-spacing: 0;
+}

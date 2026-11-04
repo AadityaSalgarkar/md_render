@@ -4,9 +4,10 @@
 
 Four of MD_RENDER's themes, each in a light and a dark variant, follow Typora
 themes. MD_RENDER does not include their stylesheets. Its themes are its own
-CSS variables (`src/lib/themes.ts`) and rules (`src/index.css`), written to
-match the look of each theme's reading area: palette, faces, and
-typographic choices.
+CSS variables and rules, written to match the look of each theme's reading
+area: palette, faces, and typographic choices. Claudette is built in
+(`src/lib/themes.ts`, `src/index.css`); the other three are packages in
+`themes/` (each with a `NOTICE.md`).
 
 | MD_RENDER theme | After | Author | Licence |
 |---|---|---|---|
@@ -25,9 +26,10 @@ License.
 - **New Computer Modern** by Antonis Tsolomitis, under the GUST Font License
   (the LaTeX Project Public License 1.3c). The LaTeX theme uses modified
   subsets of five faces, renamed as the licence requests:
-  `src/assets/fonts/newcm/`, with its manifest in `README-mdr-newcm.txt` and
+  `themes/latex/fonts/`, with its manifest in `README-mdr-newcm.txt` and
   the licence in `GUST-FONT-LICENSE.txt`. The originals:
   https://ctan.org/pkg/newcomputermodern
-- Other theme faces (Lora, Inter, Source Serif 4, JetBrains Mono, Literata,
-  and the rest of the `index.html` list) load from Google Fonts, each under
-  its own open licence. KaTeX's fonts ship with the `katex` package (MIT).
+- Claudette's faces (Source Serif 4, Inter, JetBrains Mono) load from
+  Google Fonts through `index.html`, and installed theme packages load
+  theirs (Lora, Literata, Playfair Display and others) from Google Fonts
+  through their `theme.css`, each under its own open licence. KaTeX's fonts ship with the `katex` package (MIT).

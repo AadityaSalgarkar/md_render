@@ -1,0 +1,46 @@
+{
+  "themes": [
+    {
+      "id": "evergreen",
+      "name": "Evergreen",
+      "mode": "dark",
+      "blurb": "A forest after dark — moss and amber under a pine canopy.",
+      "vars": {
+        "--bg-primary": "#14201A",
+        "--bg-secondary": "#1B2A22",
+        "--bg-editor": "#0F1813",
+        "--bg-preview": "#14201A",
+        "--text-primary": "#DCE5D8",
+        "--text-secondary": "#97A691",
+        "--text-muted": "#647060",
+        "--accent": "#8FB36B",
+        "--accent-hover": "#A3C57F",
+        "--accent-secondary": "#D89A5B",
+        "--border": "#2A3A30",
+        "--border-strong": "#3A4D40",
+        "--code-bg": "#1B2A22",
+        "--selection": "rgba(143, 179, 107, 0.2)",
+        "--shadow-fold": "8px 0 24px -8px rgba(0, 0, 0, 0.6)",
+        "--math-display-bg": "var(--code-bg)",
+        "--math-display-padding": "1em 1.5em",
+        "--font-head": "\"Fraunces\", Georgia, serif",
+        "--font-body": "\"EB Garamond\", Georgia, serif",
+        "--font-mono": "\"JetBrains Mono\", \"Fira Code\", monospace",
+        "--code-keyword": "#8FB36B",
+        "--code-string": "#D89A5B",
+        "--code-number": "#C9B458",
+        "--code-comment": "#647060",
+        "--code-function": "#6FB3A0",
+        "--code-builtin": "#C57F5B",
+        "--chart-1": "#8FB36B",
+        "--chart-2": "#D89A5B",
+        "--chart-3": "#6FB3A0",
+        "--chart-4": "#C9B458",
+        "--chart-5": "#C57F5B",
+        "--chart-6": "#8FA8D8",
+        "--chart-7": "#D48FB3",
+        "--chart-8": "#97A691"
+      }
+    }
+  ]
+}

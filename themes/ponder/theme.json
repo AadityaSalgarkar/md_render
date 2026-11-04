@@ -1,0 +1,46 @@
+{
+  "themes": [
+    {
+      "id": "ponder",
+      "name": "Ponder",
+      "mode": "light",
+      "blurb": "System sans on white with a violet accent; code in Google Sans Code.",
+      "vars": {
+        "--bg-primary": "#FFFFFF",
+        "--bg-secondary": "#F5F5F5",
+        "--bg-editor": "#FFFFFF",
+        "--bg-preview": "#FFFFFF",
+        "--text-primary": "#1E1E1E",
+        "--text-secondary": "#6C6C6C",
+        "--text-muted": "#A5A5A5",
+        "--accent": "#8E7BD0",
+        "--accent-hover": "#5E42BC",
+        "--accent-secondary": "#5E42BC",
+        "--border": "#E6E6E6",
+        "--border-strong": "#C8C8C8",
+        "--code-bg": "#F5F5F5",
+        "--selection": "rgba(142, 123, 208, 0.2)",
+        "--shadow-fold": "8px 0 24px -8px rgba(0, 0, 0, 0.12)",
+        "--math-display-bg": "transparent",
+        "--math-display-padding": "0",
+        "--font-head": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Oxygen, Ubuntu, Cantarell, \"Open Sans\", \"Helvetica Neue\", sans-serif",
+        "--font-body": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Oxygen, Ubuntu, Cantarell, \"Open Sans\", \"Helvetica Neue\", sans-serif",
+        "--font-mono": "\"Google Sans Code\", \"JetBrains Mono\", \"Fira Code\", monospace",
+        "--code-keyword": "#C6A0F6",
+        "--code-string": "#A6DA95",
+        "--code-number": "#F5A97F",
+        "--code-comment": "#6E738D",
+        "--code-function": "#8AADF4",
+        "--code-builtin": "#91D7E3",
+        "--chart-1": "#5E42BC",
+        "--chart-2": "#D9653B",
+        "--chart-3": "#2E8B7A",
+        "--chart-4": "#C8A13A",
+        "--chart-5": "#B04A8C",
+        "--chart-6": "#3A7BC8",
+        "--chart-7": "#7A9A3A",
+        "--chart-8": "#8C8C8C"
+      }
+    }
+  ]
+}

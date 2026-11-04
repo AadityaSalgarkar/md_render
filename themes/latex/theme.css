@@ -1,0 +1,206 @@
+/* New Computer Modern for the LaTeX theme, bundled so it renders offline.
+   Subsets under the GUST license: see fonts/README-mdr-newcm.txt. */
+@font-face {
+  font-family: "MDR New Computer Modern";
+  src: url('fonts/mdr-newcm10-book.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "MDR New Computer Modern";
+  src: url('fonts/mdr-newcm10-bookitalic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "MDR New Computer Modern";
+  src: url('fonts/mdr-newcm10-bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "MDR New Computer Modern";
+  src: url('fonts/mdr-newcm10-bolditalic.woff2') format('woff2');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "MDR New Computer Modern Mono";
+  src: url('fonts/mdr-newcmmono10-book.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ---- The Typora-inspired families (THIRD_PARTY_NOTICES.md). None of them
+   ornaments its headings. ---- */
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body h1::after,
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body h2::after {
+  content: '';
+  display: none;
+}
+
+/* LaTeX — article.cls at 11pt: a narrow measure, indented paragraphs with no
+   gap, numbered sections (h1 is the title), booktabs rules. */
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body {
+  max-width: min(70%, 36em);
+  font-size: 1.15rem;
+  line-height: 1.45;
+  counter-reset: latex-section;
+  hyphens: auto;
+  text-align: justify;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body h1 {
+  text-align: center;
+  font-weight: 400;
+  font-size: 1.75rem;
+  padding-bottom: 0.25em;
+  counter-reset: latex-section;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body h1 + p {
+  text-align: center;
+  text-indent: 0;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body h2,
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body h3,
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body h4 {
+  font-weight: 700;
+  border-bottom: 0;
+  padding-bottom: 0;
+  text-align: left;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body h2 {
+  font-size: 1.35rem;
+  counter-increment: latex-section;
+  counter-reset: latex-subsection;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body h3 {
+  font-size: 1.15rem;
+  counter-increment: latex-subsection;
+  counter-reset: latex-subsubsection;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body h4 {
+  font-size: 1rem;
+  counter-increment: latex-subsubsection;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body h2::before {
+  content: counter(latex-section) '\2003';
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body h3::before {
+  content: counter(latex-section) '.' counter(latex-subsection) '\2003';
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body h4::before {
+  content: counter(latex-section) '.' counter(latex-subsection) '.' counter(latex-subsubsection) '\2003';
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body p {
+  margin: 0;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body p + p {
+  text-indent: 1.5em;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body :is(ul, ol, pre, table, blockquote, .katex-display, figure) {
+  margin-top: 0.7em;
+  margin-bottom: 0.7em;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body ul {
+  list-style-type: '•\2002';
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body ul ul {
+  list-style-type: '–\2002';
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body ul ul ul {
+  list-style-type: '∗\2002';
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body ol ol {
+  list-style-type: lower-alpha;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body a:not(.heading-anchor) {
+  text-decoration: none;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body blockquote {
+  border-left: 0;
+  background: none;
+  color: var(--text-primary);
+  font-style: normal;
+  padding: 0 2.5em;
+  text-align: justify;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body pre {
+  border: 0;
+  border-radius: 0;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body :not(pre) > code {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body table {
+  width: auto;
+  margin-left: auto;
+  margin-right: auto;
+  border-top: 1.5px solid var(--border-strong);
+  border-bottom: 1.5px solid var(--border-strong);
+  font-size: 1rem;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body th,
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body td {
+  border: 0;
+  padding: 0.3em 0.9em;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body th {
+  background: none;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  text-transform: none;
+  letter-spacing: 0;
+  border-bottom: 0.75px solid var(--border-strong);
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body tr:nth-child(even) {
+  background: none;
+}
+
+/* All four families draw a section break as a plain rule. */
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body .hr-ornament {
+  font-size: 0;
+  height: 0;
+  border-top: 1px solid var(--border-strong);
+  margin: 2em 0;
+}
+
+:is([data-theme="latex"], [data-theme="latex-dark"]) .markdown-body .hr-ornament {
+  width: 40%;
+  margin: 1.5em auto;
+  border-top-width: 0.75px;
+}

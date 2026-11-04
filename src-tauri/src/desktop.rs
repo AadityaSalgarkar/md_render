@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::{cli, experiments, export_path, remote, store, tikz, DocumentMeta, LAUNCH_FILE, LAUNCH_SOURCES};
+use crate::{cli, experiments, export_path, remote, store, themes, tikz, DocumentMeta, LAUNCH_FILE, LAUNCH_SOURCES};
 
 fn documents_as_meta() -> Vec<DocumentMeta> {
   store().lock().map(|s| s.as_meta()).unwrap_or_default()
@@ -128,6 +128,20 @@ async fn render_tikz(source: String) -> Result<tikz::Rendered, tikz::TikzError> 
     })?
 }
 
+/// The installed theme packages, as the server's `/api/themes` lists them.
+#[tauri::command]
+fn list_themes() -> Vec<themes::Installed> {
+  themes::installed()
+}
+
+/// An installed package's theme.css, for the frontend to inject; the fonts
+/// it refers to load through the asset protocol from the package folder.
+#[tauri::command]
+fn read_theme_css(package: String) -> Result<String, String> {
+  let bytes = themes::read_file(&package, "theme.css").ok_or_else(|| format!("no theme.css in {}", package))?;
+  String::from_utf8(bytes).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn get_launch_file() -> Option<String> {
   // First check the global state (set from command-line args)
@@ -168,7 +182,9 @@ pub fn run(documents: Vec<cli::Document>, sources: Vec<String>) {
       list_experiment_projects,
       list_experiment_runs,
       fetch_experiment_series,
-      render_tikz
+      render_tikz,
+      list_themes,
+      read_theme_css
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

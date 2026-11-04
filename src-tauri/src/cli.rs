@@ -109,6 +109,10 @@ Usage:
                                              does by default)
   md-render --warm-tikz                      fetch the TeX files TikZ diagrams need,
                                              so the first diagram renders quickly
+  md-render --list-themes                    the built-in theme and the packages
+                                             that can be installed
+  md-render --install-theme NAME...          install theme packages (latex, claude,
+                                             warm-paper, ...); --remove-theme undoes it
 
   A URL (https://...) is downloaded under /tmp/md-render/remote and opened
   from there; GitHub file pages are fetched as their raw content.

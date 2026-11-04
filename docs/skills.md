@@ -87,7 +87,7 @@ browser follows within about 3 seconds.
 | Tabs | `list_tabs {workspace?}`, `open_tab {path, workspace?}` (path may be a URL), `close_tab {id \| path}`, `refresh {workspace?}` |
 | Content | `read_document {id \| path}`, `write_document {path, content}` |
 | Review | `add_comment {path, passage, comment}`, `export_clean {path}` |
-| The reader's browser | `focus_tab {id \| path}`, `set_theme {theme, workspace?}` |
+| The reader's browser | `focus_tab {id \| path}`, `set_theme {theme, workspace?}`, `list_themes` |
 
 `port` is optional everywhere: with one live server it is inferred, with
 several the error lists them. `open_tab` puts a file back into the most
@@ -95,10 +95,13 @@ specific workspace that contains it (a closed `docs/guide/setup.md` returns
 to `docs` as `guide/setup.md`). `write_document` and `add_comment` only touch
 files that are open as tabs; an open browser re-reads a changed file within
 30 seconds unless it holds unsaved edits, and `focus_tab` makes it reload at
-once. `set_theme` accepts `warm-paper`, `midnight-ink`, `newsprint`,
-`forest`, `nocturne`, `evergreen`, `plain`, `ponder`, `paradigm`, and the
-light and dark pairs `claude`/`claude-dark`, `sonnet`/`sonnet-dark`,
-`claudette`/`claudette-dark`, `latex`/`latex-dark`.
+once. `set_theme` accepts the built-in `claudette` and `claudette-dark`
+plus the ids of installed theme packages; `list_themes` names them. Other
+themes (`warm-paper`, `midnight-ink`, `newsprint`, `forest`, `nocturne`,
+`evergreen`, `plain`, `ponder`, `paradigm`, and the light/dark pairs
+`claude`, `sonnet`, `latex`) need installing first: ask the user to run
+`mdrender --install-theme NAME`, or run it yourself when you have a shell
+(it writes to `~/.config/md-render/themes`), then reload the page.
 
 ### Without MCP: the HTTP API
 
@@ -126,9 +129,9 @@ Documents from MathJax sites render as they do there: `\(…\)` and `\[…\]`
 delimiters, bare `\begin{align}` / `\begin{equation}` blocks, AMS numbering
 (one number per equation or per align row; `\nonumber` suppresses),
 `\label{key}` and `\eqref{key}` all work. Use `$…$` / `$$…$$` and starred
-environments as usual when numbers are not wanted. The `plain`, `ponder`,
-`paradigm`, `claudette` and `latex` themes (light and dark) show display math
-on the page rather than in a panel, as those blogs and papers do.
+environments as usual when numbers are not wanted. Claudette, and the
+installable `plain`, `ponder`, `paradigm` and `latex` themes, show display
+math on the page rather than in a panel, as those blogs and papers do.
 
 ## Quiz blocks
 

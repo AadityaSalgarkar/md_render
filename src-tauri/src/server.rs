@@ -16,6 +16,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::cli::{Document, WorkspaceSpec};
 use crate::experiments::{self, DbSource, ExpError, SeriesRequest};
+use crate::themes;
 use crate::tikz;
 use crate::state::{self, ServerRecord};
 
@@ -614,6 +615,26 @@ async fn cached_tikz(axum::extract::Path(file): axum::extract::Path<String>) -> 
   }
 }
 
+/// The installed theme packages (themes.rs). Read-only and token-free, like
+/// the rest of what the page needs to render.
+async fn list_themes() -> Response {
+  Json(themes::installed()).into_response()
+}
+
+/// A file of an installed theme package: its theme.css and the fonts and
+/// images that refers to. No token, because `<link>` and `@font-face`
+/// requests cannot send one; themes.rs keeps the path inside the package.
+/// Not cached for long, so a reinstalled theme shows on the next reload.
+async fn theme_file(axum::extract::Path((package, file)): axum::extract::Path<(String, String)>) -> Response {
+  match themes::read_file(&package, &file) {
+    Some(bytes) => {
+      let mime = mime_guess::from_path(&file).first_or_octet_stream();
+      ([(header::CONTENT_TYPE, mime.as_ref().to_string()), (header::CACHE_CONTROL, "no-cache".to_string())], bytes).into_response()
+    }
+    None => (StatusCode::NOT_FOUND, "no such theme file").into_response(),
+  }
+}
+
 /// An experiments error as JSON with its status.
 fn experiment_error(err: ExpError) -> Response {
   let status = StatusCode::from_u16(err.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
@@ -1023,40 +1044,40 @@ fn escape_html(raw: &str) -> String {
 /// has to work over an SSH forward with nothing else reachable.
 const ROOT_STYLE: &str = r#"
 :root, [data-mode="light"] {
-  --bg-primary: #FAF7F2; --bg-secondary: #F5F1EA; --text-primary: #1A1A1A;
-  --text-secondary: #5C5C5C; --text-muted: #8A8A8A; --accent: #C9553D;
-  --accent-hover: #B84A34; --accent-secondary: #2D5A4A; --border: #E8E2D9;
-  --border-strong: #D4CCC0; --code-bg: #F0EDE6; --btn-bg: #FFFDF8;
+  --bg-primary: #FAF9F5; --bg-secondary: #F2F0E9; --text-primary: #141413;
+  --text-secondary: #52514E; --text-muted: #73726C; --accent: #C6613F;
+  --accent-hover: #D97757; --accent-secondary: #9C4A21; --border: #E3E1D7;
+  --border-strong: #D1CFC5; --code-bg: #F5F4ED; --btn-bg: #FFFFFF;
   --shadow: 0 1px 3px rgba(26,26,26,.08), 0 6px 24px -12px rgba(26,26,26,.18);
 }
 @media (prefers-color-scheme: dark) { :root { color-scheme: dark;
-  --bg-primary: #121418; --bg-secondary: #1A1D23; --text-primary: #E8E4DC;
-  --text-secondary: #9A968E; --text-muted: #6A665E; --accent: #E07A5F;
-  --accent-hover: #E8907A; --accent-secondary: #81B29A; --border: #2A2D35;
-  --border-strong: #3A3D45; --code-bg: #1A1D23; --btn-bg: #1A1D23;
+  --bg-primary: #262625; --bg-secondary: #2C2C2A; --text-primary: #F2F0E9;
+  --text-secondary: #D6D3C8; --text-muted: #9C9A90; --accent: #E6906F;
+  --accent-hover: #F0A88C; --accent-secondary: #E5B07E; --border: #3A3933;
+  --border-strong: #4A4943; --code-bg: #34332E; --btn-bg: #2A2A28;
   --shadow: 0 1px 3px rgba(0,0,0,.4), 0 6px 24px -12px rgba(0,0,0,.6);
 } }
 [data-mode="dark"] { color-scheme: dark;
-  --bg-primary: #121418; --bg-secondary: #1A1D23; --text-primary: #E8E4DC;
-  --text-secondary: #9A968E; --text-muted: #6A665E; --accent: #E07A5F;
-  --accent-hover: #E8907A; --accent-secondary: #81B29A; --border: #2A2D35;
-  --border-strong: #3A3D45; --code-bg: #1A1D23; --btn-bg: #1A1D23;
+  --bg-primary: #262625; --bg-secondary: #2C2C2A; --text-primary: #F2F0E9;
+  --text-secondary: #D6D3C8; --text-muted: #9C9A90; --accent: #E6906F;
+  --accent-hover: #F0A88C; --accent-secondary: #E5B07E; --border: #3A3933;
+  --border-strong: #4A4943; --code-bg: #34332E; --btn-bg: #2A2A28;
   --shadow: 0 1px 3px rgba(0,0,0,.4), 0 6px 24px -12px rgba(0,0,0,.6);
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: "Source Serif 4", "Iowan Old Style", Georgia, serif; font-size: 1.0625rem;
   line-height: 1.72; color: var(--text-primary); background: var(--bg-primary); }
 main { max-width: 46rem; margin: 0 auto; padding: 4.5rem 1.5rem 5rem; }
-.eyebrow, .mono, .dir, .count { font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace; }
+.eyebrow, .mono, .dir, .count { font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace; }
 .eyebrow { font-size: .72rem; letter-spacing: .22em; text-transform: uppercase; color: var(--text-muted); }
-h1 { font-family: "Playfair Display", "Iowan Old Style", Georgia, serif; font-weight: 500;
+h1 { font-family: "Source Serif 4", "Iowan Old Style", Georgia, serif; font-weight: 400;
   font-size: 2.6rem; line-height: 1.1; letter-spacing: -.01em; margin: .5rem 0 .3rem; }
 .ornament { color: var(--accent); font-size: .8rem; letter-spacing: .5em; margin: .8rem 0 1.4rem; }
 .lede { color: var(--text-secondary); margin-bottom: 2.4rem; }
 .ws { border: 1px solid var(--border); background: var(--btn-bg); box-shadow: var(--shadow);
   border-radius: 6px; padding: 1.2rem 1.4rem 1rem; margin-bottom: 1.2rem; }
 .ws header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-.ws h2 { font-family: "Playfair Display", "Iowan Old Style", Georgia, serif; font-weight: 500;
+.ws h2 { font-family: "Source Serif 4", "Iowan Old Style", Georgia, serif; font-weight: 400;
   font-size: 1.45rem; line-height: 1.2; }
 .ws h2 a { color: var(--text-primary); text-decoration: none; border-bottom: 2px solid var(--border-strong); }
 .ws h2 a:hover { color: var(--accent); border-bottom-color: var(--accent); }
@@ -1064,26 +1085,25 @@ h1 { font-family: "Playfair Display", "Iowan Old Style", Georgia, serif; font-we
 .dir { display: block; font-size: .78rem; color: var(--text-muted); margin: .25rem 0 .8rem;
   overflow-wrap: anywhere; }
 .tabs { list-style: none; display: flex; flex-wrap: wrap; gap: .4rem .5rem; }
-.tabs a { display: inline-block; font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+.tabs a { display: inline-block; font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
   font-size: .8rem; color: var(--text-secondary); text-decoration: none;
   background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: .12rem .55rem; }
 .tabs a:hover { color: var(--accent); border-color: var(--accent); }
 .empty { color: var(--text-muted); font-style: italic; font-size: .92rem; }
 footer { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--border);
   color: var(--text-muted); font-size: .88rem; }
-footer code { font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace; font-size: .8rem;
+footer code { font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace; font-size: .8rem;
   background: var(--code-bg); padding: .1rem .35rem; border-radius: 3px; }
 a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 "#;
 
-/// Picks light or dark from the theme the app stored in this browser, so
-/// the listing matches the pages it links to. Dark themes are the three
-/// named here and every `*-dark` id (src/test/themes.test.ts checks this
-/// against the theme registry).
+/// Picks light or dark from the mode of the theme the app stored in this
+/// browser (useTheme keeps it beside the theme id), so the listing matches
+/// the pages it links to, installed themes included.
 const ROOT_SCRIPT: &str = r#"
-(function(){try{var t=localStorage.getItem('md-render-theme');if(!t)return;
-var dark=t==='midnight-ink'||t==='nocturne'||t==='evergreen'||/-dark$/.test(t);
-document.documentElement.setAttribute('data-mode',dark?'dark':'light');}catch(e){}})();
+(function(){try{var m=localStorage.getItem('md-render-theme-mode');
+if(m!=='dark'&&m!=='light')return;
+document.documentElement.setAttribute('data-mode',m);}catch(e){}})();
 "#;
 
 /// The root listing as HTML: every workspace with its directory and tabs.
@@ -1234,6 +1254,8 @@ pub fn router(state: Shared) -> Router {
     .route("/api/shutdown", post(shutdown))
     .route("/api/tikz", post(render_tikz))
     .route("/api/tikz/{file}", get(cached_tikz))
+    .route("/api/themes", get(list_themes))
+    .route("/api/themes/{package}/{*file}", get(theme_file))
     .route("/api/experiments/projects", get(experiment_projects))
     .route("/api/experiments/runs", get(experiment_runs))
     .route(

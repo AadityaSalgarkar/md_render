@@ -1,0 +1,46 @@
+{
+  "themes": [
+    {
+      "id": "forest",
+      "name": "Forest",
+      "mode": "light",
+      "blurb": "Moss and bark on a sun-warmed sage page.",
+      "vars": {
+        "--bg-primary": "#EDEBDD",
+        "--bg-secondary": "#E3E0CE",
+        "--bg-editor": "#F5F3E8",
+        "--bg-preview": "#EDEBDD",
+        "--text-primary": "#232B1F",
+        "--text-secondary": "#4F5A45",
+        "--text-muted": "#7E8870",
+        "--accent": "#5C7A4A",
+        "--accent-hover": "#4C6A3C",
+        "--accent-secondary": "#B05E2E",
+        "--border": "#D2CFBB",
+        "--border-strong": "#B4B098",
+        "--code-bg": "#E4E1CF",
+        "--selection": "rgba(92, 122, 74, 0.16)",
+        "--shadow-fold": "8px 0 24px -8px rgba(40, 50, 30, 0.18)",
+        "--math-display-bg": "var(--code-bg)",
+        "--math-display-padding": "1em 1.5em",
+        "--font-head": "\"Fraunces\", Georgia, serif",
+        "--font-body": "\"EB Garamond\", Georgia, serif",
+        "--font-mono": "\"JetBrains Mono\", \"Fira Code\", monospace",
+        "--code-keyword": "#5C7A4A",
+        "--code-string": "#B05E2E",
+        "--code-number": "#8A6A1E",
+        "--code-comment": "#7E8870",
+        "--code-function": "#3E6A5E",
+        "--code-builtin": "#7A4A7A",
+        "--chart-1": "#5C7A4A",
+        "--chart-2": "#B05E2E",
+        "--chart-3": "#3E6A5E",
+        "--chart-4": "#8A6A1E",
+        "--chart-5": "#7A4A7A",
+        "--chart-6": "#4A6A8A",
+        "--chart-7": "#A33E3E",
+        "--chart-8": "#7E7A6A"
+      }
+    }
+  ]
+}
