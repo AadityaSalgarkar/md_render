@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.15.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.14.1...v0.15.0) (2026-11-04)
+
+
+### Features
+
+* **themes:** Claudette built in, every other theme an installable package ([cc26d34](https://github.com/AadityaSalgarkar/md_render/commit/cc26d34328538d2a4fddc294f598bb028bfad3fb))
+* **themes:** Claudette is the only built-in theme; installed themes load at runtime ([a4337d7](https://github.com/AadityaSalgarkar/md_render/commit/a4337d7a4ca51ee9fcabd4b0b6b6f14cbf1bd716))
+* **themes:** install, list and remove theme packages ([cf415f9](https://github.com/AadityaSalgarkar/md_render/commit/cf415f9af88af7f462d3445e01f4da0f14705b13))
+* **themes:** theme packages in ./themes ([5dc2cf4](https://github.com/AadityaSalgarkar/md_render/commit/5dc2cf4f158c204f6f665eb7052617b785697093))
+
 ## [0.14.1](https://github.com/AadityaSalgarkar/md_render/compare/v0.14.0...v0.14.1) (2026-10-24)
 
 
