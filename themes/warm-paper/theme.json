@@ -1,0 +1,46 @@
+{
+  "themes": [
+    {
+      "id": "warm-paper",
+      "name": "Warm Paper",
+      "mode": "light",
+      "blurb": "Premium book typography on aged cream stock.",
+      "vars": {
+        "--bg-primary": "#FAF7F2",
+        "--bg-secondary": "#F5F1EA",
+        "--bg-editor": "#FFFDF8",
+        "--bg-preview": "#FAF7F2",
+        "--text-primary": "#1A1A1A",
+        "--text-secondary": "#5C5C5C",
+        "--text-muted": "#8A8A8A",
+        "--accent": "#C9553D",
+        "--accent-hover": "#B84A34",
+        "--accent-secondary": "#2D5A4A",
+        "--border": "#E8E2D9",
+        "--border-strong": "#D4CCC0",
+        "--code-bg": "#F0EDE6",
+        "--selection": "rgba(201, 85, 61, 0.15)",
+        "--shadow-fold": "8px 0 24px -8px rgba(0, 0, 0, 0.12)",
+        "--math-display-bg": "var(--code-bg)",
+        "--math-display-padding": "1em 1.5em",
+        "--font-head": "\"Playfair Display\", Georgia, serif",
+        "--font-body": "\"Source Serif 4\", Georgia, serif",
+        "--font-mono": "\"IBM Plex Mono\", \"Fira Code\", monospace",
+        "--code-keyword": "#C9553D",
+        "--code-string": "#2D5A4A",
+        "--code-number": "#B07D48",
+        "--code-comment": "#8A8A8A",
+        "--code-function": "#5A7A9A",
+        "--code-builtin": "#8959A8",
+        "--chart-1": "#C9553D",
+        "--chart-2": "#2D5A4A",
+        "--chart-3": "#5A7A9A",
+        "--chart-4": "#B07D48",
+        "--chart-5": "#8959A8",
+        "--chart-6": "#6B8E4E",
+        "--chart-7": "#A23B5E",
+        "--chart-8": "#7A7A7A"
+      }
+    }
+  ]
+}

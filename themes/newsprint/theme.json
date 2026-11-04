@@ -1,0 +1,46 @@
+{
+  "themes": [
+    {
+      "id": "newsprint",
+      "name": "Newsprint",
+      "mode": "light",
+      "blurb": "High-contrast editorial broadsheet, set in red and ink.",
+      "vars": {
+        "--bg-primary": "#F4F2EC",
+        "--bg-secondary": "#EBE8DF",
+        "--bg-editor": "#FBFAF6",
+        "--bg-preview": "#F4F2EC",
+        "--text-primary": "#16130E",
+        "--text-secondary": "#4A4640",
+        "--text-muted": "#847E72",
+        "--accent": "#A8281E",
+        "--accent-hover": "#8E1F17",
+        "--accent-secondary": "#2B2622",
+        "--border": "#D6D1C4",
+        "--border-strong": "#A8A290",
+        "--code-bg": "#EAE7DC",
+        "--selection": "rgba(168, 40, 30, 0.14)",
+        "--shadow-fold": "8px 0 24px -8px rgba(0, 0, 0, 0.16)",
+        "--math-display-bg": "var(--code-bg)",
+        "--math-display-padding": "1em 1.5em",
+        "--font-head": "\"Playfair Display\", Georgia, serif",
+        "--font-body": "\"Spectral\", Georgia, serif",
+        "--font-mono": "\"IBM Plex Mono\", \"Fira Code\", monospace",
+        "--code-keyword": "#A8281E",
+        "--code-string": "#3C5A2E",
+        "--code-number": "#8A5A1E",
+        "--code-comment": "#847E72",
+        "--code-function": "#2A4C6E",
+        "--code-builtin": "#6E3A6E",
+        "--chart-1": "#A8281E",
+        "--chart-2": "#2A4C6E",
+        "--chart-3": "#3C5A2E",
+        "--chart-4": "#8A5A1E",
+        "--chart-5": "#6E3A6E",
+        "--chart-6": "#4F7F8A",
+        "--chart-7": "#2B2622",
+        "--chart-8": "#8C8C8C"
+      }
+    }
+  ]
+}

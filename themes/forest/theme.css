@@ -1,0 +1,15 @@
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&display=swap');
+
+/* Forest — soft dappled light on the page */
+[data-theme="forest"] body {
+  background-image:
+    radial-gradient(circle at 18% 12%, rgba(92, 122, 74, 0.07), transparent 45%),
+    radial-gradient(circle at 82% 78%, rgba(176, 94, 46, 0.06), transparent 42%);
+  background-attachment: fixed;
+}
+
+[data-theme="forest"] .markdown-body h1::after {
+  content: '❧';
+  font-size: 1rem;
+  letter-spacing: 0;
+}
