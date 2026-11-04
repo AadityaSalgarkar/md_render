@@ -38,9 +38,9 @@ function readStoredToc(): boolean {
 }
 
 export default function App() {
-  const { themeId, setTheme, themes } = useTheme()
   // Desktop unless the server injected its marker into the page.
   const [backend] = useState<Backend>(() => detectBackend())
+  const { themeId, setTheme, themes } = useTheme(backend.listThemes)
   const [documents, setDocuments] = useState<DocumentMeta[]>([])
   const [activeDocId, setActiveDocId] = useState<string | null>(null)
   const [documentsChecked, setDocumentsChecked] = useState(false)

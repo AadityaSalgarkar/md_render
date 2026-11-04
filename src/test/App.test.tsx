@@ -73,9 +73,9 @@ describe('App', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: /choose theme/i }))
 
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /nocturne/i }))
+    fireEvent.click(document.querySelector('[data-theme-id="claudette-dark"]')!)
 
-    expect(document.documentElement.dataset.theme).toBe('nocturne')
+    expect(document.documentElement.dataset.theme).toBe('claudette-dark')
   })
 
   it('has a resizable divider when editor is shown', () => {

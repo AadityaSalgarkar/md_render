@@ -10,6 +10,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -112,6 +113,12 @@ beforeAll(async () => {
   copyFileSync(fixture, path.join(work, 'trackio', 'demo.db'))
   copyFileSync(fixture, path.join(project, 'runs.db'))
 
+  // Two theme packages installed into a private config directory.
+  const configDir = path.join(work, 'config')
+  execFileSync(binary, ['--install-theme', 'nocturne', 'forest'], {
+    env: { ...process.env, XDG_CONFIG_HOME: configDir },
+  })
+
   client = new Client({ name: 'mcp-test', version: '0' })
   await client.connect(
     new StdioClientTransport({
@@ -120,6 +127,7 @@ beforeAll(async () => {
       env: {
         ...process.env,
         XDG_STATE_HOME: stateDir,
+        XDG_CONFIG_HOME: configDir,
         MDRENDER_BIN: binary,
         TRACKIO_DIR: path.join(work, 'trackio'),
       } as Record<string, string>,
@@ -421,11 +429,23 @@ describe.skipIf(!binary || !bundle)('mdrender MCP server', () => {
     expect(ambiguous.text).toContain('pass workspace')
   })
 
-  it('set_theme rejects an unknown theme id', async () => {
-    const result = await call('set_theme', { theme: 'neon', workspace: 'project' })
+  it('set_theme rejects a theme that is neither built in nor installed', async () => {
+    const result = await call('set_theme', { theme: 'warm-paper', workspace: 'project', port: portA })
     expect(result.ok).toBe(false)
+    expect(result.text).toContain('claudette-dark')
     expect(result.text).toContain('nocturne')
-    expect(result.text).toContain('warm-paper')
+    expect(result.text).toContain('--install-theme')
+  })
+
+  it('list_themes gives the built-in pair and the installed packages', async () => {
+    const listed = await expectOk('list_themes', { port: portA })
+    const listedThemes = listed.themes as Array<{ id: string; package: string }>
+    expect(listedThemes.map((t) => `${t.package}:${t.id}`)).toEqual([
+      'built-in:claudette',
+      'built-in:claudette-dark',
+      'forest:forest',
+      'nocturne:nocturne',
+    ])
   })
 
   it('list_projects and list_runs describe trackio databases for plot blocks', async () => {

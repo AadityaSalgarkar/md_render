@@ -9,6 +9,7 @@ import {
 } from './plots/types'
 import { serverExperiments } from './plots/http'
 import { TikzError, serverTikz, type TikzApi, type TikzRendered } from './tikz'
+import { checkPackages, rewriteThemeUrls, type LoadedPackage, type RawPackage } from './themePackages'
 
 export { serverExperiments }
 
@@ -67,6 +68,8 @@ export interface Backend {
   experiments: ExperimentsApi
   /** Compiles TikZ blocks to SVG. */
   tikz: TikzApi
+  /** Installed theme packages (themes/README.md), checked, with their stylesheets. */
+  listThemes(): Promise<LoadedPackage[]>
 }
 
 export function isTauri(): boolean {
@@ -140,6 +143,16 @@ export function desktopBackend(): Backend {
     getLaunchFile: () => invoke<string | null>('get_launch_file'),
     getViewState: async () => null,
     experiments: desktopExperiments(),
+    listThemes: async () => {
+      if (!isTauri()) return []
+      const raw = await invoke<RawPackage[]>('list_themes')
+      return checkPackages(raw, (pkg) => ({
+        css: async () => {
+          const css = await invoke<string>('read_theme_css', { package: pkg.package })
+          return rewriteThemeUrls(css, (relative) => convertFileSrc(`${pkg.dir}/${relative}`))
+        },
+      }))
+    },
     tikz: {
       render: async (source) => {
         if (!isTauri()) {
@@ -311,6 +324,14 @@ export function serverBackend(base = ''): Backend {
     },
     experiments: serverExperiments(base),
     tikz: serverTikz(base, serverToken),
+    listThemes: async () => {
+      const response = await fetch(`${base}/api/themes`)
+      if (!response.ok) throw new Error(`could not list themes (${response.status})`)
+      const raw = (await response.json()) as RawPackage[]
+      return checkPackages(raw, (pkg) => ({
+        href: `${base}/api/themes/${encodeURIComponent(pkg.package)}/theme.css`,
+      }))
+    },
   }
 }
 

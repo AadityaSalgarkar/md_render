@@ -104,13 +104,13 @@ describe('view state pushed by the server', () => {
 
   it('switches theme when the view state carries one', async () => {
     await renderServed()
-    expect(document.documentElement.dataset.theme).not.toBe('nocturne')
+    expect(document.documentElement.dataset.theme).not.toBe('claudette-dark')
 
-    view = { doc: null, theme: 'nocturne', seq: 1 }
+    view = { doc: null, theme: 'claudette-dark', seq: 1 }
     await nextPoll()
 
     await waitFor(() => {
-      expect(document.documentElement.dataset.theme).toBe('nocturne')
+      expect(document.documentElement.dataset.theme).toBe('claudette-dark')
     })
     // The tab was left alone.
     expect(screen.getByRole('tab', { name: 'alpha.md' })).toHaveAttribute('aria-selected', 'true')

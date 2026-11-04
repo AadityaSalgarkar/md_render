@@ -2,11 +2,15 @@ import { useState } from 'react'
 import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react'
 import { ThemePicker } from '../components/ThemePicker'
-import { themes, themeSwatch } from '../lib/themes'
+import { themeSwatch } from '../lib/themes'
+import { allThemes } from './themeFixtures'
 
-// The real picker over the real theme registry, holding its own selection
+// The built-ins plus every package in ./themes, as if all were installed.
+const themes = allThemes()
+
+// The real picker over the real themes, holding its own selection
 // the way App does.
-function Harness({ initial = 'warm-paper' }: { initial?: string }) {
+function Harness({ initial = 'claudette' }: { initial?: string }) {
   const [active, setActive] = useState(initial)
   return (
     <>
@@ -67,7 +71,8 @@ describe('ThemePicker', () => {
     ].map((t) => t.id)
     const focused = () => (document.activeElement as HTMLElement).dataset.themeId
 
-    expect(focused()).toBe('warm-paper')
+    expect(focused()).toBe('claudette')
+    expect(ids[0]).toBe('claudette')
     fireEvent.keyDown(menu, { key: 'ArrowDown' })
     expect(focused()).toBe(ids[1])
     fireEvent.keyDown(menu, { key: 'End' })

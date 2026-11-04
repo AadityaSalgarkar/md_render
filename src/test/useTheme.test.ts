@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import { useTheme } from '../hooks/useTheme'
+import { bundledPackages } from './themeFixtures'
+
+// The packages in ./themes stand in for the ones a user installed.
+const installed = async () => bundledPackages()
 
 describe('useTheme', () => {
   beforeEach(() => {
@@ -10,58 +14,69 @@ describe('useTheme', () => {
     document.documentElement.removeAttribute('style')
   })
 
-  it('defaults to the warm-paper theme', () => {
+  it('defaults to Claudette', () => {
     const { result } = renderHook(() => useTheme())
-    expect(result.current.themeId).toBe('warm-paper')
+    expect(result.current.themeId).toBe('claudette')
   })
 
-  it('applies the theme to the document element', () => {
+  it('applies the theme to the document element and stores its mode', () => {
     renderHook(() => useTheme())
-    expect(document.documentElement.dataset.theme).toBe('warm-paper')
+    expect(document.documentElement.dataset.theme).toBe('claudette')
     expect(document.documentElement.dataset.mode).toBe('light')
     expect(document.documentElement.style.getPropertyValue('--accent')).not.toBe('')
+    expect(localStorage.getItem('md-render-theme-mode')).toBe('light')
   })
 
-  it('switches to another registered theme via setTheme', () => {
+  it('switches between the built-in themes and persists the choice', () => {
     const { result } = renderHook(() => useTheme())
-
-    act(() => {
-      result.current.setTheme('nocturne')
-    })
-
-    expect(result.current.themeId).toBe('nocturne')
-    expect(document.documentElement.dataset.theme).toBe('nocturne')
+    act(() => result.current.setTheme('claudette-dark'))
+    expect(result.current.themeId).toBe('claudette-dark')
     expect(document.documentElement.dataset.mode).toBe('dark')
+    expect(localStorage.getItem('md-render-theme')).toBe('claudette-dark')
+    expect(localStorage.getItem('md-render-theme-mode')).toBe('dark')
   })
 
   it('ignores unknown theme ids', () => {
     const { result } = renderHook(() => useTheme())
-
-    act(() => {
-      result.current.setTheme('does-not-exist')
-    })
-
-    expect(result.current.themeId).toBe('warm-paper')
+    act(() => result.current.setTheme('does-not-exist'))
+    expect(result.current.themeId).toBe('claudette')
   })
 
-  it('persists the selected theme to localStorage', () => {
-    const { result } = renderHook(() => useTheme())
-
-    act(() => {
-      result.current.setTheme('forest')
-    })
-
-    expect(localStorage.getItem('md-render-theme')).toBe('forest')
+  it('adds installed themes to the list and switches to them', async () => {
+    const { result } = renderHook(() => useTheme(installed))
+    await waitFor(() => expect(result.current.themes.length).toBe(17))
+    act(() => result.current.setTheme('nocturne'))
+    expect(result.current.themeId).toBe('nocturne')
+    expect(document.documentElement.dataset.theme).toBe('nocturne')
+    expect(document.documentElement.dataset.mode).toBe('dark')
+    expect(localStorage.getItem('md-render-theme')).toBe('nocturne')
   })
 
-  it('loads a stored theme on mount', () => {
-    localStorage.setItem('md-render-theme', 'midnight-ink')
-    const { result } = renderHook(() => useTheme())
-    expect(result.current.themeId).toBe('midnight-ink')
+  it('keeps a stored installed theme while the packages load, then applies it', async () => {
+    localStorage.setItem('md-render-theme', 'latex')
+    const { result } = renderHook(() => useTheme(installed))
+    // Claudette shows meanwhile, and the stored choice is not overwritten.
+    expect(localStorage.getItem('md-render-theme')).toBe('latex')
+    await waitFor(() => expect(result.current.themeId).toBe('latex'))
+    expect(document.documentElement.dataset.theme).toBe('latex')
   })
 
-  it('exposes the full theme list', () => {
+  it('applies an installed theme asked for before the packages arrive', async () => {
+    const { result } = renderHook(() => useTheme(installed))
+    act(() => result.current.setTheme('paradigm'))
+    await waitFor(() => expect(result.current.themeId).toBe('paradigm'))
+  })
+
+  it('falls back to Claudette when the stored theme is no longer installed', async () => {
+    localStorage.setItem('md-render-theme', 'latex')
+    const { result } = renderHook(() => useTheme(async () => []))
+    await waitFor(() => expect(localStorage.getItem('md-render-theme')).toBe('claudette'))
+    expect(result.current.themeId).toBe('claudette')
+  })
+
+  it('loads a stored built-in theme on mount', () => {
+    localStorage.setItem('md-render-theme', 'claudette-dark')
     const { result } = renderHook(() => useTheme())
-    expect(result.current.themes.length).toBeGreaterThanOrEqual(5)
+    expect(result.current.themeId).toBe('claudette-dark')
   })
 })

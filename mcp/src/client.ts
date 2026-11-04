@@ -191,6 +191,14 @@ export class MdRenderClient {
     )
   }
 
+  /** Installed theme packages (themes/README.md), as the server lists them. */
+  listThemes() {
+    return this.json<Array<{ package: string; themes: Array<{ id?: string; name?: string; mode?: string }> }>>(
+      'GET',
+      '/api/themes',
+    )
+  }
+
   getView(workspace: string) {
     return this.json<ViewState>('GET', `/api/view?ws=${encodeURIComponent(workspace)}`)
   }

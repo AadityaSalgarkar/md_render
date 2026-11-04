@@ -16,13 +16,13 @@ describe('code block language', () => {
   })
 })
 
-describe('bundled New Computer Modern', () => {
+describe('New Computer Modern in the LaTeX theme package', () => {
   const REPO = path.resolve(__dirname, '../..')
-  const fonts = path.join(REPO, 'src/assets/fonts/newcm')
+  const fonts = path.join(REPO, 'themes/latex/fonts')
 
-  it('ships every face index.css loads, with its licence and manifest', () => {
-    const css = readFileSync(path.join(REPO, 'src/index.css'), 'utf8')
-    const urls = [...css.matchAll(/url\('\.\/assets\/fonts\/newcm\/([^']+)'\)/g)].map((m) => m[1])
+  it('ships every face its theme.css loads, with its licence and manifest', () => {
+    const css = readFileSync(path.join(REPO, 'themes/latex/theme.css'), 'utf8')
+    const urls = [...css.matchAll(/url\('fonts\/([^']+)'\)/g)].map((m) => m[1])
     expect(urls).toHaveLength(5)
     for (const file of urls) {
       expect(existsSync(path.join(fonts, file)), file).toBe(true)

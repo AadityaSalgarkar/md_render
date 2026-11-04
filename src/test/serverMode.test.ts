@@ -91,12 +91,18 @@ beforeAll(async () => {
   port = pickPort()
   origin = `http://127.0.0.1:${port}`
 
+  // The LaTeX theme package, installed into a private config directory.
+  execFileSync(binary, ['--install-theme', 'latex'], {
+    env: { ...process.env, XDG_CONFIG_HOME: path.join(work, 'config') },
+  })
+
   // One explicit file plus a directory, exercising both argument kinds.
   server = spawn(binary, ['--port', String(port), firstDoc, nested], {
     stdio: 'ignore',
     env: {
       ...process.env,
       XDG_STATE_HOME: path.join(work, 'state'),
+      XDG_CONFIG_HOME: path.join(work, 'config'),
       // Edits to remote documents are mirrored here rather than into the
       // developer's real config directory.
       MDRENDER_SAVED_DIR: path.join(work, 'saved'),
@@ -601,6 +607,25 @@ describe.skipIf(!binary)('md-render --port', () => {
       theme: 'nocturne',
       seq: 2,
     })
+  })
+
+  it('lists installed theme packages and serves their files, and nothing outside them', async () => {
+    const packages = await serverBackend(origin).listThemes()
+    expect(packages.map((p) => [p.package, p.themes.map((t) => t.id)])).toEqual([['latex', ['latex', 'latex-dark']]])
+    expect(packages[0].style).toEqual({ href: `${origin}/api/themes/latex/theme.css` })
+
+    const css = await fetch(`${origin}/api/themes/latex/theme.css`)
+    expect(css.status).toBe(200)
+    expect(css.headers.get('content-type')).toContain('text/css')
+    expect(await css.text()).toContain("url('fonts/mdr-newcm10-book.woff2')")
+
+    const font = await fetch(`${origin}/api/themes/latex/fonts/mdr-newcm10-book.woff2`)
+    expect(font.status).toBe(200)
+    expect(Buffer.from(await font.arrayBuffer()).subarray(0, 4).toString('latin1')).toBe('wOF2')
+
+    for (const bad of ['latex/..%2F..%2Fstate', 'latex/%2E%2E/theme.json', 'nope/theme.css', 'latex/.hidden']) {
+      expect((await fetch(`${origin}/api/themes/${bad}`)).status, bad).toBe(404)
+    }
   })
 
   it('shuts down on request and removes its state file', async () => {

@@ -7,6 +7,7 @@ import {
   THEME_VARS,
   getTheme,
   resolveTheme,
+  validateTheme,
   DEFAULT_LIGHT,
   DEFAULT_DARK,
 } from '../lib/themes'
@@ -27,13 +28,13 @@ function contrast(a: string, b: string): number {
 }
 
 describe('theme registry', () => {
-  it('registers at least five themes', () => {
-    expect(themes.length).toBeGreaterThanOrEqual(5)
-  })
-
-  it('gives every theme a unique id', () => {
-    const ids = themes.map((t) => t.id)
-    expect(new Set(ids).size).toBe(ids.length)
+  it('builds in only Claudette, light and dark', () => {
+    expect(themes.map((t) => [t.id, t.mode])).toEqual([
+      ['claudette', 'light'],
+      ['claudette-dark', 'dark'],
+    ])
+    expect(DEFAULT_LIGHT).toBe('claudette')
+    expect(DEFAULT_DARK).toBe('claudette-dark')
   })
 
   it('defines every required CSS variable for every theme', () => {
@@ -41,122 +42,95 @@ describe('theme registry', () => {
       for (const name of THEME_VARS) {
         expect(theme.vars[name], `${theme.id} is missing ${name}`).toBeTruthy()
       }
+      expect(validateTheme(theme)).toEqual(theme)
     }
   })
 
-  it('gives every theme a valid mode and a swatch of page, text and accent', () => {
+  it('gives every theme a swatch of page, text and accent', () => {
     for (const theme of themes) {
-      expect(['light', 'dark']).toContain(theme.mode)
       expect(themeSwatch(theme)).toEqual([
         theme.vars['--bg-primary'],
         theme.vars['--text-primary'],
         theme.vars['--accent'],
       ])
-      expect(theme.name.length).toBeGreaterThan(0)
     }
   })
 
-  it('keeps body text readable: at least 4.5:1 against the page in every theme', () => {
+  it('keeps body text readable: at least 4.5:1 against the page', () => {
     for (const theme of themes) {
       const ratio = contrast(theme.vars['--text-primary'], theme.vars['--bg-primary'])
       expect(ratio, `${theme.id}: ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(4.5)
     }
   })
 
-  it('pairs each Typora-inspired theme with a dark variant of the same name and fonts', () => {
-    for (const id of ['claude', 'sonnet', 'claudette', 'latex']) {
-      const light = getTheme(id)!
-      const dark = getTheme(`${id}-dark`)!
-      expect(light.mode).toBe('light')
-      expect(dark.mode).toBe('dark')
-      expect(dark.name).toBe(light.name)
-      for (const font of ['--font-head', '--font-body', '--font-mono'] as const) {
-        expect(dark.vars[font]).toBe(light.vars[font])
-      }
+  it('pairs the light and dark Claudette with the same name and fonts', () => {
+    const light = getTheme('claudette')!
+    const dark = getTheme('claudette-dark')!
+    expect(dark.name).toBe(light.name)
+    for (const font of ['--font-head', '--font-body', '--font-mono'] as const) {
+      expect(dark.vars[font]).toBe(light.vars[font])
     }
   })
 
-  it('sets the LaTeX theme in the bundled New Computer Modern, display math on the page', () => {
-    for (const id of ['latex', 'latex-dark']) {
-      const latex = getTheme(id)!
-      expect(latex.vars['--font-body']).toMatch(/^"MDR New Computer Modern"/)
-      expect(latex.vars['--font-mono']).toMatch(/^"MDR New Computer Modern Mono"/)
-      expect(latex.vars['--math-display-bg']).toBe('transparent')
+  it('paints the first frame in Claudette: :root mirrors its variables', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf8')
+    const root = css.match(/\n:root \{[^}]*\}/)![0]
+    const claudette = getTheme('claudette')!
+    for (const name of THEME_VARS) {
+      expect(root, name).toContain(`${name}: ${claudette.vars[name]};`)
     }
   })
 
-  it('does not load the Claude theme fonts, which are not licensed for redistribution', () => {
-    for (const theme of themes) {
-      for (const font of ['--font-head', '--font-body', '--font-mono'] as const) {
-        expect(theme.vars[font]).not.toMatch(/Anthropic/)
-      }
-    }
+  it('keeps only the Claudette rules in the app stylesheet, and loads only its fonts', () => {
+    const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf8')
+    const ids = [...css.matchAll(/data-theme\^?="([^"]+)"/g)].map((m) => m[1])
+    expect(new Set(ids)).toEqual(new Set(['claudette', 'claudette-dark']))
+    expect(css).not.toContain('@font-face')
+    // Section breaks are a plain rule in Claudette, not the ornament.
+    expect(css).toMatch(/\[data-theme\^="claudette"\] \.markdown-body \.hr-ornament \{[^}]*border-top/)
+    const html = readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8')
+    const families = [...html.matchAll(/family=([A-Za-z+0-9]+)/g)].map((m) => m[1]).sort()
+    expect(families).toEqual(['Inter', 'JetBrains+Mono', 'Source+Serif+4'])
   })
 
-  it('caps the text column at a reading measure in every theme', () => {
+  it('caps the text column at a reading measure', () => {
     // jsdom has no layout, so this checks the rule; the measured column is
     // 714px of text at any window width (42em at 17px).
     const css = readFileSync(path.resolve(__dirname, '../index.css'), 'utf8')
     const base = css.match(/\n\.markdown-body \{[^}]*\}/)![0]
     expect(base).toContain('max-width: min(70%, calc(42em + 4rem));')
-    // No theme widens it again; LaTeX alone narrows it.
-    const widened = [...css.matchAll(/\[data-theme[^\]]*\][^{]*\.markdown-body \{[^}]*max-width:[^;]*;/g)].map((m) => m[0])
-    expect(widened).toHaveLength(1)
-    expect(widened[0]).toContain('[data-theme^="latex"]')
   })
 
-  it("lets the server's listing page tell every dark theme apart", () => {
-    // ROOT_SCRIPT in server.rs names the older dark themes and matches `-dark`.
+  it("lets the server's listing page follow the stored mode of any theme", () => {
     const server = readFileSync(path.resolve(__dirname, '../../src-tauri/src/server.rs'), 'utf8')
     const script = server.slice(server.indexOf('const ROOT_SCRIPT'), server.indexOf('"#;', server.indexOf('const ROOT_SCRIPT')))
-    for (const theme of themes.filter((t) => t.mode === 'dark')) {
-      const covered = theme.id.endsWith('-dark') || script.includes(`'${theme.id}'`)
-      expect(covered, `${theme.id} would show the listing in light mode`).toBe(true)
-    }
-    for (const theme of themes.filter((t) => t.mode === 'light')) {
-      expect(theme.id.endsWith('-dark') || script.includes(`'${theme.id}'`), theme.id).toBe(false)
-    }
+    expect(script).toContain("localStorage.getItem('md-render-theme-mode')")
+  })
+})
+
+describe('validateTheme', () => {
+  const good = getTheme('claudette')!
+
+  it('accepts a complete theme and drops unknown fields', () => {
+    expect(validateTheme({ ...good, extra: 1 })).toEqual(good)
   })
 
-  it('includes both light and dark themes', () => {
-    expect(themes.some((t) => t.mode === 'light')).toBe(true)
-    expect(themes.some((t) => t.mode === 'dark')).toBe(true)
-  })
-
-  it('has the plain sans-serif theme with its site colours', () => {
-    const plain = getTheme('plain')!
-    expect(plain.mode).toBe('light')
-    expect(plain.vars['--bg-primary']).toBe('#FFFFFF')
-    expect(plain.vars['--accent']).toBe('#22558E')
-    expect(plain.vars['--font-body']).toMatch(/^Helvetica/)
-    // No serif face anywhere: the whole point of the theme.
-    expect(plain.vars['--font-head']).not.toMatch(/serif"|Georgia/)
-  })
-
-  it('has the ponder theme with its violet accent and code face', () => {
-    const ponder = getTheme('ponder')!
-    expect(ponder.mode).toBe('light')
-    expect(ponder.vars['--accent']).toBe('#8E7BD0')
-    expect(ponder.vars['--font-mono']).toMatch(/^"Google Sans Code"/)
-    expect(ponder.vars['--font-body']).toMatch(/^-apple-system/)
-  })
-
-  it('has the paradigm theme with its stone ground, teal text and mono heads', () => {
-    const paradigm = getTheme('paradigm')!
-    expect(paradigm.mode).toBe('light')
-    expect(paradigm.vars['--bg-primary']).toBe('#E9E5DA')
-    expect(paradigm.vars['--accent']).toBe('#436F7A')
-    expect(paradigm.vars['--text-primary']).toBe('#3C646E')
-    expect(paradigm.vars['--font-body']).toMatch(/^"Literata"/)
-    expect(paradigm.vars['--font-mono']).toMatch(/^"Geist Mono"/)
-    // Display math sits on the page, as on the site.
-    expect(paradigm.vars['--math-display-bg']).toBe('transparent')
+  it('says what is wrong with a bad one', () => {
+    expect(validateTheme(null)).toBe('not an object')
+    expect(validateTheme({ ...good, id: 'Has Space' })).toMatch(/bad id/)
+    expect(validateTheme({ ...good, mode: 'sepia' })).toMatch(/mode/)
+    const vars: Record<string, string> = { ...good.vars }
+    delete vars['--chart-8']
+    expect(validateTheme({ ...good, vars })).toMatch(/missing --chart-8/)
   })
 })
 
 describe('getTheme', () => {
-  it('resolves a known id', () => {
-    expect(getTheme('warm-paper')?.id).toBe('warm-paper')
+  it('resolves a known id, in the built-ins or a given registry', () => {
+    expect(getTheme('claudette')?.id).toBe('claudette')
+    const installed = { ...getTheme('claudette')!, id: 'latex' }
+    expect(getTheme('latex')).toBeUndefined()
+    expect(getTheme('latex', [...themes, installed])?.id).toBe('latex')
   })
 
   it('returns undefined for unknown or empty ids', () => {
@@ -175,10 +149,10 @@ describe('resolveTheme', () => {
   })
 
   it('honours a valid stored id over the fallback', () => {
-    expect(resolveTheme('nocturne', false).id).toBe('nocturne')
+    expect(resolveTheme('claudette-dark', false).id).toBe('claudette-dark')
   })
 
-  it('ignores an invalid stored id', () => {
-    expect(resolveTheme('garbage', false).id).toBe(DEFAULT_LIGHT)
+  it('falls back for a theme that is not installed', () => {
+    expect(resolveTheme('latex', false).id).toBe(DEFAULT_LIGHT)
   })
 })

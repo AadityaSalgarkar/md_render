@@ -2,97 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
-/* New Computer Modern for the LaTeX theme, bundled so it renders offline.
-   Subsets under the GUST license: see src/assets/fonts/newcm/README-mdr-newcm.txt. */
-@font-face {
-  font-family: "MDR New Computer Modern";
-  src: url('./assets/fonts/newcm/mdr-newcm10-book.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "MDR New Computer Modern";
-  src: url('./assets/fonts/newcm/mdr-newcm10-bookitalic.woff2') format('woff2');
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "MDR New Computer Modern";
-  src: url('./assets/fonts/newcm/mdr-newcm10-bold.woff2') format('woff2');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "MDR New Computer Modern";
-  src: url('./assets/fonts/newcm/mdr-newcm10-bolditalic.woff2') format('woff2');
-  font-weight: 700;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "MDR New Computer Modern Mono";
-  src: url('./assets/fonts/newcm/mdr-newcmmono10-book.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
 /* ===================================================================
    Design tokens
    The full set of theme variables lives in src/lib/themes.ts and is
    written onto <html> at runtime. The :root block below mirrors the
-   "Warm Paper" theme so the first paint is never unstyled.
+   "Claudette" theme so the first paint is never unstyled.
    =================================================================== */
 :root {
   /* Surfaces */
-  --bg-primary: #FAF7F2;
-  --bg-secondary: #F5F1EA;
-  --bg-editor: #FFFDF8;
-  --bg-preview: #FAF7F2;
+  --bg-primary: #FAF9F5;
+  --bg-secondary: #F2F0E9;
+  --bg-editor: #FFFFFF;
+  --bg-preview: #FAF9F5;
   /* Text */
-  --text-primary: #1A1A1A;
-  --text-secondary: #5C5C5C;
-  --text-muted: #8A8A8A;
+  --text-primary: #141413;
+  --text-secondary: #52514E;
+  --text-muted: #73726C;
   /* Accents */
-  --accent: #C9553D;
-  --accent-hover: #B84A34;
-  --accent-secondary: #2D5A4A;
+  --accent: #C6613F;
+  --accent-hover: #D97757;
+  --accent-secondary: #9C4A21;
   /* Lines & code surface */
-  --border: #E8E2D9;
-  --border-strong: #D4CCC0;
-  --code-bg: #F0EDE6;
-  --selection: rgba(201, 85, 61, 0.15);
-  --shadow-fold: 8px 0 24px -8px rgba(0, 0, 0, 0.12);
-  --math-display-bg: var(--code-bg);
-  --math-display-padding: 1em 1.5em;
+  --border: #E3E1D7;
+  --border-strong: #D1CFC5;
+  --code-bg: #F5F4ED;
+  --selection: rgba(217, 119, 87, 0.18);
+  --shadow-fold: 8px 0 24px -8px rgba(20, 20, 19, 0.1);
+  --math-display-bg: transparent;
+  --math-display-padding: 0.4rem 0;
   /* Typography */
-  --font-head: 'Playfair Display', Georgia, serif;
-  --font-body: 'Source Serif 4', Georgia, serif;
-  --font-mono: 'IBM Plex Mono', 'Fira Code', monospace;
+  --font-head: "Source Serif 4", "Source Serif Pro", Charter, Georgia, "Noto Serif SC", serif;
+  --font-body: "Source Serif 4", "Source Serif Pro", Charter, Georgia, "Noto Serif SC", serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", Consolas, monospace;
   /* Syntax highlighting */
-  --code-keyword: #C9553D;
-  --code-string: #2D5A4A;
-  --code-number: #B07D48;
-  --code-comment: #8A8A8A;
-  --code-function: #5A7A9A;
-  --code-builtin: #8959A8;
+  --code-keyword: #C2452D;
+  --code-string: #9C4A21;
+  --code-number: #9A6700;
+  --code-comment: #6E7781;
+  --code-function: #6F42C1;
+  --code-builtin: #1F6FE5;
 
   /* Plot series hues */
-  --chart-1: #C9553D;
-  --chart-2: #2D5A4A;
-  --chart-3: #5A7A9A;
-  --chart-4: #B07D48;
-  --chart-5: #8959A8;
-  --chart-6: #6B8E4E;
-  --chart-7: #A23B5E;
-  --chart-8: #7A7A7A;
+  --chart-1: #D97757;
+  --chart-2: #1F6FE5;
+  --chart-3: #6F42C1;
+  --chart-4: #9A6700;
+  --chart-5: #2E7D5B;
+  --chart-6: #C2452D;
+  --chart-7: #52514E;
+  --chart-8: #87867F;
 }
 
 /* ===================================================================
@@ -366,7 +324,8 @@ body {
    Markdown content
    =================================================================== */
 /* The text column is at most 42em (about 80 characters a line) in every
-   theme, however wide the window; LaTeX sets its own narrower 36em. The
+   theme, however wide the window, unless an installed theme sets its own
+   (LaTeX narrows it to 36em). The
    4rem is the side padding, inside the box. */
 .markdown-body {
   padding: 1.75rem 2rem 4rem;
@@ -1919,6 +1878,19 @@ body {
   padding: 0.35rem 0.5rem 0.2rem;
 }
 
+.theme-more {
+  margin: 0.4rem 0 0;
+  padding: 0.45rem 0.5rem 0.15rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.theme-more code {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+}
+
 .theme-option {
   display: flex;
   align-items: center;
@@ -2038,247 +2010,9 @@ body {
 
 /* ===================================================================
    Per-theme texture & flourishes
+   Installed themes bring their own rules in their package's theme.css
+   (themes/README.md); only the built-in Claudette pair lives here.
    =================================================================== */
-
-/* Nocturne — a soft wash of moonlight */
-[data-theme="nocturne"] body {
-  background-image: radial-gradient(
-    ellipse at 50% -5%,
-    rgba(196, 167, 231, 0.12),
-    transparent 55%
-  );
-  background-attachment: fixed;
-}
-
-[data-theme="nocturne"] .markdown-body h1::after {
-  content: '☾';
-  font-size: 0.95rem;
-  letter-spacing: 0;
-}
-
-/* Evergreen — moonlight filtering through a dark canopy */
-[data-theme="evergreen"] body {
-  background-image:
-    radial-gradient(circle at 16% 10%, rgba(143, 179, 107, 0.1), transparent 46%),
-    radial-gradient(circle at 84% 84%, rgba(216, 154, 91, 0.08), transparent 44%);
-  background-attachment: fixed;
-}
-
-[data-theme="evergreen"] .markdown-body h1::after {
-  content: '❧';
-  font-size: 1rem;
-  letter-spacing: 0;
-}
-
-/* Newsprint — broadsheet masthead rules */
-[data-theme="newsprint"] .markdown-body h1 {
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: 0.01em;
-  border-top: 3px double var(--border-strong);
-  border-bottom: 1px solid var(--border-strong);
-  padding: 0.35em 0 0.3em;
-}
-
-[data-theme="newsprint"] .markdown-body h1::after {
-  content: '';
-  display: none;
-}
-
-[data-theme="newsprint"] .markdown-body h2::after {
-  content: '';
-  display: none;
-}
-
-[data-theme="newsprint"] .markdown-body h2 {
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  font-size: 1.5rem;
-}
-
-[data-theme="newsprint"] .markdown-body blockquote {
-  font-family: var(--font-head);
-}
-
-/* Forest — soft dappled light on the page */
-[data-theme="forest"] body {
-  background-image:
-    radial-gradient(circle at 18% 12%, rgba(92, 122, 74, 0.07), transparent 45%),
-    radial-gradient(circle at 82% 78%, rgba(176, 94, 46, 0.06), transparent 42%);
-  background-attachment: fixed;
-}
-
-[data-theme="forest"] .markdown-body h1::after {
-  content: '❧';
-  font-size: 1rem;
-  letter-spacing: 0;
-}
-
-/* Paradigm — serif body in dark teal, mono caps for section heads,
-   teal-filled inline code, a ruled rather than ornamented page */
-[data-theme="paradigm"] .markdown-body h1 {
-  text-align: center;
-  font-weight: 400;
-  font-size: 2.6rem;
-  line-height: 1.15;
-  text-wrap: balance;
-}
-
-[data-theme="paradigm"] .markdown-body h1::after,
-[data-theme="paradigm"] .markdown-body h2::after {
-  content: '';
-  display: none;
-}
-
-[data-theme="paradigm"] .markdown-body h2 {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 1.6rem;
-  line-height: 1.18;
-  text-transform: uppercase;
-  margin-top: 2.2em;
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-
-[data-theme="paradigm"] .markdown-body h3 {
-  font-weight: 700;
-  font-size: 1.3rem;
-}
-
-[data-theme="paradigm"] .markdown-body h4 {
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-weight: 800;
-  text-transform: uppercase;
-  font-size: 1rem;
-}
-
-[data-theme="paradigm"] .markdown-body p,
-[data-theme="paradigm"] .markdown-body li {
-  line-height: 1.75;
-}
-
-[data-theme="paradigm"] .markdown-body a:not(.heading-anchor) {
-  color: inherit;
-  text-decoration-color: var(--accent);
-  text-underline-offset: 3px;
-  border-bottom: 1px solid var(--accent);
-}
-
-[data-theme="paradigm"] .markdown-body a:not(.heading-anchor):hover {
-  color: var(--accent-hover);
-}
-
-[data-theme="paradigm"] .markdown-body :not(pre) > code {
-  background: var(--accent);
-  color: var(--bg-primary);
-  padding: 0.15em 0.4em;
-  font-size: 0.85em;
-}
-
-[data-theme="paradigm"] .markdown-body blockquote {
-  border-left-width: 6px;
-  padding-left: 1.25rem;
-  background: none;
-  color: var(--text-primary);
-}
-
-[data-theme="paradigm"] .markdown-body img {
-  padding: 4px;
-  border: 1px solid var(--accent);
-  outline: 1px solid var(--accent);
-  outline-offset: -5px;
-  background: #D8D9D0;
-}
-
-[data-theme="paradigm"] .markdown-body table {
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 0.9rem;
-  border: 1px solid var(--accent);
-}
-
-[data-theme="paradigm"] .markdown-body thead {
-  background: #D8D9D0;
-}
-
-[data-theme="paradigm"] .markdown-body th,
-[data-theme="paradigm"] .markdown-body td {
-  border-bottom: 1px solid var(--accent);
-}
-
-/* ---- The Typora-inspired families (THIRD_PARTY_NOTICES.md). None of them
-   ornaments its headings. ---- */
-:is([data-theme^="claude"], [data-theme^="sonnet"], [data-theme^="latex"]) .markdown-body h1::after,
-:is([data-theme^="claude"], [data-theme^="sonnet"], [data-theme^="latex"]) .markdown-body h2::after {
-  content: '';
-  display: none;
-}
-
-/* Claude and Sonnet — a chat transcript's calm: compact headings, links in
-   the text colour that warm on hover, a hairline quote, no striping. */
-:is([data-theme^="claude"]:not([data-theme^="claudette"]), [data-theme^="sonnet"]) .markdown-body {
-  line-height: 1.7;
-}
-
-:is([data-theme^="claude"]:not([data-theme^="claudette"]), [data-theme^="sonnet"]) .markdown-body h1 {
-  font-size: 1.75rem;
-  font-weight: 600;
-}
-
-:is([data-theme^="claude"]:not([data-theme^="claudette"]), [data-theme^="sonnet"]) .markdown-body h2 {
-  font-size: 1.4rem;
-  border-bottom: 0;
-  padding-bottom: 0;
-}
-
-:is([data-theme^="claude"]:not([data-theme^="claudette"]), [data-theme^="sonnet"]) .markdown-body h3 {
-  font-size: 1.15rem;
-}
-
-:is([data-theme^="claude"]:not([data-theme^="claudette"]), [data-theme^="sonnet"]) .markdown-body a:not(.heading-anchor) {
-  color: var(--text-primary);
-  text-decoration-color: var(--text-muted);
-}
-
-:is([data-theme^="claude"]:not([data-theme^="claudette"]), [data-theme^="sonnet"]) .markdown-body a:not(.heading-anchor):hover {
-  color: var(--accent-hover);
-  text-decoration-color: var(--accent-hover);
-}
-
-:is([data-theme^="claude"]:not([data-theme^="claudette"]), [data-theme^="sonnet"]) .markdown-body blockquote {
-  border-left: 4px solid var(--border-strong);
-  background: none;
-  font-style: normal;
-}
-
-:is([data-theme^="claude"]:not([data-theme^="claudette"]), [data-theme^="sonnet"]) .markdown-body tr:nth-child(even) {
-  background: none;
-}
-
-:is([data-theme^="claude"]:not([data-theme^="claudette"]), [data-theme^="sonnet"]) .markdown-body th {
-  font-family: var(--font-body);
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 0.9375rem;
-}
-
-/* Sonnet: highlights are a wavy clay underline, ticked tasks are clay, and
-   after dark bold words take the coral. */
-[data-theme^="sonnet"] .markdown-body mark {
-  background: none;
-  color: inherit;
-  text-decoration: underline wavy #D97757;
-  text-underline-offset: 3px;
-}
-
-[data-theme^="sonnet"] .markdown-body .task-list-item input[type="checkbox"]:checked {
-  background: #D97757;
-  border-color: #D97757;
-}
-
-[data-theme="sonnet-dark"] .markdown-body strong {
-  color: var(--accent);
-}
 
 /* Claudette — a white sheet on ivory, weight-400 serif heads, hairline
    code with a language pill, rule-only tables with small-caps headers. */
@@ -2382,161 +2116,12 @@ body {
   background: none;
 }
 
-/* LaTeX — article.cls at 11pt: a narrow measure, indented paragraphs with no
-   gap, numbered sections (h1 is the title), booktabs rules. */
-[data-theme^="latex"] .markdown-body {
-  max-width: min(70%, 36em);
-  font-size: 1.15rem;
-  line-height: 1.45;
-  counter-reset: latex-section;
-  hyphens: auto;
-  text-align: justify;
-}
-
-[data-theme^="latex"] .markdown-body h1 {
-  text-align: center;
-  font-weight: 400;
-  font-size: 1.75rem;
-  padding-bottom: 0.25em;
-  counter-reset: latex-section;
-}
-
-[data-theme^="latex"] .markdown-body h1 + p {
-  text-align: center;
-  text-indent: 0;
-}
-
-[data-theme^="latex"] .markdown-body h2,
-[data-theme^="latex"] .markdown-body h3,
-[data-theme^="latex"] .markdown-body h4 {
-  font-weight: 700;
-  border-bottom: 0;
-  padding-bottom: 0;
-  text-align: left;
-}
-
-[data-theme^="latex"] .markdown-body h2 {
-  font-size: 1.35rem;
-  counter-increment: latex-section;
-  counter-reset: latex-subsection;
-}
-
-[data-theme^="latex"] .markdown-body h3 {
-  font-size: 1.15rem;
-  counter-increment: latex-subsection;
-  counter-reset: latex-subsubsection;
-}
-
-[data-theme^="latex"] .markdown-body h4 {
-  font-size: 1rem;
-  counter-increment: latex-subsubsection;
-}
-
-[data-theme^="latex"] .markdown-body h2::before {
-  content: counter(latex-section) '\2003';
-}
-
-[data-theme^="latex"] .markdown-body h3::before {
-  content: counter(latex-section) '.' counter(latex-subsection) '\2003';
-}
-
-[data-theme^="latex"] .markdown-body h4::before {
-  content: counter(latex-section) '.' counter(latex-subsection) '.' counter(latex-subsubsection) '\2003';
-}
-
-[data-theme^="latex"] .markdown-body p {
-  margin: 0;
-}
-
-[data-theme^="latex"] .markdown-body p + p {
-  text-indent: 1.5em;
-}
-
-[data-theme^="latex"] .markdown-body :is(ul, ol, pre, table, blockquote, .katex-display, figure) {
-  margin-top: 0.7em;
-  margin-bottom: 0.7em;
-}
-
-[data-theme^="latex"] .markdown-body ul {
-  list-style-type: '•\2002';
-}
-
-[data-theme^="latex"] .markdown-body ul ul {
-  list-style-type: '–\2002';
-}
-
-[data-theme^="latex"] .markdown-body ul ul ul {
-  list-style-type: '∗\2002';
-}
-
-[data-theme^="latex"] .markdown-body ol ol {
-  list-style-type: lower-alpha;
-}
-
-[data-theme^="latex"] .markdown-body a:not(.heading-anchor) {
-  text-decoration: none;
-}
-
-[data-theme^="latex"] .markdown-body blockquote {
-  border-left: 0;
-  background: none;
-  color: var(--text-primary);
-  font-style: normal;
-  padding: 0 2.5em;
-  text-align: justify;
-}
-
-[data-theme^="latex"] .markdown-body pre {
-  border: 0;
-  border-radius: 0;
-}
-
-[data-theme^="latex"] .markdown-body :not(pre) > code {
-  background: none;
-  padding: 0;
-  color: inherit;
-}
-
-[data-theme^="latex"] .markdown-body table {
-  width: auto;
-  margin-left: auto;
-  margin-right: auto;
-  border-top: 1.5px solid var(--border-strong);
-  border-bottom: 1.5px solid var(--border-strong);
-  font-size: 1rem;
-}
-
-[data-theme^="latex"] .markdown-body th,
-[data-theme^="latex"] .markdown-body td {
-  border: 0;
-  padding: 0.3em 0.9em;
-}
-
-[data-theme^="latex"] .markdown-body th {
-  background: none;
-  font-family: var(--font-body);
-  font-size: 1rem;
-  text-transform: none;
-  letter-spacing: 0;
-  border-bottom: 0.75px solid var(--border-strong);
-}
-
-[data-theme^="latex"] .markdown-body tr:nth-child(even) {
-  background: none;
-}
-
-/* All four families draw a section break as a plain rule. */
-:is([data-theme^="claude"], [data-theme^="sonnet"], [data-theme^="latex"]) .markdown-body .hr-ornament {
+/* Section breaks are a plain rule, not the ornament. */
+[data-theme^="claudette"] .markdown-body .hr-ornament {
   font-size: 0;
   height: 0;
   border-top: 1px solid var(--border-strong);
   margin: 2em 0;
-}
-
-[data-theme^="latex"] .markdown-body .hr-ornament {
-  width: 40%;
-  margin: 1.5em auto;
-  border-top-width: 0.75px;
 }
 
 /* ===================================================================

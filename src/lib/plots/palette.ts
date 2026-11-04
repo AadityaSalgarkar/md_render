@@ -17,9 +17,9 @@ export interface Palette {
   mode: 'light' | 'dark'
 }
 
-/** Warm Paper's values, used when a variable is missing (tests, first paint). */
+/** Claudette's values, used when a variable is missing (tests, first paint). */
 export const FALLBACK_SERIES = [
-  '#C9553D', '#2D5A4A', '#5A7A9A', '#B07D48', '#8959A8', '#6B8E4E', '#A23B5E', '#7A7A7A',
+  '#D97757', '#1F6FE5', '#6F42C1', '#9A6700', '#2E7D5B', '#C2452D', '#52514E', '#87867F',
 ]
 
 export const CHART_VARS = Array.from({ length: 8 }, (_, i) => `--chart-${i + 1}`)
@@ -29,10 +29,10 @@ export function readPalette(root: HTMLElement = document.documentElement): Palet
   const read = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback
   return {
     series: CHART_VARS.map((name, i) => read(name, FALLBACK_SERIES[i])),
-    text: read('--text-secondary', '#5C5C5C'),
-    muted: read('--text-muted', '#8A8A8A'),
-    grid: read('--border', '#E8E2D9'),
-    surface: read('--bg-secondary', '#F5F1EA'),
+    text: read('--text-secondary', '#52514E'),
+    muted: read('--text-muted', '#73726C'),
+    grid: read('--border', '#E3E1D7'),
+    surface: read('--bg-secondary', '#F2F0E9'),
     font: read('--font-body', 'Georgia, serif'),
     mono: read('--font-mono', 'monospace'),
     mode: root.dataset.mode === 'dark' ? 'dark' : 'light',

@@ -67,7 +67,7 @@ describe('palette', () => {
     root.dataset.mode = 'dark'
     const palette = readPalette(root)
     expect(palette.series[0]).toBe('#112233')
-    expect(palette.series[1]).toBe('#2D5A4A')
+    expect(palette.series[1]).toBe('#1F6FE5')
     expect(palette.text).toBe('#445566')
     expect(palette.mode).toBe('dark')
   })

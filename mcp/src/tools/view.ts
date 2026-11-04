@@ -4,10 +4,22 @@ import { themes } from '../../../src/lib/themes.ts'
 import { docUrl, workspaceUrl } from '../client.ts'
 import { resolveServer } from '../servers.ts'
 import { portSchema } from './servers.ts'
+import { MdRenderClient, ToolError } from '../client.ts'
 import { registerTool, resolveTab, resolveWorkspace } from './shared.ts'
 
-const themeIds = themes.map((theme) => theme.id) as [string, ...string[]]
-const themeList = themes.map((theme) => `${theme.id} (${theme.name}, ${theme.mode})`).join('; ')
+const builtinList = themes.map((theme) => `${theme.id} (${theme.name}, ${theme.mode})`).join('; ')
+const INSTALL_NOTE =
+  'More themes (latex, claude, sonnet, warm-paper, midnight-ink, paradigm, ...) are packages the user installs with `mdrender --install-theme NAME`; `mdrender --list-themes` shows them all.'
+
+/** The built-in themes plus those of every installed package. */
+async function availableThemes(client: MdRenderClient) {
+  const installed = (await client.listThemes()).flatMap((pkg) =>
+    pkg.themes
+      .filter((t) => typeof t.id === 'string')
+      .map((t) => ({ id: t.id as string, name: t.name ?? t.id, mode: t.mode, package: pkg.package })),
+  )
+  return [...themes.map((t) => ({ id: t.id, name: t.name, mode: t.mode, package: 'built-in' })), ...installed]
+}
 
 const APPLY_NOTE = 'Every open page of the workspace applies this on its next poll, within about 3 seconds.'
 
@@ -40,9 +52,9 @@ export function registerViewTools(server: McpServer): void {
   registerTool(
     server,
     'set_theme',
-    `Switch the typographic theme on every browser page showing a workspace. Themes: ${themeList}. ${APPLY_NOTE}`,
+    `Switch the typographic theme on every browser page showing a workspace. Built in: ${builtinList}; installed packages add more (list_themes). ${APPLY_NOTE}`,
     {
-      theme: z.enum(themeIds).describe('Theme id'),
+      theme: z.string().min(1).describe('Theme id, from list_themes'),
       workspace: z
         .string()
         .min(1)
@@ -52,6 +64,12 @@ export function registerViewTools(server: McpServer): void {
     },
     async ({ theme, workspace, port }) => {
       const live = await resolveServer(port)
+      const available = await availableThemes(live.client)
+      if (!available.some((t) => t.id === theme)) {
+        throw new ToolError(
+          `no theme ${JSON.stringify(theme)} on this server; available: ${available.map((t) => t.id).join(', ')}. ${INSTALL_NOTE}`,
+        )
+      }
       const name = await resolveWorkspace(live.client, workspace)
       const view = await live.client.setView(name, { theme })
       return {
@@ -61,6 +79,17 @@ export function registerViewTools(server: McpServer): void {
         url: workspaceUrl(live.port, name),
         note: APPLY_NOTE,
       }
+    },
+  )
+
+  registerTool(
+    server,
+    'list_themes',
+    `The themes set_theme accepts on a server: the built-in Claudette pair and the themes of every installed package. ${INSTALL_NOTE}`,
+    { port: portSchema },
+    async ({ port }) => {
+      const live = await resolveServer(port)
+      return { themes: await availableThemes(live.client), note: INSTALL_NOTE }
     },
   )
 }

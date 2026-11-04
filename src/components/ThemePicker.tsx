@@ -150,6 +150,9 @@ export function ThemePicker({ themes, activeId, onSelect }: ThemePickerProps) {
                 </div>
               )
             })}
+            <p className="theme-more" aria-hidden="true">
+              More themes: <code>mdrender --install-theme NAME</code>
+            </p>
           </motion.div>
         )}
       </AnimatePresence>
