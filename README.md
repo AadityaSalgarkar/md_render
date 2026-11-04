@@ -4,8 +4,9 @@
 [![release](https://img.shields.io/github/v/release/AadityaSalgarkar/md_render?sort=semver)](https://github.com/AadityaSalgarkar/md_render/releases/latest)
 
 Markdown, set like a book. A renderer for macOS and Linux built on Tauri 2 —
-seventeen typographic themes, a document index, math, Mermaid, review comments, and
-a server mode that puts the same app in your browser over SSH.
+the Claudette theme in light and dark (more installable), a document index,
+math, Mermaid, review comments, and a server mode that puts the same app in
+your browser over SSH.
 
 ```bash
 curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
@@ -19,17 +20,21 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
 
 ## Features
 
-- Seventeen typographic themes, each with its own faces, colors and code
-  palette, picked from a dropdown that shows their main colors:
+- Claudette, light and dark, built in: Source Serif on a white sheet, hairline
+  code with a language pill, one clay accent. Fifteen more themes are
+  packages in [themes/](themes/README.md), installed when wanted with
+  `mdrender --install-theme NAME` (`mdrender --list-themes` shows them):
   - light: Warm Paper, Newsprint, Forest, Plain (bare Helvetica on white),
     Ponder (system sans with a violet accent), Paradigm (Literata in dark teal
     on warm stone);
   - dark: Midnight Ink, Nocturne, Evergreen;
   - light and dark, after Typora themes: Claude (Lora on ivory), Sonnet
-    (Georgia, rust links, wavy highlights), Claudette (a white sheet with
-    hairline code), and LaTeX (New Computer Modern, numbered sections,
-    indented paragraphs, booktabs tables). Credits are in
-    [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+    (Georgia, rust links, wavy highlights) and LaTeX (New Computer Modern,
+    numbered sections, indented paragraphs, booktabs tables).
+
+  Adding a theme is adding a folder with a `theme.json`; see
+  [themes/README.md](themes/README.md). Credits are in
+  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 - Collapsible document index built from headings, with scroll-spy and a
   reading-progress bar
 - Several files open as tabs, in the window or in the browser, each closable
@@ -308,6 +313,7 @@ src/                 # React frontend
   test/              # Vitest suites, including end-to-end server tests
 src-tauri/src/       # Rust: lib.rs (commands), cli.rs, server.rs, attach.rs, state.rs,
                      #   experiments.rs (trackio), tikz.rs (TikZ via Tectonic)
+themes/              # installable theme packages (themes/README.md)
 mcp/                 # MCP server (TypeScript), bundled by `npm run build:mcp`
 bin/mdrender         # cross-platform wrapper
 docs/                # documentation site (GitHub Pages), llms.txt, skills.md

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MD_RENDER — markdown, set like a book</title>
-<meta name="description" content="A markdown renderer for macOS and Linux with book typography, seventeen themes, tabs, review comments, and a server mode for reading over SSH.">
+<meta name="description" content="A markdown renderer for macOS and Linux with book typography, the Claudette theme (more installable), tabs, review comments, and a server mode for reading over SSH.">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -303,8 +303,8 @@ footer .mono, .mono { font-family: "JetBrains Mono", monospace; font-size: 0.8re
 <header class="hero">
   <div class="eyebrow">MD_RENDER · macOS + Linux · Tauri 2</div>
   <h1>Markdown, set like a book.</h1>
-  <p class="lede">A markdown renderer with book typography — seventeen themes, a
-  document index, math, Mermaid, review comments — in a desktop window or
+  <p class="lede">A markdown renderer with book typography — Claudette in light
+  and dark, more themes to install, a document index, math, Mermaid, review comments — in a desktop window or
   served to your browser over SSH.</p>
 
   <div class="frame">
@@ -331,7 +331,7 @@ opening <span class="s">http://127.0.0.1:9999/project/?doc=1</span> in the brows
         <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="addr">127.0.0.1:9999/notes/</span></div>
         <img src="assets/themes.png" alt="The theme dropdown open over a document in the LaTeX theme, listing light and dark themes with their colours as squares" width="1280" height="1000">
       </div>
-      <figcaption>seventeen themes in one dropdown — here LaTeX, with numbered sections and a TikZ diagram</figcaption>
+      <figcaption>installed themes join the dropdown — here LaTeX, with numbered sections and a TikZ diagram</figcaption>
     </figure>
   </div>
 </header>
@@ -342,9 +342,9 @@ opening <span class="s">http://127.0.0.1:9999/project/?doc=1</span> in the brows
   them in serious book typography. It is a small Tauri app: a Rust core with a
   React reading surface, built for macOS and Linux.</p>
   <ul>
-    <li>Seventeen typographic themes — ten light and seven dark, including
-    light and dark Claude, Sonnet, Claudette and LaTeX after Typora themes —
-    each with its own faces, colors and code palette</li>
+    <li>Claudette built in, light and dark; fifteen more typographic themes
+    (Warm Paper, Midnight Ink, Claude, Sonnet, LaTeX and others) installed
+    with one command, each with its own faces, colors and code palette</li>
     <li>Collapsible document index built from headings, with scroll-spy and a
     reading-progress bar</li>
     <li>Several files open as tabs — in the window or in the browser</li>
@@ -526,74 +526,43 @@ mdrender --port ~/notes.md          <span class="c"># on the server</span></code
 
 <section id="themes">
   <h2><a class="anchor" href="#themes">Themes</a></h2>
-  <p>Chosen from the palette control, a dropdown of light and dark themes,
-  each shown by its page, text and accent colours; the choice is remembered.
-  Each theme is a full set of faces, surfaces and a code palette. This page
-  wears Claudette Dark — the palette button above switches it to Claudette.</p>
+  <p>Claudette is built in, in light and dark: a white sheet in Source Serif,
+  hairline code with a language pill, one clay accent. This page wears
+  Claudette Dark — the palette button above switches it to Claudette.</p>
   <table>
-    <tr><th></th><th>Light</th><th></th><th>Dark</th></tr>
-    <tr>
-      <td><span class="swatch"><i style="background:#FAF7F2"></i><i style="background:#1A1A1A"></i><i style="background:#C9553D"></i></span></td>
-      <td><strong>Warm Paper</strong> — book typography on aged cream</td>
-      <td><span class="swatch"><i style="background:#121418"></i><i style="background:#E8E4DC"></i><i style="background:#E07A5F"></i></span></td>
-      <td><strong>Midnight Ink</strong> — warm ink on blue-black</td>
-    </tr>
-    <tr>
-      <td><span class="swatch"><i style="background:#F4F2EC"></i><i style="background:#16130E"></i><i style="background:#A8281E"></i></span></td>
-      <td><strong>Newsprint</strong> — high-contrast editorial broadsheet</td>
-      <td><span class="swatch"><i style="background:#191724"></i><i style="background:#E0DEF4"></i><i style="background:#C4A7E7"></i></span></td>
-      <td><strong>Nocturne</strong> — muted iris &amp; foam on plum</td>
-    </tr>
-    <tr>
-      <td><span class="swatch"><i style="background:#EDEBDD"></i><i style="background:#232B1F"></i><i style="background:#5C7A4A"></i></span></td>
-      <td><strong>Forest</strong> — moss and bark on a sage page</td>
-      <td><span class="swatch"><i style="background:#14201A"></i><i style="background:#DCE5D8"></i><i style="background:#8FB36B"></i></span></td>
-      <td><strong>Evergreen</strong> — moss and amber on pine-black</td>
-    </tr>
-    <tr>
-      <td><span class="swatch"><i style="background:#FFFFFF"></i><i style="background:#000000"></i><i style="background:#22558E"></i></span></td>
-      <td><strong>Plain</strong> — bare Helvetica on white, blue links, nothing else</td>
-      <td><span class="swatch"><i style="background:#262624"></i><i style="background:#FAF9F5"></i><i style="background:#D97757"></i></span></td>
-      <td><strong>Claude</strong> — the same on warm charcoal</td>
-    </tr>
-    <tr>
-      <td><span class="swatch"><i style="background:#FFFFFF"></i><i style="background:#1E1E1E"></i><i style="background:#8E7BD0"></i></span></td>
-      <td><strong>Ponder</strong> — system sans on white with a violet accent, code in Google Sans Code</td>
-      <td><span class="swatch"><i style="background:#262624"></i><i style="background:#FAF9F5"></i><i style="background:#E6987D"></i></span></td>
-      <td><strong>Sonnet</strong> — Georgia on charcoal, bold words in coral</td>
-    </tr>
-    <tr>
-      <td><span class="swatch"><i style="background:#E9E5DA"></i><i style="background:#3C646E"></i><i style="background:#436F7A"></i></span></td>
-      <td><strong>Paradigm</strong> — Literata in dark teal on warm stone, section heads in Geist Mono capitals, teal-filled inline code</td>
-      <td><span class="swatch"><i style="background:#262625"></i><i style="background:#F2F0E9"></i><i style="background:#E6906F"></i></span></td>
-      <td><strong>Claudette</strong> — the same sheet after dark</td>
-    </tr>
-    <tr>
-      <td><span class="swatch"><i style="background:#FAF9F5"></i><i style="background:#141413"></i><i style="background:#C96442"></i></span></td>
-      <td><strong>Claude</strong> — Lora on warm ivory, compact headings, links that warm to terracotta</td>
-      <td><span class="swatch"><i style="background:#000000"></i><i style="background:#F3F3F3"></i><i style="background:#8B85FF"></i></span></td>
-      <td><strong>LaTeX</strong> — the article on black</td>
-    </tr>
-    <tr>
-      <td><span class="swatch"><i style="background:#FAF9F5"></i><i style="background:#141413"></i><i style="background:#A94F2D"></i></span></td>
-      <td><strong>Sonnet</strong> — Georgia on ivory, rust links, wavy clay highlights</td>
-      <td></td>
-      <td></td>
-    </tr>
-    <tr>
-      <td><span class="swatch"><i style="background:#FAF9F5"></i><i style="background:#141413"></i><i style="background:#C6613F"></i></span></td>
-      <td><strong>Claudette</strong> — a white sheet on ivory in Source Serif, hairline code with a language pill</td>
-      <td></td>
-      <td></td>
-    </tr>
-    <tr>
-      <td><span class="swatch"><i style="background:#FFFFFF"></i><i style="background:#000000"></i><i style="background:#1D12E2"></i></span></td>
-      <td><strong>LaTeX</strong> — an article in New Computer Modern: numbered sections, indents, booktabs tables</td>
-      <td></td>
-      <td></td>
-    </tr>
+    <tr><td><span class="swatch"><i style="background:#FAF9F5"></i><i style="background:#141413"></i><i style="background:#C6613F"></i></span></td><td><strong>Claudette</strong> — a white sheet on ivory in Source Serif, hairline code with a language pill</td></tr>
+    <tr><td><span class="swatch"><i style="background:#262625"></i><i style="background:#F2F0E9"></i><i style="background:#E6906F"></i></span></td><td><strong>Claudette</strong> Dark — the same sheet after dark</td></tr>
   </table>
-  <p>Claude, Sonnet, Claudette and LaTeX follow Typora themes by Tsumugii24,
+  <p>Fifteen more themes are packages in
+  <a href="https://github.com/AadityaSalgarkar/md_render/tree/main/themes">themes/</a>,
+  installed when wanted. They then appear in the palette menu, a dropdown
+  of light and dark themes shown by their page, text and accent colours.</p>
+  <pre><code>mdrender --list-themes
+mdrender --install-theme latex claude    # any of the packages below
+mdrender --remove-theme latex</code></pre>
+  <table>
+    <tr><th></th><th>Theme</th><th>Package</th></tr>
+    <tr><td><span class="swatch"><i style="background:#FAF9F5"></i><i style="background:#141413"></i><i style="background:#C96442"></i></span></td><td><strong>Claude</strong> — Lora on warm ivory, compact headings, links that warm to terracotta</td><td><code>claude</code></td></tr>
+    <tr><td><span class="swatch"><i style="background:#262624"></i><i style="background:#FAF9F5"></i><i style="background:#D97757"></i></span></td><td><strong>Claude</strong> Dark — the same on warm charcoal</td><td><code>claude</code></td></tr>
+    <tr><td><span class="swatch"><i style="background:#14201A"></i><i style="background:#DCE5D8"></i><i style="background:#8FB36B"></i></span></td><td><strong>Evergreen</strong> — moss and amber on pine-black</td><td><code>evergreen</code></td></tr>
+    <tr><td><span class="swatch"><i style="background:#EDEBDD"></i><i style="background:#232B1F"></i><i style="background:#5C7A4A"></i></span></td><td><strong>Forest</strong> — moss and bark on a sage page</td><td><code>forest</code></td></tr>
+    <tr><td><span class="swatch"><i style="background:#FFFFFF"></i><i style="background:#000000"></i><i style="background:#1D12E2"></i></span></td><td><strong>LaTeX</strong> — an article in New Computer Modern: numbered sections, indents, booktabs tables</td><td><code>latex</code></td></tr>
+    <tr><td><span class="swatch"><i style="background:#000000"></i><i style="background:#F3F3F3"></i><i style="background:#8B85FF"></i></span></td><td><strong>LaTeX</strong> Dark — the article on black</td><td><code>latex</code></td></tr>
+    <tr><td><span class="swatch"><i style="background:#121418"></i><i style="background:#E8E4DC"></i><i style="background:#E07A5F"></i></span></td><td><strong>Midnight Ink</strong> — warm ink on blue-black</td><td><code>midnight-ink</code></td></tr>
+    <tr><td><span class="swatch"><i style="background:#F4F2EC"></i><i style="background:#16130E"></i><i style="background:#A8281E"></i></span></td><td><strong>Newsprint</strong> — high-contrast editorial broadsheet</td><td><code>newsprint</code></td></tr>
+    <tr><td><span class="swatch"><i style="background:#191724"></i><i style="background:#E0DEF4"></i><i style="background:#C4A7E7"></i></span></td><td><strong>Nocturne</strong> — muted iris &amp; foam on plum</td><td><code>nocturne</code></td></tr>
+    <tr><td><span class="swatch"><i style="background:#E9E5DA"></i><i style="background:#3C646E"></i><i style="background:#436F7A"></i></span></td><td><strong>Paradigm</strong> — Literata in dark teal on warm stone, section heads in Geist Mono capitals, teal-filled inline code</td><td><code>paradigm</code></td></tr>
+    <tr><td><span class="swatch"><i style="background:#FFFFFF"></i><i style="background:#000000"></i><i style="background:#22558E"></i></span></td><td><strong>Plain</strong> — bare Helvetica on white, blue links, nothing else</td><td><code>plain</code></td></tr>
+    <tr><td><span class="swatch"><i style="background:#FFFFFF"></i><i style="background:#1E1E1E"></i><i style="background:#8E7BD0"></i></span></td><td><strong>Ponder</strong> — system sans on white with a violet accent, code in Google Sans Code</td><td><code>ponder</code></td></tr>
+    <tr><td><span class="swatch"><i style="background:#FAF9F5"></i><i style="background:#141413"></i><i style="background:#A94F2D"></i></span></td><td><strong>Sonnet</strong> — Georgia on ivory, rust links, wavy clay highlights</td><td><code>sonnet</code></td></tr>
+    <tr><td><span class="swatch"><i style="background:#262624"></i><i style="background:#FAF9F5"></i><i style="background:#E6987D"></i></span></td><td><strong>Sonnet</strong> Dark — Georgia on charcoal, bold words in coral</td><td><code>sonnet</code></td></tr>
+    <tr><td><span class="swatch"><i style="background:#FAF7F2"></i><i style="background:#1A1A1A"></i><i style="background:#C9553D"></i></span></td><td><strong>Warm Paper</strong> — book typography on aged cream</td><td><code>warm-paper</code></td></tr>
+  </table>
+  <p>A theme is a folder with a <code>theme.json</code> of colours and fonts and,
+  optionally, a <code>theme.css</code>: drop one into
+  <code>~/.config/md-render/themes/</code> to add your own
+  (<a href="https://github.com/AadityaSalgarkar/md_render/blob/main/themes/README.md">format</a>).
+  Claude, Sonnet, Claudette and LaTeX follow Typora themes by Tsumugii24,
   bexino, CookPiu and shamsghi; see
   <a href="https://github.com/AadityaSalgarkar/md_render/blob/main/THIRD_PARTY_NOTICES.md">THIRD_PARTY_NOTICES.md</a>.</p>
 </section>
@@ -612,7 +581,7 @@ mdrender --port ~/notes.md          <span class="c"># on the server</span></code
   <code>list_tabs</code>, <code>open_tab</code>, <code>close_tab</code>,
   <code>refresh</code>; <code>read_document</code>,
   <code>write_document</code>, <code>add_comment</code>,
-  <code>export_clean</code>; <code>focus_tab</code>, <code>set_theme</code>.
+  <code>export_clean</code>; <code>focus_tab</code>, <code>set_theme</code>, <code>list_themes</code>.
   Every result names the URL to hand the human, and an open browser follows
   within a few seconds — a tab the agent opens appears, a tab it focuses
   comes to the front, a theme it sets applies. <code>make install</code>
