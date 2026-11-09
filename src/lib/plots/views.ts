@@ -5,7 +5,7 @@
  * (`train/loss/ce`, `val/loss/ce`, `val/acc/top1`).
  */
 
-import type { RunInfo } from './types'
+import type { ConfigValue, RunInfo } from './types'
 import { bandKeysOf, extremeKeys, foldedKeys, within, type BandKeys } from './bands'
 import {
   compilePattern,
@@ -66,6 +66,7 @@ export interface Resolution {
 }
 
 export const SPLITS = ['train', 'training', 'val', 'valid', 'validation', 'eval', 'test'] as const
+type Split = (typeof SPLITS)[number]
 const SPLIT_RE = new RegExp(`^(${SPLITS.join('|')})([/_])(.+)$`)
 const HELD_OUT_RE = /^(val|valid|validation|eval|test)[/_]/
 
@@ -108,9 +109,10 @@ function defaultGroupBy(spec: PlotSpec): string {
 }
 
 /** Split a key into its split prefix and metric path, if it has one. */
-export function splitKey(key: string): { split: string; sep: string; path: string } | null {
+export function splitKey(key: string): { split: Split; sep: string; path: string } | null {
   const match = SPLIT_RE.exec(key)
-  return match ? { split: match[1], sep: match[2], path: match[3] } : null
+  const split = SPLITS.find((s) => s === match?.[1])
+  return match && split ? { split, sep: match[2], path: match[3] } : null
 }
 
 /** The runs and keys a spec's top-level selection admits. */
@@ -195,7 +197,7 @@ function derivedViews(spec: PlotSpec, allRuns: RunInfo[]): View[] {
 
 /** "loss/ce: train vs val", one per metric path logged under two or more splits. */
 function splitViews(keys: string[], single: boolean): View[] {
-  const byPath = new Map<string, { splits: string[]; keys: string[] }>()
+  const byPath = new Map<string, { splits: Split[]; keys: string[] }>()
   for (const key of keys) {
     const parts = splitKey(key)
     if (!parts) continue
@@ -204,7 +206,7 @@ function splitViews(keys: string[], single: boolean): View[] {
     entry.keys.push(key)
     byPath.set(parts.path, entry)
   }
-  const order = (s: string) => SPLITS.indexOf(s as (typeof SPLITS)[number])
+  const order = (s: Split) => SPLITS.indexOf(s)
   const out: View[] = []
   for (const [path, entry] of [...byPath].sort((a, b) => naturalCompare(a[0], b[0]))) {
     if (entry.splits.length < 2) continue
@@ -303,7 +305,7 @@ export function defaultView(spec: PlotSpec, views: View[]): View | null {
 function fillLegend(
   template: string,
   values: { run: string; metric: string; group: string },
-  config: Record<string, unknown>,
+  config: Record<string, ConfigValue>,
 ): string {
   return template.replace(/\{(run|metric|group|config:[^}]+)\}/g, (_, token: string) => {
     if (token === 'run') return values.run

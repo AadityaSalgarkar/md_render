@@ -14,6 +14,7 @@ const PARTNER_LEAVES = {
 } as const
 
 export type Partner = keyof typeof PARTNER_LEAVES
+const PARTNERS: readonly Partner[] = ['std', 'min', 'max']
 
 /** The partner keys of one mean key, as logged by one run. */
 export type BandKeys = Partial<Record<Partner, string>>
@@ -29,8 +30,8 @@ export function bandKeysOf(key: string, logged: Set<string>): BandKeys | null {
   const parts = splitLeaf(key)
   if (!parts || !MEAN_LEAVES.includes(parts.leaf)) return null
   const band: BandKeys = {}
-  for (const [partner, leaves] of Object.entries(PARTNER_LEAVES) as Array<[Partner, readonly string[]]>) {
-    const found = leaves.map((leaf) => `${parts.prefix}/${leaf}`).find((k) => logged.has(k))
+  for (const partner of PARTNERS) {
+    const found = PARTNER_LEAVES[partner].map((leaf) => `${parts.prefix}/${leaf}`).find((k) => logged.has(k))
     if (found) band[partner] = found
   }
   return Object.keys(band).length > 0 ? band : null
@@ -39,7 +40,11 @@ export function bandKeysOf(key: string, logged: Set<string>): BandKeys | null {
 /** A band cut down to the keys the block admits, or null when none are left. */
 export function within(band: BandKeys | null, admitted: Set<string>): BandKeys | null {
   if (!band) return null
-  const kept = Object.fromEntries(Object.entries(band).filter(([, key]) => admitted.has(key))) as BandKeys
+  const kept: BandKeys = {}
+  for (const partner of PARTNERS) {
+    const key = band[partner]
+    if (key !== undefined && admitted.has(key)) kept[partner] = key
+  }
   return Object.keys(kept).length > 0 ? kept : null
 }
 

@@ -61,9 +61,9 @@ export function useTheme(loadThemes?: () => Promise<LoadedPackage[]>) {
     }
     let cancelled = false
     loadThemes()
-      .catch((err) => {
+      .catch((err): LoadedPackage[] => {
         console.warn('md-render: could not list installed themes', err)
-        return [] as LoadedPackage[]
+        return []
       })
       .then((found) => {
         if (cancelled) return

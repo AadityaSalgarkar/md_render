@@ -4,7 +4,7 @@
  * Pure functions only.
  */
 
-import type { Point, Series, Summary } from './types'
+import type { ConfigValue, Point, Series, Summary } from './types'
 import type { SummaryStat } from './schema'
 
 /**
@@ -150,7 +150,7 @@ export interface ScatterPoint {
  */
 export function scatterPoints(
   run: string,
-  config: Record<string, unknown>,
+  config: Record<string, ConfigValue>,
   x: string,
   y: string,
   per: 'run' | 'step',

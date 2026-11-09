@@ -45,7 +45,8 @@ export function parseColor(color: string): [number, number, number, number] | nu
   const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(text)
   if (hex) {
     const digits = hex[1].length === 3 ? hex[1].split('').map((c) => c + c).join('') : hex[1]
-    return [0, 2, 4].map((i) => parseInt(digits.slice(i, i + 2), 16)).concat(1) as [number, number, number, number]
+    const channel = (i: number) => parseInt(digits.slice(i, i + 2), 16)
+    return [channel(0), channel(2), channel(4), 1]
   }
   const rgb = /^rgba?\(([^)]+)\)$/i.exec(text)
   if (rgb) {
