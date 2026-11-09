@@ -20,14 +20,14 @@ export function describeTab(port: number, doc: DocumentEntry): Tab {
  * pretty JSON text; a ToolError (or anything thrown) becomes an error result
  * with the message, which is what the agent needs to decide its next step.
  */
-export function registerTool<Shape extends ZodRawShapeCompat>(
+export function registerTool<Input extends ZodRawShapeCompat>(
   server: McpServer,
   name: string,
   description: string,
-  inputSchema: Shape,
-  handler: (args: ShapeOutput<Shape>) => Promise<unknown>,
+  inputSchema: Input,
+  handler: (args: ShapeOutput<Input>) => Promise<object>,
 ): void {
-  const callback = async (args: ShapeOutput<Shape>): Promise<CallToolResult> => {
+  const callback = async (args: ShapeOutput<Input>): Promise<CallToolResult> => {
     try {
       const result = await handler(args)
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
@@ -36,13 +36,13 @@ export function registerTool<Shape extends ZodRawShapeCompat>(
       return { isError: true, content: [{ type: 'text', text: message }] }
     }
   }
-  // The SDK resolves the callback's argument type through a conditional on
-  // the concrete shape, which a generic cannot satisfy; the shape is what
+  // SAFETY: the SDK resolves the callback's argument type through a conditional on
+  // the concrete schema, which a generic cannot satisfy; the schema is what
   // makes `args` correct at every call site.
   server.registerTool(
     name,
     { description, inputSchema },
-    callback as unknown as ToolCallback<Shape>,
+    callback as unknown as ToolCallback<Input>,
   )
 }
 

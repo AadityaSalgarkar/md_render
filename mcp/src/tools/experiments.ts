@@ -18,7 +18,7 @@ import { messageOf } from '../../../src/lib/backendError.ts'
 /** Most points per series an agent can ask for; more would flood its context. */
 export const MAX_AGENT_POINTS = 2000
 
-const sourceShape = {
+const sourceParams = {
   project: z.string().min(1).optional().describe('trackio project name (a database in the trackio directory)'),
   db: z
     .string()
@@ -89,7 +89,7 @@ export function registerExperimentTools(server: McpServer): void {
     'list_runs',
     'List the runs of a trackio database: step range, row count, scalar metric keys and the config keys that split the runs into groups. Also returns suggested_views, the dropdown a <plot> block over these runs will offer, so a report can name views that exist. Use before writing a <plot> block.',
     {
-      ...sourceShape,
+      ...sourceParams,
       metrics: z.string().optional().describe('Regex to keep only some metric keys in the listing'),
       full_config: z
         .boolean()
@@ -145,7 +145,7 @@ export function registerExperimentTools(server: McpServer): void {
     'read_metrics',
     `Read metric values from a trackio database to quote in a report: for each run and key, a summary (first, last, min, max, mean and the steps of the extremes). Set max_points to also get downsampled [step, value, time_ms] points (at most ${MAX_AGENT_POINTS}). A run or key that does not exist is reported with the nearest names.`,
     {
-      ...sourceShape,
+      ...sourceParams,
       runs: z.array(z.string().min(1)).min(1).describe('Run names, from list_runs'),
       keys: z.array(z.string().min(1)).min(1).describe('Metric keys, from list_runs'),
       max_points: z

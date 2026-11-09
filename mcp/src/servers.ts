@@ -63,7 +63,7 @@ function recordPath(port: number): string {
 
 export function readRecord(port: number): ServerRecord | null {
   try {
-    const parsed = JSON.parse(readFileSync(recordPath(port), 'utf8')) as Partial<ServerRecord>
+    const parsed: { port?: unknown; token?: unknown; pid?: unknown } = JSON.parse(readFileSync(recordPath(port), 'utf8'))
     if (typeof parsed.port !== 'number' || typeof parsed.token !== 'string') return null
     return { port: parsed.port, token: parsed.token, pid: Number(parsed.pid ?? 0) }
   } catch {
@@ -91,8 +91,9 @@ export async function probe(port: number, timeoutMs = 1000): Promise<Probe> {
       signal: AbortSignal.timeout(timeoutMs),
     })
     if (!response.ok) return 'occupied'
-    const body = (await response.json()) as { app?: string }
-    return body.app === 'md-render' ? 'md-render' : 'occupied'
+    const body = await response.json()
+    const isMdRender = typeof body === 'object' && body !== null && 'app' in body && body.app === 'md-render'
+    return isMdRender ? 'md-render' : 'occupied'
   } catch {
     return 'free'
   }

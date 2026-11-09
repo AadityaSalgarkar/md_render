@@ -8,6 +8,13 @@ import { messageOf } from '../../src/lib/backendError.ts'
 
 export class ToolError extends Error {}
 
+interface RequestOptions {
+  /** Sent as the JSON body. */
+  body?: object
+  /** Routes that change state need the token the server was started with. */
+  auth?: boolean
+}
+
 export interface DocumentEntry {
   id: number
   label: string
@@ -62,7 +69,7 @@ export class MdRenderClient {
   private async request(
     method: string,
     path: string,
-    options: { body?: unknown; auth?: boolean } = {},
+    options: RequestOptions = {},
   ): Promise<Response> {
     const headers: Record<string, string> = {}
     if (options.auth) headers.Authorization = `Bearer ${this.token}`
@@ -94,7 +101,10 @@ export class MdRenderClient {
     return response
   }
 
-  private async json<T>(method: string, path: string, options?: { body?: unknown; auth?: boolean }) {
+  private async json<T>(method: string, path: string, options?: RequestOptions) {
+    // SAFETY: request() has already thrown on any non-2xx answer, and every
+    // 2xx /api answer of src-tauri/src/server.rs is the JSON shape the caller
+    // names; src/test/mcp.test.ts drives these routes on the real binary.
     return (await (await this.request(method, path, options)).json()) as T
   }
 
@@ -164,19 +174,20 @@ export class MdRenderClient {
     if (!response.ok) {
       let detail = text
       try {
-        const body = JSON.parse(text) as { error: string; message: string; log?: string[] }
-        detail = [`${body.error}: ${body.message}`, ...(body.log ?? [])].join('\n')
+        const body: { error?: unknown; message?: unknown; log?: unknown } = JSON.parse(text)
+        const log = Array.isArray(body.log) ? body.log.map(String) : []
+        detail = [`${String(body.error)}: ${String(body.message)}`, ...log].join('\n')
       } catch {
         // plain text answer
       }
       throw new ToolError(`the diagram did not compile (${response.status}):\n${detail}`)
     }
+    // SAFETY: a 2xx /api/tikz answer is always this shape (src-tauri/src/tikz.rs).
     return JSON.parse(text) as { key: string; svg: string; cached: boolean }
   }
 
   addDocuments(paths: string[], workspace?: string) {
-    const body: { paths: string[]; ws?: string } = { paths }
-    if (workspace) body.ws = workspace
+    const body = workspace ? { paths, ws: workspace } : { paths }
     return this.json<AddResult>('POST', '/api/documents', { body, auth: true })
   }
 

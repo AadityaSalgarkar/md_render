@@ -15,8 +15,7 @@ const INSTALL_NOTE =
 async function availableThemes(client: MdRenderClient) {
   const installed = (await client.listThemes()).flatMap((pkg) =>
     pkg.themes
-      .filter((t) => typeof t.id === 'string')
-      .map((t) => ({ id: t.id as string, name: t.name ?? t.id, mode: t.mode, package: pkg.package })),
+      .flatMap(({ id, name, mode }) => (id === undefined ? [] : [{ id, name: name ?? id, mode, package: pkg.package }])),
   )
   return [...themes.map((t) => ({ id: t.id, name: t.name, mode: t.mode, package: 'built-in' })), ...installed]
 }
