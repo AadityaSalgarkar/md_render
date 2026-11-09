@@ -162,7 +162,7 @@ describe.skipIf(!binary)('md-render --port', () => {
   it('saves an open document back to disk', async () => {
     // The token the server injects into the page; supplied here the same way
     // the browser would.
-    ;(globalThis as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ = token()
+    window.__MD_RENDER_TOKEN__ = token()
     const backend = serverBackend(origin)
 
     await backend.writeFile(firstDoc, '# Edited through the browser\n')
@@ -173,7 +173,7 @@ describe.skipIf(!binary)('md-render --port', () => {
   })
 
   it('exports the clean copy beside the document', async () => {
-    ;(globalThis as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ = token()
+    window.__MD_RENDER_TOKEN__ = token()
     const backend = serverBackend(origin)
 
     const output = await backend.exportMarkdown(firstDoc, '# Clean copy\n')
@@ -183,7 +183,7 @@ describe.skipIf(!binary)('md-render --port', () => {
   })
 
   it('refuses to save without the injected token', async () => {
-    ;(globalThis as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ = 'wrong-token'
+    window.__MD_RENDER_TOKEN__ = 'wrong-token'
     const backend = serverBackend(origin)
     const before = readFileSync(firstDoc, 'utf8')
 
@@ -192,7 +192,7 @@ describe.skipIf(!binary)('md-render --port', () => {
   })
 
   it('refuses to touch a file that is not one of the open documents', async () => {
-    ;(globalThis as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ = token()
+    window.__MD_RENDER_TOKEN__ = token()
     const backend = serverBackend(origin)
     const outsider = path.join(work, 'not-open.md')
     writeFileSync(outsider, '# untouched\n')
@@ -363,7 +363,7 @@ describe.skipIf(!binary)('md-render --port', () => {
   })
 
   it('closes a tab without renumbering the others, and a refresh does not bring it back', async () => {
-    ;(globalThis as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ = token()
+    window.__MD_RENDER_TOKEN__ = token()
     const backend = serverBackend(origin)
 
     const before = await backend.listDocuments()
@@ -387,7 +387,7 @@ describe.skipIf(!binary)('md-render --port', () => {
   })
 
   it('re-opens a closed tab when the file is explicitly added again', async () => {
-    ;(globalThis as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ = token()
+    window.__MD_RENDER_TOKEN__ = token()
     const backend = serverBackend(origin)
 
     const before = await backend.listDocuments()
@@ -427,13 +427,13 @@ describe.skipIf(!binary)('md-render --port', () => {
   })
 
   it('scopes the tab list to the workspace the page belongs to', async () => {
-    ;(globalThis as { __MD_RENDER_WORKSPACE__?: string }).__MD_RENDER_WORKSPACE__ = 'nested'
+    window.__MD_RENDER_WORKSPACE__ = 'nested'
     try {
       const labels = (await serverBackend(origin).listDocuments()).map((doc) => doc.label)
       expect(labels).toContain('third.md')
       expect(labels).not.toContain('first.md')
     } finally {
-      delete (globalThis as { __MD_RENDER_WORKSPACE__?: string }).__MD_RENDER_WORKSPACE__
+      delete window.__MD_RENDER_WORKSPACE__
     }
   })
 
@@ -481,7 +481,7 @@ describe.skipIf(!binary)('md-render --port', () => {
   })
 
   it('re-opens a closed nested file into its workspace when ws is given', async () => {
-    ;(globalThis as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ = token()
+    window.__MD_RENDER_TOKEN__ = token()
     const backend = serverBackend(origin)
 
     // A file two levels down inside the nested workspace.
