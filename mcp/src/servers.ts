@@ -19,6 +19,7 @@ import {
   workspaceUrl,
   type WorkspaceEntry,
 } from './client.ts'
+import { messageOf } from '../../src/lib/backendError.ts'
 
 export interface ServerRecord {
   port: number
@@ -132,7 +133,7 @@ export async function listServers(): Promise<ServerInfo[]> {
         const client = new MdRenderClient(record.port, record.token)
         info.workspaces = summariseWorkspaces(record.port, await client.workspaces())
       } catch (err) {
-        info.note = (err as Error).message
+        info.note = messageOf(err)
       }
     } else if (!pidAlive(record.pid)) {
       rmSync(recordPath(record.port), { force: true })
@@ -380,7 +381,7 @@ export async function stopServer(port: number): Promise<{ port: number; stopped:
   try {
     await live.client.shutdown()
   } catch (err) {
-    method = `signal (shutdown request failed: ${(err as Error).message})`
+    method = `signal (shutdown request failed: ${messageOf(err)})`
   }
 
   let gone = await waitFor(async () => (await probe(port)) === 'free', 5_000)

@@ -4,6 +4,8 @@
  * which is already phrased for a human or an agent.
  */
 
+import { messageOf } from '../../src/lib/backendError.ts'
+
 export class ToolError extends Error {}
 
 export interface DocumentEntry {
@@ -76,7 +78,7 @@ export class MdRenderClient {
       })
     } catch (err) {
       throw new ToolError(
-        `could not reach the md-render server on port ${this.port}: ${(err as Error).message}; call list_servers`,
+        `could not reach the md-render server on port ${this.port}: ${messageOf(err)}; call list_servers`,
       )
     }
 

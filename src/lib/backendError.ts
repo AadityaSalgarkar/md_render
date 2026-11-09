@@ -34,3 +34,8 @@ export function readRejection<Code extends string>(
   if (typeof body.path === 'string') rejection.path = body.path
   return rejection
 }
+
+/** The message of anything thrown: an Error's own, or the value as text. */
+export function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}

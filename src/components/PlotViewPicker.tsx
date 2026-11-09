@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { compilePattern } from '../lib/plots/schema'
 import type { View } from '../lib/plots/views'
+import { messageOf } from '../lib/backendError'
 
 export const CUSTOM_VIEW = '\u0000custom'
 
@@ -48,7 +49,7 @@ export function PlotViewPicker({ views, active, configKeys, onSelect, onCustom }
       compilePattern(metrics || '.*', 'metrics')
       if (groupBy.startsWith('run:')) compilePattern(groupBy.slice(4), 'group by')
     } catch (err) {
-      setError((err as Error).message)
+      setError(messageOf(err))
       return
     }
     onCustom({

@@ -4,6 +4,7 @@
  */
 
 import type { DbSource } from './types'
+import { messageOf } from '../backendError'
 
 export const PLOT_TYPES = ['line', 'bar', 'spider', 'histogram', 'scatter'] as const
 export type PlotType = (typeof PLOT_TYPES)[number]
@@ -157,7 +158,7 @@ export function compilePattern(pattern: string, where: string): RegExp {
   try {
     return new RegExp(pattern, 'u')
   } catch (err) {
-    throw new SpecError(`${where}: ${(err as Error).message}`)
+    throw new SpecError(`${where}: ${messageOf(err)}`)
   }
 }
 
@@ -331,7 +332,7 @@ export function parsePlotBlock(text: string): ParseResult {
   try {
     raw = JSON.parse(text)
   } catch (err) {
-    return { ok: false, error: `The plot block is not valid JSON: ${(err as Error).message}` }
+    return { ok: false, error: `The plot block is not valid JSON: ${messageOf(err)}` }
   }
   try {
     return { ok: true, ...parseSpec(raw) }

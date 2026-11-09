@@ -4,6 +4,7 @@ import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import type { ZodRawShapeCompat, ShapeOutput } from '@modelcontextprotocol/sdk/server/zod-compat.js'
 import { MdRenderClient, ToolError, docUrl, type DocumentEntry } from '../client.ts'
+import { messageOf } from '../../../src/lib/backendError.ts'
 
 /** A tab as tools report it: the tab list entry plus where to see it. */
 export interface Tab extends DocumentEntry {
@@ -31,7 +32,7 @@ export function registerTool<Shape extends ZodRawShapeCompat>(
       const result = await handler(args)
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = messageOf(err)
       return { isError: true, content: [{ type: 'text', text: message }] }
     }
   }

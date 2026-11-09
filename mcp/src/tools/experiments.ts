@@ -13,6 +13,7 @@ import { ToolError, baseUrl } from '../client.ts'
 import { resolveServer } from '../servers.ts'
 import { portSchema } from './servers.ts'
 import { registerTool } from './shared.ts'
+import { messageOf } from '../../../src/lib/backendError.ts'
 
 /** Most points per series an agent can ask for; more would flood its context. */
 export const MAX_AGENT_POINTS = 2000
@@ -104,7 +105,7 @@ export function registerExperimentTools(server: McpServer): void {
         try {
           keep = new RegExp(metrics)
         } catch (err) {
-          throw new ToolError(`metrics: ${(err as Error).message}`)
+          throw new ToolError(`metrics: ${messageOf(err)}`)
         }
       }
       const grouping = configCandidates(response.runs)
