@@ -79,7 +79,7 @@ export function isTauri(): boolean {
 /** Token the server injected into the page; required for anything that writes. */
 function serverToken(): string {
   if (typeof window === 'undefined') return ''
-  return (window as { __MD_RENDER_TOKEN__?: string }).__MD_RENDER_TOKEN__ ?? ''
+  return window.__MD_RENDER_TOKEN__ ?? ''
 }
 
 /**
@@ -88,7 +88,7 @@ function serverToken(): string {
  */
 export function serverWorkspace(): string {
   if (typeof window === 'undefined') return ''
-  return (window as { __MD_RENDER_WORKSPACE__?: string }).__MD_RENDER_WORKSPACE__ ?? ''
+  return window.__MD_RENDER_WORKSPACE__ ?? ''
 }
 
 /** Tauri shell. */
@@ -202,31 +202,41 @@ function desktopExperiments(): ExperimentsApi {
   }
 }
 
+/** A document as the server lists it; ids are numbers on the wire. */
+interface ServerDocument {
+  id: number
+  label: string
+  path: string
+}
+
 /**
- * Browser talking to the headless server. Read-only by design.
+ * The body of a successful server answer.
+ * SAFETY: the server (src-tauri/src/server.rs) answers every /api route with
+ * the JSON shape named at the call site, and the serverMode tests pin those
+ * shapes against the real binary. Callers check `response.ok` first.
+ */
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T
+}
+
+function toDocumentMeta(documents: ServerDocument[]): DocumentMeta[] {
+  return documents.map((doc) => ({ id: String(doc.id), label: doc.label, path: doc.path }))
+}
+
+/**
+ * Browser talking to the headless server.
  *
  * `base` is empty in the browser, where same-origin relative URLs are right.
  * Tests pass an absolute origin so they can drive a real server process.
  */
 export function serverBackend(base = ''): Backend {
-  const fetchDocuments = async (refresh: boolean): Promise<DocumentMeta[]> => {
-    const params = new URLSearchParams()
-    if (refresh) params.set('refresh', 'true')
+  const fetchDocuments = async (params: URLSearchParams): Promise<DocumentMeta[]> => {
     const workspace = serverWorkspace()
     if (workspace) params.set('ws', workspace)
     const query = params.toString()
     const response = await fetch(`${base}/api/files${query ? `?${query}` : ''}`)
     if (!response.ok) throw new Error(`could not list documents (${response.status})`)
-    const documents = (await response.json()) as Array<{
-      id: number
-      label: string
-      path: string
-    }>
-    return documents.map((doc) => ({
-      id: String(doc.id),
-      label: doc.label,
-      path: doc.path,
-    }))
+    return toDocumentMeta(await readJson<ServerDocument[]>(response))
   }
 
   return {
@@ -235,8 +245,8 @@ export function serverBackend(base = ''): Backend {
     // Writes are limited to the documents the server was told to open and carry
     // the injected token.
     writable: true,
-    listDocuments: () => fetchDocuments(false),
-    refreshDocuments: () => fetchDocuments(true),
+    listDocuments: () => fetchDocuments(new URLSearchParams()),
+    refreshDocuments: () => fetchDocuments(new URLSearchParams({ refresh: 'true' })),
     closeDocument: async (id) => {
       const workspace = serverWorkspace()
       const ws = workspace ? `&ws=${encodeURIComponent(workspace)}` : ''
@@ -245,27 +255,12 @@ export function serverBackend(base = ''): Backend {
         headers: { Authorization: `Bearer ${serverToken()}` },
       })
       if (!response.ok) throw new Error(`could not close document (${response.status})`)
-      const documents = (await response.json()) as Array<{
-        id: number
-        label: string
-        path: string
-      }>
-      return documents.map((doc) => ({
-        id: String(doc.id),
-        label: doc.label,
-        path: doc.path,
-      }))
+      return toDocumentMeta(await readJson<ServerDocument[]>(response))
     },
     readDocument: async (id) => {
       const response = await fetch(`${base}/api/file?id=${encodeURIComponent(id)}`)
       if (!response.ok) throw new Error(`could not read document (${response.status})`)
-      const body = (await response.json()) as {
-        id: number
-        label: string
-        path: string
-        base_dir: string
-        content: string
-      }
+      const body = await readJson<ServerDocument & { base_dir: string; content: string }>(response)
       return {
         id: String(body.id),
         label: body.label,
@@ -278,7 +273,7 @@ export function serverBackend(base = ''): Backend {
     readFile: async (path) => {
       const response = await fetch(`${base}/api/read?path=${encodeURIComponent(path)}`)
       if (!response.ok) throw new Error(`could not read file (${response.status})`)
-      const body = (await response.json()) as { content: string }
+      const body = await readJson<{ content: string }>(response)
       return body.content
     },
     writeFile: async (path, content) => {
@@ -302,7 +297,7 @@ export function serverBackend(base = ''): Backend {
         body: JSON.stringify({ path, content }),
       })
       if (!response.ok) throw new Error(`could not export (${response.status})`)
-      const body = (await response.json()) as { path: string }
+      const body = await readJson<{ path: string }>(response)
       return body.path
     },
     getLaunchFile: async () => null,
@@ -311,11 +306,7 @@ export function serverBackend(base = ''): Backend {
       if (!workspace) return null
       const response = await fetch(`${base}/api/view?ws=${encodeURIComponent(workspace)}`)
       if (!response.ok) return null
-      const body = (await response.json()) as {
-        doc: number | null
-        theme: string | null
-        seq: number
-      }
+      const body = await readJson<{ doc: number | null; theme: string | null; seq: number }>(response)
       return {
         doc: body.doc === null ? null : String(body.doc),
         theme: body.theme,
@@ -327,7 +318,7 @@ export function serverBackend(base = ''): Backend {
     listThemes: async () => {
       const response = await fetch(`${base}/api/themes`)
       if (!response.ok) throw new Error(`could not list themes (${response.status})`)
-      const raw = (await response.json()) as RawPackage[]
+      const raw = await readJson<RawPackage[]>(response)
       return checkPackages(raw, (pkg) => ({
         href: `${base}/api/themes/${encodeURIComponent(pkg.package)}/theme.css`,
       }))
@@ -345,7 +336,7 @@ export function serverBackend(base = ''): Backend {
 export function isServerMode(): boolean {
   return (
     typeof window !== 'undefined' &&
-    (window as { __MD_RENDER_SERVER__?: boolean }).__MD_RENDER_SERVER__ === true
+    window.__MD_RENDER_SERVER__ === true
   )
 }
 

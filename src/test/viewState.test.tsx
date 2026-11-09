@@ -13,12 +13,6 @@ vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: () => ({ close: vi.fn(), onCloseRequested: vi.fn() }),
 }))
 
-type Marker = {
-  __MD_RENDER_SERVER__?: boolean
-  __MD_RENDER_TOKEN__?: string
-  __MD_RENDER_WORKSPACE__?: string
-}
-
 const docs = [
   { id: 0, label: 'alpha.md', path: '/notes/alpha.md', workspace: 'notes' },
   { id: 1, label: 'beta.md', path: '/notes/beta.md', workspace: 'notes' },
@@ -44,10 +38,9 @@ beforeEach(() => {
   sessionStorage.clear()
   window.history.replaceState(null, '', '/notes/')
   document.documentElement.removeAttribute('data-theme')
-  const marker = window as Marker
-  marker.__MD_RENDER_SERVER__ = true
-  marker.__MD_RENDER_TOKEN__ = 'token'
-  marker.__MD_RENDER_WORKSPACE__ = 'notes'
+  window.__MD_RENDER_SERVER__ = true
+  window.__MD_RENDER_TOKEN__ = 'token'
+  window.__MD_RENDER_WORKSPACE__ = 'notes'
 
   view = { doc: null, theme: null, seq: 0 }
   reads = []
@@ -73,10 +66,9 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers()
   globalThis.fetch = realFetch
-  const marker = window as Marker
-  delete marker.__MD_RENDER_SERVER__
-  delete marker.__MD_RENDER_TOKEN__
-  delete marker.__MD_RENDER_WORKSPACE__
+  delete window.__MD_RENDER_SERVER__
+  delete window.__MD_RENDER_TOKEN__
+  delete window.__MD_RENDER_WORKSPACE__
 })
 
 async function renderServed() {
