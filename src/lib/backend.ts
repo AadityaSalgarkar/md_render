@@ -209,13 +209,11 @@ interface ServerDocument {
   path: string
 }
 
-/**
- * The body of a successful server answer.
- * SAFETY: the server (src-tauri/src/server.rs) answers every /api route with
- * the JSON shape named at the call site, and the serverMode tests pin those
- * shapes against the real binary. Callers check `response.ok` first.
- */
+/** The body of a successful server answer. Callers check `response.ok` first. */
 async function readJson<T>(response: Response): Promise<T> {
+  /* SAFETY: the server (src-tauri/src/server.rs) answers every /api route with
+     the JSON shape named at the call site, and the serverMode tests pin those
+     shapes against the real binary. */
   return (await response.json()) as T
 }
 

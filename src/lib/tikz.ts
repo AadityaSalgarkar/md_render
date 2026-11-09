@@ -88,6 +88,7 @@ export function serverTikz(base: string, token: () => string): TikzApi {
       }
       const text = await response.text()
       if (!response.ok) throw TikzError.from(text, `request failed (${response.status})`)
+      // SAFETY: a 2xx /api/tikz answer is always a TikzRendered (src-tauri/src/tikz.rs).
       return JSON.parse(text) as TikzRendered
     },
   }

@@ -78,9 +78,9 @@ function nest(nodes: ElementContent[]): ElementContent[] {
 
 export default function rehypeSections() {
   return (tree: Root) => {
-    // SAFETY: after react-markdown the root holds only comments, elements and
-    // text (no doctype), which is exactly ElementContent; every ElementContent
-    // is also a RootContent.
+    /* SAFETY: after react-markdown the root holds only comments, elements and
+       text (no doctype), which is exactly ElementContent; every ElementContent
+       is also a RootContent. */
     tree.children = nest(tree.children as ElementContent[]) satisfies RootContent[]
   }
 }

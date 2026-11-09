@@ -26,8 +26,8 @@ export function serverExperiments(base = ''): ExperimentsApi {
   const read = async <T>(response: Response): Promise<T> => {
     const text = await response.text()
     if (!response.ok) throw ExperimentsError.from(text, `request failed (${response.status})`)
-    // SAFETY: a 2xx /api/experiments answer is the shape named by the
-    // ExperimentsApi method the caller implements (src-tauri/src/experiments.rs).
+    /* SAFETY: a 2xx /api/experiments answer is the shape named by the
+       ExperimentsApi method the caller implements (src-tauri/src/experiments.rs). */
     return JSON.parse(text) as T
   }
   const get = async <T>(path: string): Promise<T> => {

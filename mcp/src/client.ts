@@ -102,9 +102,9 @@ export class MdRenderClient {
   }
 
   private async json<T>(method: string, path: string, options?: RequestOptions) {
-    // SAFETY: request() has already thrown on any non-2xx answer, and every
-    // 2xx /api answer of src-tauri/src/server.rs is the JSON shape the caller
-    // names; src/test/mcp.test.ts drives these routes on the real binary.
+    /* SAFETY: request() has already thrown on any non-2xx answer, and every
+       2xx /api answer of src-tauri/src/server.rs is the JSON shape the caller
+       names; src/test/mcp.test.ts drives these routes on the real binary. */
     return (await (await this.request(method, path, options)).json()) as T
   }
 

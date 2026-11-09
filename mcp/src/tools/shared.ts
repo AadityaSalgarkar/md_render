@@ -36,9 +36,9 @@ export function registerTool<Input extends ZodRawShapeCompat>(
       return { isError: true, content: [{ type: 'text', text: message }] }
     }
   }
-  // SAFETY: the SDK resolves the callback's argument type through a conditional on
-  // the concrete schema, which a generic cannot satisfy; the schema is what
-  // makes `args` correct at every call site.
+  /* SAFETY: the SDK resolves the callback's argument type through a
+     conditional on the concrete schema, which a generic cannot satisfy; the
+     schema is what makes `args` correct at every call site. */
   server.registerTool(
     name,
     { description, inputSchema },

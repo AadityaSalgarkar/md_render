@@ -6,9 +6,8 @@ import { defineConfig } from 'vite'
 // Bundles the MCP server into one self-contained file, so `make install` can
 // drop it anywhere without a node_modules beside it.
 const here = path.dirname(fileURLToPath(import.meta.url))
-const rootPackage = JSON.parse(readFileSync(path.join(here, '..', 'package.json'), 'utf8')) as {
-  version: string
-}
+const rootPackage: { version?: unknown } = JSON.parse(readFileSync(path.join(here, '..', 'package.json'), 'utf8'))
+if (typeof rootPackage.version !== 'string') throw new Error('package.json has no version')
 
 export default defineConfig({
   root: here,

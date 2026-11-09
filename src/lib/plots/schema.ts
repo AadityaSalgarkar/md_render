@@ -172,10 +172,11 @@ function str(value: unknown, where: string): string {
 }
 
 function oneOf<T extends string>(value: unknown, options: readonly T[], where: string): T {
-  if (typeof value !== 'string' || !options.includes(value as T)) {
+  const match = options.find((option) => option === value)
+  if (match === undefined) {
     throw new SpecError(`${where} must be one of ${options.map((o) => `"${o}"`).join(', ')}`)
   }
-  return value as T
+  return match
 }
 
 function num(value: unknown, where: string, min: number, max: number): number {
@@ -191,7 +192,7 @@ function selector(value: unknown, where: string): Selector {
     compilePattern(value, where)
     return value
   }
-  if (Array.isArray(value) && value.every((v) => typeof v === 'string')) return value as string[]
+  if (Array.isArray(value) && value.every((v): v is string => typeof v === 'string')) return value
   throw new SpecError(`${where} must be a regex string or a list of exact names`)
 }
 
@@ -199,10 +200,9 @@ function range(value: unknown, where: string): [number | null, number | null] {
   if (!Array.isArray(value) || value.length !== 2) {
     throw new SpecError(`${where} must be [min, max] (null for automatic)`)
   }
-  return value.map((v, i) => {
-    if (v === null) return null
-    return num(v, `${where}[${i}]`, -Number.MAX_VALUE, Number.MAX_VALUE)
-  }) as [number | null, number | null]
+  const bound = (v: unknown, i: number) =>
+    v === null ? null : num(v, `${where}[${i}]`, -Number.MAX_VALUE, Number.MAX_VALUE)
+  return [bound(value[0], 0), bound(value[1], 1)]
 }
 
 /** Check a group_by value: "run", "metric", "none", "config:<path>", "run:<regex>". */

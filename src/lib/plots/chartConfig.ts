@@ -177,13 +177,11 @@ export function numberTicks(log: boolean) {
   }
 }
 
-/**
- * A typed config as the untyped one the component hands to `new Chart`.
- * SAFETY: Chart.js reads `config.type` at runtime and interprets the rest for
- * that type; the per-type generics only stop TypeScript from seeing that a
- * `'line'` callback signature is not assignable to the union of all types.
- */
+/** A typed config as the untyped one the component hands to `new Chart`. */
 function widenConfig<T extends ChartType>(config: ChartConfiguration<T>): ChartConfiguration {
+  /* SAFETY: Chart.js reads `config.type` at runtime and interprets the rest
+     for that type; the per-type generics only stop TypeScript from seeing that
+     a 'line' callback signature is not assignable to the union of all types. */
   return config as unknown as ChartConfiguration
 }
 
@@ -785,8 +783,8 @@ function pointLabels(palette: Palette): Plugin<'scatter'> {
       ctx.textBaseline = 'middle'
       chart.data.datasets.forEach((dataset, i) => {
         if (!chart.isDatasetVisible(i)) return
-        // SAFETY: buildScatter is the only producer of datasets for charts
-        // carrying this plugin, and it fills them with LabelledPoint values.
+        /* SAFETY: buildScatter is the only producer of datasets for charts
+           carrying this plugin, and it fills them with LabelledPoint values. */
         const points = dataset.data as LabelledPoint[]
         chart.getDatasetMeta(i).data.forEach((element, j) => {
           const run = points[j]?.run
