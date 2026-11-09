@@ -3,6 +3,8 @@
  * Shared by the reader (backend.ts, ExperimentPlot) and the MCP server.
  */
 
+import { readRejection } from '../backendError'
+
 /** Where a plot's data lives: a trackio project, or a database path. */
 export interface DbSource {
   project?: string
@@ -112,14 +114,16 @@ export function isUnchanged(response: SeriesResponse): response is SeriesUnchang
 }
 
 /** Error codes the backend answers with. */
-export type ExperimentsErrorCode =
-  | 'bad_request'
-  | 'forbidden'
-  | 'not_found'
-  | 'bad_schema'
-  | 'locked'
-  | 'io'
-  | 'unavailable'
+const EXPERIMENTS_ERROR_CODES = [
+  'bad_request',
+  'forbidden',
+  'not_found',
+  'bad_schema',
+  'locked',
+  'io',
+  'unavailable',
+] as const
+export type ExperimentsErrorCode = (typeof EXPERIMENTS_ERROR_CODES)[number]
 
 export class ExperimentsError extends Error {
   code: ExperimentsErrorCode
@@ -135,20 +139,8 @@ export class ExperimentsError extends Error {
   /** Build from whatever the backend rejected with: the JSON error object or text. */
   static from(raw: unknown, fallback = 'could not read experiment data'): ExperimentsError {
     if (raw instanceof ExperimentsError) return raw
-    let value = raw
-    if (typeof raw === 'string') {
-      try {
-        value = JSON.parse(raw)
-      } catch {
-        return new ExperimentsError('io', raw || fallback)
-      }
-    }
-    if (value && typeof value === 'object' && 'error' in value && 'message' in value) {
-      const body = value as { error: ExperimentsErrorCode; message: string; path?: string }
-      return new ExperimentsError(body.error, body.message, body.path)
-    }
-    if (value instanceof Error) return new ExperimentsError('io', value.message)
-    return new ExperimentsError('io', fallback)
+    const { code, message, path } = readRejection(raw, EXPERIMENTS_ERROR_CODES, { code: 'io', message: fallback })
+    return new ExperimentsError(code, message, path)
   }
 }
 

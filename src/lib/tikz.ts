@@ -13,6 +13,7 @@
  */
 
 import { rewriteTagBlocks } from './plotBlocks'
+import { readRejection } from './backendError'
 
 export const TIKZ_LANGUAGE = 'tikz'
 const TIKZ_INFO = /^\s*(?:language-)?tikz\s*$/i
@@ -45,7 +46,8 @@ export interface TikzRendered {
   cached: boolean
 }
 
-export type TikzErrorCode = 'tex' | 'timeout' | 'too_large' | 'engine' | 'io' | 'unavailable'
+const TIKZ_ERROR_CODES = ['tex', 'timeout', 'too_large', 'engine', 'io', 'unavailable'] as const
+export type TikzErrorCode = (typeof TIKZ_ERROR_CODES)[number]
 
 export class TikzError extends Error {
   code: TikzErrorCode
@@ -61,20 +63,8 @@ export class TikzError extends Error {
   /** From whatever the backend rejected with: the JSON error or plain text. */
   static from(raw: unknown, fallback = 'the diagram could not be rendered'): TikzError {
     if (raw instanceof TikzError) return raw
-    let value = raw
-    if (typeof raw === 'string') {
-      try {
-        value = JSON.parse(raw)
-      } catch {
-        return new TikzError('engine', raw || fallback)
-      }
-    }
-    if (value && typeof value === 'object' && 'error' in value && 'message' in value) {
-      const body = value as { error: TikzErrorCode; message: string; log?: string[] }
-      return new TikzError(body.error, body.message, body.log ?? [])
-    }
-    if (value instanceof Error) return new TikzError('engine', value.message)
-    return new TikzError('engine', fallback)
+    const { code, message, log } = readRejection(raw, TIKZ_ERROR_CODES, { code: 'engine', message: fallback })
+    return new TikzError(code, message, log)
   }
 }
 
