@@ -5,7 +5,7 @@
  * component supplies the palette and owns the chart instance.
  */
 
-import type { ChartConfiguration, Plugin, TooltipItem } from 'chart.js'
+import type { ChartConfiguration, ChartType, Plugin, TooltipItem } from 'chart.js'
 import type { AxisX, AxisY, PlotSpec } from './schema'
 import type { Resolution, ResolvedSeries, View } from './views'
 import type { RunInfo, Series } from './types'
@@ -175,6 +175,16 @@ export function numberTicks(log: boolean) {
     }
     return formatNumber(v)
   }
+}
+
+/**
+ * A typed config as the untyped one the component hands to `new Chart`.
+ * SAFETY: Chart.js reads `config.type` at runtime and interprets the rest for
+ * that type; the per-type generics only stop TypeScript from seeing that a
+ * `'line'` callback signature is not assignable to the union of all types.
+ */
+function widenConfig<T extends ChartType>(config: ChartConfiguration<T>): ChartConfiguration {
+  return config as unknown as ChartConfiguration
 }
 
 /** Legend ids: a series' own id, or its group for kinds drawn per group. */
@@ -445,7 +455,7 @@ function buildLine(input: BuildInput): BuiltChart {
     },
   }
   return {
-    config: config as unknown as ChartConfiguration,
+    config: widenConfig(config),
     legend,
     table: tableRows(resolution, data, hidden, bySeries),
     notes,
@@ -584,7 +594,7 @@ function buildBar(input: BuildInput): BuiltChart {
     },
   }
   return {
-    config: config as unknown as ChartConfiguration,
+    config: widenConfig(config),
     legend,
     table: tableRows(resolution, input.series, hidden, keys.length === 1 || view.items ? byGroup : (s) => s.key),
     notes: [],
@@ -663,7 +673,7 @@ function buildSpider(input: BuildInput): BuiltChart {
   }
   const notes = normalise ? ['Each axis is scaled to its own range; hover for the values.'] : []
   return {
-    config: config as unknown as ChartConfiguration,
+    config: widenConfig(config),
     legend,
     table: tableRows(resolution, input.series, hidden, byGroup),
     notes,
@@ -739,7 +749,7 @@ function buildHistogram(input: BuildInput): BuiltChart {
     ? ['Some series are downsampled; the histogram counts the points kept.']
     : []
   return {
-    config: config as unknown as ChartConfiguration,
+    config: widenConfig(config),
     legend,
     table: tableRows(resolution, data, hidden, byGroup),
     notes,
@@ -775,7 +785,9 @@ function pointLabels(palette: Palette): Plugin<'scatter'> {
       ctx.textBaseline = 'middle'
       chart.data.datasets.forEach((dataset, i) => {
         if (!chart.isDatasetVisible(i)) return
-        const points = dataset.data as unknown as LabelledPoint[]
+        // SAFETY: buildScatter is the only producer of datasets for charts
+        // carrying this plugin, and it fills them with LabelledPoint values.
+        const points = dataset.data as LabelledPoint[]
         chart.getDatasetMeta(i).data.forEach((element, j) => {
           const run = points[j]?.run
           if (run) ctx.fillText(run, element.x + 7, element.y - 7)
@@ -880,7 +892,7 @@ function buildScatter(input: BuildInput): BuiltChart {
     },
   }
   return {
-    config: config as unknown as ChartConfiguration,
+    config: widenConfig(config),
     legend,
     table: tableRows(resolution, data, hidden, byGroup),
     notes,

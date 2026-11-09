@@ -21,7 +21,7 @@ import type { Element, ElementContent, Root, RootContent } from 'hast'
 
 const HEADING_LEVEL = /^h([1-6])$/
 
-function headingLevel(node: RootContent | ElementContent): number | null {
+function headingLevel(node: ElementContent): number | null {
   if (node.type !== 'element') return null
   const match = HEADING_LEVEL.exec(node.tagName)
   return match ? Number(match[1]) : null
@@ -35,7 +35,7 @@ function nest(nodes: ElementContent[]): ElementContent[] {
     const node = nodes[index]
     const level = headingLevel(node)
 
-    if (level === null) {
+    if (node.type !== 'element' || level === null) {
       out.push(node)
       index += 1
       continue
@@ -50,8 +50,8 @@ function nest(nodes: ElementContent[]): ElementContent[] {
       end += 1
     }
 
-    const heading = node as Element
-    const id = typeof heading.properties?.id === 'string' ? heading.properties.id : undefined
+    const heading = node
+    const id = heading.properties.id
     heading.properties = { ...heading.properties, dataCollapsible: 'true' }
 
     const body: Element = {
@@ -64,13 +64,10 @@ function nest(nodes: ElementContent[]): ElementContent[] {
     const section: Element = {
       type: 'element',
       tagName: 'section',
-      properties: {
-        className: ['md-section'],
-        dataLevel: String(level),
-        ...(id ? { dataHeadingId: id } : {}),
-      },
+      properties: { className: ['md-section'], dataLevel: String(level) },
       children: [heading, body],
     }
+    if (typeof id === 'string' && id) section.properties.dataHeadingId = id
 
     out.push(section)
     index = end
@@ -81,6 +78,9 @@ function nest(nodes: ElementContent[]): ElementContent[] {
 
 export default function rehypeSections() {
   return (tree: Root) => {
-    tree.children = nest(tree.children as ElementContent[]) as RootContent[]
+    // SAFETY: after react-markdown the root holds only comments, elements and
+    // text (no doctype), which is exactly ElementContent; every ElementContent
+    // is also a RootContent.
+    tree.children = nest(tree.children as ElementContent[]) satisfies RootContent[]
   }
 }

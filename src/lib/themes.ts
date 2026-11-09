@@ -200,20 +200,30 @@ export const THEME_ID = /^[a-z0-9]+(-[a-z0-9]+)*$/
  * unusable, so a bad package is skipped rather than breaking the picker.
  */
 export function validateTheme(raw: unknown): ThemeDefinition | string {
-  if (typeof raw !== 'object' || raw === null) return 'not an object'
-  const t = raw as Record<string, unknown>
-  if (typeof t.id !== 'string' || !THEME_ID.test(t.id)) return `bad id ${JSON.stringify(t.id)}`
-  if (typeof t.name !== 'string' || !t.name.trim()) return `${t.id}: missing name`
-  if (t.mode !== 'light' && t.mode !== 'dark') return `${t.id}: mode must be "light" or "dark"`
-  if (typeof t.vars !== 'object' || t.vars === null) return `${t.id}: missing vars`
-  const vars = t.vars as Record<string, unknown>
-  const missing = THEME_VARS.filter((name) => typeof vars[name] !== 'string' || !(vars[name] as string).trim())
-  if (missing.length) return `${t.id}: missing ${missing.join(', ')}`
-  return {
-    id: t.id,
-    name: t.name,
-    mode: t.mode,
-    blurb: typeof t.blurb === 'string' ? t.blurb : '',
-    vars: Object.fromEntries(THEME_VARS.map((name) => [name, vars[name] as string])) as Record<ThemeVar, string>,
+  if (!isRecord(raw)) return 'not an object'
+  const { id, name, mode, blurb, vars: rawVars } = raw
+  if (typeof id !== 'string' || !THEME_ID.test(id)) return `bad id ${JSON.stringify(id)}`
+  if (typeof name !== 'string' || !name.trim()) return `${id}: missing name`
+  if (mode !== 'light' && mode !== 'dark') return `${id}: mode must be "light" or "dark"`
+  if (!isRecord(rawVars)) return `${id}: missing vars`
+  const vars: Partial<Record<ThemeVar, string>> = {}
+  const missing: ThemeVar[] = []
+  for (const key of THEME_VARS) {
+    const value = rawVars[key]
+    if (typeof value === 'string' && value.trim()) vars[key] = value
+    else missing.push(key)
   }
+  if (missing.length) return `${id}: missing ${missing.join(', ')}`
+  return {
+    id,
+    name,
+    mode,
+    blurb: typeof blurb === 'string' ? blurb : '',
+    // SAFETY: the loop above either filled every THEME_VARS key or returned.
+    vars: vars as Record<ThemeVar, string>,
+  }
+}
+
+function isRecord(value: unknown): value is { [key: string]: unknown } {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
