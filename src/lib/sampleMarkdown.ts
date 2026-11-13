@@ -127,6 +127,11 @@ $$
 <answer>**A** — the app follows your system color scheme on first run, then remembers your pick.</answer>
 </quiz>
 
+<quiz>In your own words: where does an answer typed below end up?
+<response></response>
+<answer>In the markdown file itself, inside the quiz's response tag, so it is there the next time the file is opened.</answer>
+</quiz>
+
 ---
 
 ## Experiment Plots

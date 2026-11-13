@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { render, fireEvent, within } from '@testing-library/react'
 import { Preview } from '../components/Preview'
-import { prepareQuizBlocks } from '../lib/quiz'
+import { useState } from 'react'
+import { blankQuizResponses, prepareQuizBlocks, readQuizResponses, writeQuizResponse } from '../lib/quiz'
 
 const QUIZ_DOC = `# Study Sheet
 
@@ -157,5 +158,122 @@ describe('quiz rendering', () => {
     // Renders as a native option, not a quiz item; nothing crashes.
     expect(article().queryByText(/options hidden/)).toBeNull()
     expect(document.querySelector('.quiz-card')).toBeNull()
+  })
+})
+
+describe('quiz responses in the markdown', () => {
+  const doc = `<quiz>Why?
+<response>first answer</response>
+</quiz>
+
+<chat><comment>c</comment><response>a chat reply, not a quiz answer</response></chat>
+
+<quiz>And?
+<response></response>
+<answer>Because.</answer>
+</quiz>
+`
+
+  it('reads every quiz response in order, ignoring <response> outside quizzes', () => {
+    expect(readQuizResponses(doc)).toEqual(['first answer', ''])
+  })
+
+  it('writes one response and leaves the rest of the document alone', () => {
+    const next = writeQuizResponse(doc, 1, 'my own words')
+    expect(next).not.toBeNull()
+    expect(readQuizResponses(next!)).toEqual(['first answer', 'my own words'])
+    expect(next).toContain('<response>a chat reply, not a quiz answer</response>')
+    expect(next!.replace('my own words', '')).toBe(doc)
+  })
+
+  it('answers null for a response that does not exist', () => {
+    expect(writeQuizResponse(doc, 2, 'x')).toBeNull()
+  })
+
+  it('round-trips text that would otherwise close the tags early', () => {
+    const tricky = 'line one\n\nline two </response> and </quiz> and <b>x</b>'
+    const next = writeQuizResponse(doc, 0, tricky)!
+    expect(readQuizResponses(next)).toEqual([tricky, ''])
+    // The quiz still has its own end, so the second quiz is still found.
+    expect(next.match(/<\/quiz>/g)).toHaveLength(2)
+  })
+
+  it('blanks response text before the markdown is parsed', () => {
+    const blanked = blankQuizResponses(doc)
+    expect(blanked).not.toContain('first answer')
+    expect(blanked).toContain('<md-response data-index="0"></md-response>')
+    expect(blanked).toContain('<md-response data-index="1"></md-response>')
+  })
+})
+
+/** A document whose quiz answers save into its own text, as the app does. */
+function Harness({ initial, onChange }: { initial: string; onChange?: (next: string) => void }) {
+  const [content, setContent] = useState(initial)
+  const save = async (index: number, text: string) => {
+    const next = writeQuizResponse(content, index, text)
+    if (next === null) throw new Error('no such response')
+    setContent(next)
+    onChange?.(next)
+  }
+  return <Preview content={content} tocOpen={false} onQuizResponse={save} />
+}
+
+describe('quiz response box', () => {
+  const doc = `<quiz>Explain overfitting.
+<response></response>
+<answer>The model memorises noise.</answer>
+</quiz>
+`
+
+  it('saves the written answer into the document', async () => {
+    let saved = ''
+    render(<Harness initial={doc} onChange={(next) => (saved = next)} />)
+    const box = await article().findByRole('textbox', { name: 'Your answer' })
+    const button = article().getByRole('button', { name: 'Save answer' })
+    expect(button).toBeDisabled()
+
+    fireEvent.change(box, { target: { value: 'It fits the training set too closely.\n\nIt generalises badly.' } })
+    expect(button).toBeEnabled()
+    fireEvent.click(button)
+
+    await article().findByText('Saved to the document')
+    expect(saved).toContain('<response>It fits the training set too closely.\n\nIt generalises badly.</response>')
+    // The rest of the quiz still renders around it.
+    expect(article().getByRole('button', { name: 'Show answer' })).toBeInTheDocument()
+    expect(article().getByRole('button', { name: 'Save answer' })).toBeDisabled()
+  })
+
+  it('saves with Cmd/Ctrl+Enter', async () => {
+    let saved = ''
+    render(<Harness initial={doc} onChange={(next) => (saved = next)} />)
+    const box = await article().findByRole('textbox', { name: 'Your answer' })
+    fireEvent.change(box, { target: { value: 'quick' } })
+    fireEvent.keyDown(box, { key: 'Enter', ctrlKey: true })
+    await article().findByText('Saved to the document')
+    expect(saved).toContain('<response>quick</response>')
+  })
+
+  it('shows a saved answer, even one with blank lines and markup, without breaking the page', async () => {
+    const answered = writeQuizResponse(doc, 0, 'para one\n\n<plot>{"bad": json}</plot>\n\n$x^2$')!
+    render(<Preview content={answered} tocOpen={false} />)
+    const box = await article().findByRole('textbox', { name: 'Your answer' })
+    expect(box).toHaveValue('para one\n\n<plot>{"bad": json}</plot>\n\n$x^2$')
+    expect(article().getByRole('button', { name: 'Show answer' })).toBeInTheDocument()
+    expect(document.querySelector('[class^="experiment-plot"]')).toBeNull()
+  })
+
+  it('says so where answers cannot be saved', async () => {
+    render(<Preview content={doc} tocOpen={false} />)
+    await article().findByRole('textbox', { name: 'Your answer' })
+    expect(article().getByText('Answers cannot be saved here')).toBeInTheDocument()
+    expect(article().queryByRole('button', { name: 'Save answer' })).toBeNull()
+  })
+
+  it('follows the document when the answer changes underneath an untouched box', async () => {
+    const { rerender } = render(<Preview content={doc} tocOpen={false} />)
+    const box = await article().findByRole('textbox', { name: 'Your answer' })
+    expect(box).toHaveValue('')
+    rerender(<Preview content={writeQuizResponse(doc, 0, 'written by an agent')!} tocOpen={false} />)
+    expect(article().getByRole('textbox', { name: 'Your answer' })).toHaveValue('written by an agent')
   })
 })

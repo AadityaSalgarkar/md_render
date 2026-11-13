@@ -1,9 +1,11 @@
 import { Children, createContext, isValidElement, useContext, useState } from 'react'
+import { QuizResponseContext } from './quizResponseContext'
 
 /**
  * Renderers for the <quiz> authoring tag (rewritten to md-quiz / md-enumerate /
- * md-option by src/lib/quiz.ts before parsing). The question is always
- * visible; the options stay out of the DOM until the eye button reveals them.
+ * md-option / md-response by src/lib/quiz.ts before parsing). The question is
+ * always visible; the options stay out of the DOM until the eye button reveals
+ * them; a <response> is a box the reader writes an answer in.
  */
 
 interface QuizState {
@@ -108,6 +110,87 @@ export function Answer({ children, node }: TagProps) {
         </button>
       </div>
       <div className="answer-body">{children}</div>
+    </div>
+  )
+}
+
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+
+/**
+ * <response> — a box for the reader's own answer. Saving writes the text into
+ * the `<response>` tag in the markdown file, where the author (or a tutoring
+ * agent) can read it back.
+ */
+export function QuizResponse({ node, 'data-index': rawIndex }: TagProps & { 'data-index'?: string }) {
+  void node
+  const responses = useContext(QuizResponseContext)
+  const index = Number(rawIndex)
+  const stored = responses.values[index] ?? ''
+  const [draft, setDraft] = useState(stored)
+  const [status, setStatus] = useState<SaveStatus>('idle')
+
+  // Follow the file when it changes underneath a box the reader has not touched
+  // (an agent wrote the answer, or the file was edited elsewhere).
+  const [shown, setShown] = useState(stored)
+  if (stored !== shown) {
+    setShown(stored)
+    if (draft === shown) setDraft(stored)
+  }
+
+  const save = responses.save
+  const dirty = draft.trim() !== stored
+  const submit = async () => {
+    if (!save || !dirty) return
+    setStatus('saving')
+    try {
+      await save(index, draft)
+      setStatus('saved')
+    } catch (err) {
+      console.error('md-render: could not save the quiz answer', err)
+      setStatus('error')
+    }
+  }
+
+  return (
+    <div className="quiz-response">
+      <textarea
+        className="quiz-response-input"
+        aria-label="Your answer"
+        placeholder="Write your answer…"
+        rows={3}
+        value={draft}
+        onChange={(event) => {
+          setDraft(event.target.value)
+          setStatus('idle')
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault()
+            void submit()
+          }
+        }}
+      />
+      <div className="quiz-response-foot">
+        <span className="quiz-response-status" role="status">
+          {!save
+            ? 'Answers cannot be saved here'
+            : status === 'saved'
+              ? 'Saved to the document'
+              : status === 'error'
+                ? 'Could not save the answer'
+                : ''}
+        </span>
+        {save && (
+          <button
+            type="button"
+            className="quiz-response-save"
+            disabled={!dirty || status === 'saving'}
+            onClick={() => void submit()}
+          >
+            {status === 'saving' ? 'Saving…' : 'Save answer'}
+          </button>
+        )}
+      </div>
     </div>
   )
 }
