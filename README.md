@@ -52,7 +52,9 @@ curl -fsSL https://aadityasalgarkar.github.io/md_render/install.sh | sh
   capturing highlights while the pane is closed
 - Quiz blocks: `<quiz>question <enumerate><option>…</option></enumerate></quiz>`
   renders a card whose options stay hidden until the eye button reveals them;
-  an `<answer>…</answer>` inside (or anywhere) stays hidden until clicked
+  an `<answer>…</answer>` inside (or anywhere) stays hidden until clicked,
+  and a `<response></response>` inside is a box for a written answer that is
+  saved back into the tag in the markdown file
 - Experiment plots: a `<plot>` block with a little JSON draws line, bar,
   spider, histogram and scatter charts from trackio (wandb-compatible)
   logs, with a dropdown of views ("loss/ce: train vs val", "val/loss by

@@ -151,6 +151,22 @@ whose options stay hidden until the reader clicks the eye button:
 The `<answer>` stays hidden until the reader clicks "Show answer" —
 independently of the options — and also works standalone outside a quiz.
 
+For a question the reader answers in their own words, put an empty
+`<response></response>` in the quiz. It renders as a text box; when the
+reader saves, their text is written into the tag in the markdown file, so you
+can read the file back and respond to what they wrote:
+
+```html
+<quiz>Why does the validation loss rise while the training loss falls?
+<response></response>
+<answer>The model is overfitting: it fits noise in the training set.</answer>
+</quiz>
+```
+
+A `<response>` works with or without `<enumerate>` options (with them, the
+reader explains their choice). Text you put inside the tag shows up in the
+box, so you can also pre-fill or correct an answer by editing the file.
+
 ## Experiment plots
 
 A `<plot>` block draws a chart from a trackio experiment database
