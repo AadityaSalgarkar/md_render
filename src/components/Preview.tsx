@@ -31,9 +31,10 @@ import { TikzDiagram } from './TikzDiagram'
 import { isTikzLanguage, prepareTikzBlocks } from '../lib/tikz'
 import type { TikzApi } from '../lib/tikz'
 import type { ExperimentsApi } from '../lib/plots/types'
-import { Quiz, Enumerate, Option, Answer } from './Quiz'
+import { Quiz, Enumerate, Option, Answer, QuizResponse } from './Quiz'
+import { QuizResponseContext, type QuizResponses } from './quizResponseContext'
 import { resolveImageSrc } from '../lib/resolveImageSrc'
-import { prepareQuizBlocks } from '../lib/quiz'
+import { blankQuizResponses, prepareQuizBlocks, readQuizResponses } from '../lib/quiz'
 import { normalizeMath } from '../lib/math'
 import type { Heading } from '../types'
 
@@ -51,6 +52,8 @@ interface PreviewProps {
   experiments?: ExperimentsApi
   /** Compiles TikZ blocks; absent where nothing can compile. */
   tikz?: TikzApi
+  /** Saves a quiz's written answer into the document; absent where it cannot be written. */
+  onQuizResponse?: (index: number, text: string) => Promise<void>
 }
 
 /** Collapse state shared with the heading and section renderers. */
@@ -81,6 +84,7 @@ export function Preview({
   documentKey,
   experiments,
   tikz,
+  onQuizResponse,
 }: PreviewProps) {
   const plotEnvironment = useMemo<PlotEnvironment>(
     () => ({ experiments, tikz, baseDir, documentKey }),
@@ -118,12 +122,18 @@ export function Preview({
   )
 
   // Rewrite <quiz> tags to their parser-safe internal names before parsing.
+  // Written quiz answers are lifted out first and handed to the response
+  // boxes by index, so their text is never parsed as markdown.
   // MathJax-style math (bracket delimiters, bare AMS environments, numbering,
   // labels) is normalised for KaTeX before the quiz markup is prepared.
   // Plot blocks become fences first, so the math pass leaves their JSON alone.
   const preparedContent = useMemo(
-    () => prepareQuizBlocks(normalizeMath(prepareTikzBlocks(preparePlotBlocks(content)))),
+    () => prepareQuizBlocks(normalizeMath(prepareTikzBlocks(preparePlotBlocks(blankQuizResponses(content))))),
     [content],
+  )
+  const quizResponses = useMemo<QuizResponses>(
+    () => ({ values: readQuizResponses(content), save: onQuizResponse }),
+    [content, onQuizResponse],
   )
 
   const components: Components = useMemo(() => ({
@@ -159,6 +169,7 @@ export function Preview({
       'md-quiz': Quiz,
       'md-enumerate': Enumerate,
       'md-option': Option,
+      'md-response': QuizResponse,
       answer: Answer,
     } as Components),
   }), [assetUrl, baseDir])
@@ -282,6 +293,7 @@ export function Preview({
         >
           <CollapseContext.Provider value={collapseState}>
             <PlotContext.Provider value={plotEnvironment}>
+            <QuizResponseContext.Provider value={quizResponses}>
             <Markdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeRaw, rehypeSlug, rehypeSections, rehypeHighlight, rehypeKatex]}
@@ -290,6 +302,7 @@ export function Preview({
             >
               {preparedContent}
             </Markdown>
+            </QuizResponseContext.Provider>
             </PlotContext.Provider>
           </CollapseContext.Provider>
         </article>

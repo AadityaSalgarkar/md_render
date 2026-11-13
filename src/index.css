@@ -614,6 +614,66 @@ body {
   margin-top: 0.35rem;
 }
 
+/* Written quiz answers (<response> inside a <quiz>) */
+.quiz-response {
+  margin: 0.6rem 0 0;
+}
+
+.quiz-response-input {
+  display: block;
+  width: 100%;
+  min-height: 4.5rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.quiz-response-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.quiz-response-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.4rem;
+}
+
+.quiz-response-status {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.quiz-response-save {
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.quiz-response-save:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+
+.quiz-response-save:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* Collapsible sections: the chevron owns the left gutter (Jupyter-style). */
 .section-toggle {
   position: absolute;

@@ -20,6 +20,7 @@ import {
   type DocumentMeta,
 } from './lib/backend'
 import { pendingViewCommand, readAppliedSeq, writeAppliedSeq } from './lib/viewState'
+import { writeQuizResponse } from './lib/quiz'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link'
@@ -510,6 +511,18 @@ export default function App() {
     }
   }, [content, filePath, saveContentToFile, selectedText])
 
+  const handleQuizResponse = useCallback(async (index: number, text: string) => {
+    const next = writeQuizResponse(contentRef.current, index, text)
+    if (next === null) throw new Error(`the document has no quiz response ${index}`)
+    try {
+      await saveContentToFile(next)
+      setSaveState(filePathRef.current ? 'Saved to markdown file.' : 'Saved to local draft.')
+    } catch (err) {
+      setSaveState('Could not write to the markdown file.')
+      throw err
+    }
+  }, [saveContentToFile])
+
   const handleRefreshComments = useCallback(async () => {
     try {
       await syncOpenFile('manual')
@@ -767,6 +780,7 @@ export default function App() {
             documentKey={filePath}
             experiments={backend.experiments}
             tikz={backend.tikz}
+            onQuizResponse={readOnly ? undefined : handleQuizResponse}
           />
         </motion.div>
         <CommentPane
