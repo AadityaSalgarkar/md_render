@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.15.0...v0.16.0) (2026-11-13)
+
+
+### Features
+
+* **quiz:** &lt;response&gt; box for a written answer ([e9d6de7](https://github.com/AadityaSalgarkar/md_render/commit/e9d6de70e57f13c17564166fae756133a8c95146))
+* **quiz:** &lt;response&gt; box for a written answer, saved into the markdown file ([3a29a0c](https://github.com/AadityaSalgarkar/md_render/commit/3a29a0cb3fc9742ddf4c5d0eb90adc5e475bd39a))
+
 ## [0.15.0](https://github.com/AadityaSalgarkar/md_render/compare/v0.14.1...v0.15.0) (2026-11-04)
 
 
